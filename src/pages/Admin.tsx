@@ -25,7 +25,7 @@ export default function Admin() {
   const [institutions, setInstitutions] = useState(config.institutions);
   const [types, setTypes] = useState(config.types);
   const [statuts, setStatuts] = useState(config.statuts);
-  const [gravites, setGravites] = useState(config.gravites);
+  const [gravites] = useState(config.gravites);
   const [poidsType, setPoidsType] = useState(config.poidsType);
   const [poidsGravite, setPoidsGravite] = useState(config.poidsGravite);
 
@@ -51,7 +51,6 @@ export default function Admin() {
     setInstitutions(DEFAULT_INSTITUTIONS);
     setTypes(DEFAULT_TYPES);
     setStatuts(DEFAULT_STATUTS);
-    setGravites(DEFAULT_GRAVITES);
     setPoidsType(POIDS_TYPE);
     setPoidsGravite(POIDS_GRAVITE);
     
@@ -71,26 +70,26 @@ export default function Admin() {
 
   return (
     <AppLayout>
-      <div className="p-6 max-w-4xl">
+      <div className="p-4 md:p-6 max-w-4xl">
         <PageHeader 
           title="Administration" 
           description="Configuration de l'application"
           actions={
             <div className="flex gap-2">
-              <Button variant="outline" onClick={resetToDefaults}>
-                <RotateCcw className="h-4 w-4 mr-2" />
-                Défaut
+              <Button variant="outline" size="sm" onClick={resetToDefaults}>
+                <RotateCcw className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Défaut</span>
               </Button>
-              <Button onClick={saveConfig}>
-                <Save className="h-4 w-4 mr-2" />
-                Sauvegarder
+              <Button size="sm" onClick={saveConfig}>
+                <Save className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Sauvegarder</span>
               </Button>
             </div>
           }
         />
 
-        <Tabs defaultValue="general" className="space-y-6">
-          <TabsList>
+        <Tabs defaultValue="general" className="space-y-4 md:space-y-6">
+          <TabsList className="w-full md:w-auto grid grid-cols-3 md:flex">
             <TabsTrigger value="general">Général</TabsTrigger>
             <TabsTrigger value="listes">Listes</TabsTrigger>
             <TabsTrigger value="scoring">Scoring</TabsTrigger>
@@ -99,19 +98,19 @@ export default function Admin() {
           {/* Général */}
           <TabsContent value="general">
             <Card>
-              <CardHeader>
+              <CardHeader className="pb-3">
                 <CardTitle className="text-base">Google Sheets</CardTitle>
-                <CardDescription>
-                  Configuration de la connexion Google Sheets (optionnel)
+                <CardDescription className="text-sm">
+                  Configuration optionnelle
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label>ID du Google Sheet</Label>
+                  <Label className="text-sm">ID du Google Sheet</Label>
                   <Input
                     value={googleSheetId}
                     onChange={(e) => setGoogleSheetId(e.target.value)}
-                    placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                    placeholder="1BxiMVs0XRA5nF..."
                   />
                   <p className="text-xs text-muted-foreground">
                     L'ID se trouve dans l'URL du Google Sheet
@@ -122,10 +121,10 @@ export default function Admin() {
           </TabsContent>
 
           {/* Listes */}
-          <TabsContent value="listes" className="space-y-6">
+          <TabsContent value="listes" className="space-y-4 md:space-y-6">
             {/* Institutions */}
             <Card>
-              <CardHeader>
+              <CardHeader className="pb-3">
                 <CardTitle className="text-base">Institutions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -134,10 +133,12 @@ export default function Admin() {
                     value={newInstitution}
                     onChange={(e) => setNewInstitution(e.target.value)}
                     placeholder="Nouvelle institution"
+                    className="flex-1"
                     onKeyDown={(e) => e.key === 'Enter' && addItem(institutions, setInstitutions, newInstitution, () => setNewInstitution(''))}
                   />
                   <Button 
                     variant="outline" 
+                    size="icon"
                     onClick={() => addItem(institutions, setInstitutions, newInstitution, () => setNewInstitution(''))}
                   >
                     <Plus className="h-4 w-4" />
@@ -146,7 +147,7 @@ export default function Admin() {
                 <div className="flex flex-wrap gap-2">
                   {institutions.map((inst, i) => (
                     <div key={i} className="flex items-center gap-1 px-3 py-1 rounded-full bg-muted text-sm">
-                      {inst}
+                      <span className="truncate max-w-[150px]">{inst}</span>
                       <button onClick={() => removeItem(institutions, setInstitutions, i)}>
                         <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
                       </button>
@@ -158,8 +159,8 @@ export default function Admin() {
 
             {/* Types */}
             <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Types de dysfonctionnement</CardTitle>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Types</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex gap-2">
@@ -167,10 +168,12 @@ export default function Admin() {
                     value={newType}
                     onChange={(e) => setNewType(e.target.value)}
                     placeholder="Nouveau type"
+                    className="flex-1"
                     onKeyDown={(e) => e.key === 'Enter' && addItem(types, setTypes, newType, () => setNewType(''))}
                   />
                   <Button 
                     variant="outline" 
+                    size="icon"
                     onClick={() => addItem(types, setTypes, newType, () => setNewType(''))}
                   >
                     <Plus className="h-4 w-4" />
@@ -179,7 +182,7 @@ export default function Admin() {
                 <div className="flex flex-wrap gap-2">
                   {types.map((t, i) => (
                     <div key={i} className="flex items-center gap-1 px-3 py-1 rounded-full bg-muted text-sm">
-                      {t}
+                      <span className="truncate max-w-[150px]">{t}</span>
                       <button onClick={() => removeItem(types, setTypes, i)}>
                         <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
                       </button>
@@ -191,7 +194,7 @@ export default function Admin() {
 
             {/* Statuts */}
             <Card>
-              <CardHeader>
+              <CardHeader className="pb-3">
                 <CardTitle className="text-base">Statuts</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -200,10 +203,12 @@ export default function Admin() {
                     value={newStatut}
                     onChange={(e) => setNewStatut(e.target.value)}
                     placeholder="Nouveau statut"
+                    className="flex-1"
                     onKeyDown={(e) => e.key === 'Enter' && addItem(statuts, setStatuts, newStatut, () => setNewStatut(''))}
                   />
                   <Button 
                     variant="outline" 
+                    size="icon"
                     onClick={() => addItem(statuts, setStatuts, newStatut, () => setNewStatut(''))}
                   >
                     <Plus className="h-4 w-4" />
@@ -224,20 +229,20 @@ export default function Admin() {
           </TabsContent>
 
           {/* Scoring */}
-          <TabsContent value="scoring" className="space-y-6">
+          <TabsContent value="scoring" className="space-y-4 md:space-y-6">
             {/* Poids gravités */}
             <Card>
-              <CardHeader>
+              <CardHeader className="pb-3">
                 <CardTitle className="text-base">Poids des gravités</CardTitle>
-                <CardDescription>
-                  Ces poids sont multipliés par 2 dans le calcul du score
+                <CardDescription className="text-sm">
+                  Multipliés par 2 dans le calcul
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {gravites.map((g) => (
                     <div key={g} className="space-y-2">
-                      <Label>{g}</Label>
+                      <Label className="text-sm">{g}</Label>
                       <Input
                         type="number"
                         min="1"
@@ -256,17 +261,17 @@ export default function Admin() {
 
             {/* Poids types */}
             <Card>
-              <CardHeader>
+              <CardHeader className="pb-3">
                 <CardTitle className="text-base">Poids des types</CardTitle>
-                <CardDescription>
-                  Ces poids sont ajoutés au score de base
+                <CardDescription className="text-sm">
+                  Ajoutés au score de base
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {types.map((t) => (
                     <div key={t} className="space-y-2">
-                      <Label className="text-xs">{t}</Label>
+                      <Label className="text-xs truncate block">{t}</Label>
                       <Input
                         type="number"
                         min="1"
@@ -285,12 +290,12 @@ export default function Admin() {
 
             {/* Formule */}
             <Card className="bg-muted/50">
-              <CardContent className="pt-6">
+              <CardContent className="pt-4 md:pt-6">
                 <p className="text-sm">
-                  <strong>Formule de scoring:</strong> (Poids Gravité × 2) + Poids Type + Pénalité
+                  <strong>Formule:</strong> (Gravité × 2) + Type + Pénalité
                 </p>
                 <p className="text-xs text-muted-foreground mt-2">
-                  Pénalité de +3 si non transmis JP et gravité Haute ou Critique
+                  +3 si non transmis JP et gravité Haute/Critique
                 </p>
               </CardContent>
             </Card>

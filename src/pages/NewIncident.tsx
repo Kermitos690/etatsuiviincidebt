@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Save, Plus, Trash2, ArrowLeft } from 'lucide-react';
 import { AppLayout, PageHeader } from '@/components/layout';
@@ -42,6 +42,27 @@ export default function NewIncident() {
     label: '',
     url: ''
   });
+
+  // Check for IA prefill data
+  useEffect(() => {
+    const prefill = sessionStorage.getItem('ia-prefill');
+    if (prefill) {
+      try {
+        const data = JSON.parse(prefill);
+        setFormData(prev => ({
+          ...prev,
+          titre: data.titre || prev.titre,
+          faits: data.faits || prev.faits,
+          dysfonctionnement: data.dysfonctionnement || prev.dysfonctionnement,
+          type: data.type || prev.type,
+          gravite: data.gravite || prev.gravite
+        }));
+        sessionStorage.removeItem('ia-prefill');
+      } catch (e) {
+        console.error('Failed to parse IA prefill data', e);
+      }
+    }
+  }, []);
 
   const score = calculateScore(
     formData.gravite,
@@ -110,8 +131,8 @@ export default function NewIncident() {
 
   return (
     <AppLayout>
-      <div className="p-6 max-w-4xl">
-        <div className="mb-6">
+      <div className="p-4 md:p-6 max-w-4xl">
+        <div className="mb-4 md:mb-6">
           <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Retour
@@ -123,10 +144,10 @@ export default function NewIncident() {
           description={`Sera numéroté #${getNextNumero()}`}
         />
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-4 md:space-y-6">
           {/* Classification */}
           <Card>
-            <CardHeader>
+            <CardHeader className="pb-3 md:pb-6">
               <CardTitle className="text-base">Classification</CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -150,7 +171,7 @@ export default function NewIncident() {
                   <SelectTrigger>
                     <SelectValue placeholder="Sélectionner..." />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-popover z-50">
                     {config.institutions.map(inst => (
                       <SelectItem key={inst} value={inst}>{inst}</SelectItem>
                     ))}
@@ -159,7 +180,7 @@ export default function NewIncident() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="type">Type de dysfonctionnement *</Label>
+                <Label htmlFor="type">Type *</Label>
                 <Select 
                   value={formData.type} 
                   onValueChange={(v) => updateField('type', v)}
@@ -167,7 +188,7 @@ export default function NewIncident() {
                   <SelectTrigger>
                     <SelectValue placeholder="Sélectionner..." />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-popover z-50">
                     {config.types.map(t => (
                       <SelectItem key={t} value={t}>{t}</SelectItem>
                     ))}
@@ -184,7 +205,7 @@ export default function NewIncident() {
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-popover z-50">
                     {config.gravites.map(g => (
                       <SelectItem key={g} value={g}>{g}</SelectItem>
                     ))}
@@ -192,17 +213,17 @@ export default function NewIncident() {
                 </Select>
               </div>
 
-              <div className="md:col-span-2 flex items-center justify-between p-3 rounded-lg bg-muted">
+              <div className="md:col-span-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg bg-muted">
                 <div className="flex items-center gap-3">
                   <Switch
                     id="transmisJP"
                     checked={formData.transmisJP}
                     onCheckedChange={(v) => updateField('transmisJP', v)}
                   />
-                  <Label htmlFor="transmisJP">Transmis au Juge de paix</Label>
+                  <Label htmlFor="transmisJP" className="text-sm">Transmis au Juge de paix</Label>
                 </div>
                 <div className="text-sm">
-                  Score calculé: <span className="font-bold">{score}</span> ({priority})
+                  Score: <span className="font-bold">{score}</span> ({priority})
                 </div>
               </div>
             </CardContent>
@@ -210,7 +231,7 @@ export default function NewIncident() {
 
           {/* Contenu */}
           <Card>
-            <CardHeader>
+            <CardHeader className="pb-3 md:pb-6">
               <CardTitle className="text-base">Contenu</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -220,7 +241,7 @@ export default function NewIncident() {
                   id="titre"
                   value={formData.titre}
                   onChange={(e) => updateField('titre', e.target.value)}
-                  placeholder="Titre descriptif de l'incident"
+                  placeholder="Titre descriptif"
                   required
                 />
               </div>
@@ -231,7 +252,7 @@ export default function NewIncident() {
                   id="faits"
                   value={formData.faits}
                   onChange={(e) => updateField('faits', e.target.value)}
-                  placeholder="Description factuelle des événements..."
+                  placeholder="Description factuelle..."
                   rows={4}
                 />
               </div>
@@ -242,7 +263,7 @@ export default function NewIncident() {
                   id="dysfonctionnement"
                   value={formData.dysfonctionnement}
                   onChange={(e) => updateField('dysfonctionnement', e.target.value)}
-                  placeholder="Nature du dysfonctionnement identifié..."
+                  placeholder="Nature du dysfonctionnement..."
                   rows={4}
                 />
               </div>
@@ -251,7 +272,7 @@ export default function NewIncident() {
 
           {/* Preuves */}
           <Card>
-            <CardHeader>
+            <CardHeader className="pb-3 md:pb-6">
               <CardTitle className="text-base">Preuves ({formData.preuves.length})</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -263,8 +284,8 @@ export default function NewIncident() {
                       key={preuve.id}
                       className="flex items-center gap-3 p-3 rounded-lg border bg-muted/50"
                     >
-                      <div className="flex-1">
-                        <p className="font-medium">{preuve.label}</p>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{preuve.label}</p>
                         <p className="text-xs text-muted-foreground capitalize">{preuve.type}</p>
                       </div>
                       <Button 
@@ -281,7 +302,7 @@ export default function NewIncident() {
               )}
 
               {/* Ajouter une preuve */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 p-4 rounded-lg border-2 border-dashed">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 p-4 rounded-lg border-2 border-dashed">
                 <Select 
                   value={newPreuve.type} 
                   onValueChange={(v: Proof['type']) => setNewPreuve(p => ({ ...p, type: v }))}
@@ -289,9 +310,9 @@ export default function NewIncident() {
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-popover z-50">
                     <SelectItem value="email">Email</SelectItem>
-                    <SelectItem value="screenshot">Capture d'écran</SelectItem>
+                    <SelectItem value="screenshot">Capture</SelectItem>
                     <SelectItem value="document">Document</SelectItem>
                     <SelectItem value="link">Lien</SelectItem>
                   </SelectContent>
@@ -301,12 +322,7 @@ export default function NewIncident() {
                   placeholder="Libellé"
                   value={newPreuve.label}
                   onChange={(e) => setNewPreuve(p => ({ ...p, label: e.target.value }))}
-                />
-
-                <Input
-                  placeholder="URL (optionnel)"
-                  value={newPreuve.url}
-                  onChange={(e) => setNewPreuve(p => ({ ...p, url: e.target.value }))}
+                  className="sm:col-span-2"
                 />
 
                 <Button 
@@ -323,7 +339,7 @@ export default function NewIncident() {
           </Card>
 
           {/* Actions */}
-          <div className="flex justify-end gap-3">
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-3">
             <Button type="button" variant="outline" onClick={() => navigate(-1)}>
               Annuler
             </Button>

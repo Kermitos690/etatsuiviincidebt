@@ -19,7 +19,7 @@ import { formatDate } from '@/config/appConfig';
 
 export default function Exports() {
   const { toast } = useToast();
-  const { incidents, config, getFilteredIncidents } = useIncidentStore();
+  const { incidents } = useIncidentStore();
   const [loading, setLoading] = useState<string | null>(null);
   const [selectedIncident, setSelectedIncident] = useState('');
   const [dateDebut, setDateDebut] = useState('');
@@ -34,7 +34,6 @@ export default function Exports() {
     try {
       const doc = new jsPDF();
       
-      // Header
       doc.setFontSize(18);
       doc.text(`Incident #${incident.numero}`, 20, 20);
       
@@ -42,7 +41,6 @@ export default function Exports() {
       doc.setTextColor(100);
       doc.text(`Exporté le ${formatDate(new Date().toISOString())}`, 20, 28);
       
-      // Content
       doc.setTextColor(0);
       doc.setFontSize(12);
       
@@ -51,9 +49,10 @@ export default function Exports() {
       doc.setFont('helvetica', 'bold');
       doc.text('Titre:', 20, y);
       doc.setFont('helvetica', 'normal');
-      doc.text(incident.titre, 50, y);
+      const titleLines = doc.splitTextToSize(incident.titre, 130);
+      doc.text(titleLines, 50, y);
+      y += titleLines.length * 5 + 5;
       
-      y += 10;
       doc.setFont('helvetica', 'bold');
       doc.text('Date:', 20, y);
       doc.setFont('helvetica', 'normal');
@@ -91,6 +90,11 @@ export default function Exports() {
       const faitsLines = doc.splitTextToSize(incident.faits || 'Non renseigné', 170);
       doc.text(faitsLines, 20, y);
       y += faitsLines.length * 5 + 10;
+      
+      if (y > 250) {
+        doc.addPage();
+        y = 20;
+      }
       
       doc.setFont('helvetica', 'bold');
       doc.text('Dysfonctionnement:', 20, y);
@@ -131,18 +135,17 @@ export default function Exports() {
       if (dateFin) filtered = filtered.filter(i => i.dateIncident <= dateFin);
       
       doc.setTextColor(0);
-      doc.setFontSize(10);
+      doc.setFontSize(9);
       
       let y = 45;
       
-      // Headers
       doc.setFont('helvetica', 'bold');
       doc.text('N°', 20, y);
-      doc.text('Date', 35, y);
-      doc.text('Institution', 65, y);
-      doc.text('Type', 105, y);
-      doc.text('Gravité', 145, y);
-      doc.text('Score', 175, y);
+      doc.text('Date', 32, y);
+      doc.text('Institution', 58, y);
+      doc.text('Type', 100, y);
+      doc.text('Gravité', 140, y);
+      doc.text('Score', 170, y);
       
       y += 5;
       doc.line(20, y, 190, y);
@@ -157,13 +160,13 @@ export default function Exports() {
         }
         
         doc.text(String(inc.numero), 20, y);
-        doc.text(formatDate(inc.dateIncident), 35, y);
-        doc.text(inc.institution.substring(0, 15), 65, y);
-        doc.text(inc.type.substring(0, 15), 105, y);
-        doc.text(inc.gravite, 145, y);
-        doc.text(String(inc.score), 175, y);
+        doc.text(formatDate(inc.dateIncident), 32, y);
+        doc.text(inc.institution.substring(0, 15), 58, y);
+        doc.text(inc.type.substring(0, 15), 100, y);
+        doc.text(inc.gravite, 140, y);
+        doc.text(String(inc.score), 170, y);
         
-        y += 7;
+        y += 6;
       }
       
       doc.save('journal-incidents.pdf');
@@ -188,7 +191,7 @@ export default function Exports() {
       const filtered = incidents.filter(i => new Date(i.dateIncident) >= sixMonthsAgo);
       
       doc.setFontSize(18);
-      doc.text('Rapport semestriel des incidents', 20, 20);
+      doc.text('Rapport semestriel', 20, 20);
       
       doc.setFontSize(10);
       doc.setTextColor(100);
@@ -197,7 +200,6 @@ export default function Exports() {
       doc.setTextColor(0);
       let y = 45;
       
-      // Statistiques
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.text('Statistiques', 20, y);
@@ -218,7 +220,6 @@ export default function Exports() {
       
       y += 15;
       
-      // Par institution
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.text('Par institution', 20, y);
@@ -235,10 +236,9 @@ export default function Exports() {
       
       y += 10;
       
-      // Top 5 incidents critiques
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
-      doc.text('Top 5 incidents par score', 20, y);
+      doc.text('Top 5 par score', 20, y);
       y += 10;
       
       doc.setFontSize(10);
@@ -247,7 +247,8 @@ export default function Exports() {
         .sort((a, b) => b.score - a.score)
         .slice(0, 5)
         .forEach((inc, i) => {
-          doc.text(`${i + 1}. #${inc.numero} - ${inc.titre.substring(0, 50)} (Score: ${inc.score})`, 20, y);
+          const line = `${i + 1}. #${inc.numero} - ${inc.titre.substring(0, 40)}... (Score: ${inc.score})`;
+          doc.text(line, 20, y);
           y += 6;
         });
       
@@ -264,35 +265,35 @@ export default function Exports() {
 
   return (
     <AppLayout>
-      <div className="p-6 max-w-4xl">
+      <div className="p-4 md:p-6 max-w-4xl">
         <PageHeader 
           title="Exports PDF" 
-          description="Générez des rapports au format PDF"
+          description="Générez des rapports"
         />
 
-        <div className="grid gap-6">
+        <div className="grid gap-4 md:gap-6">
           {/* Export incident unique */}
           <Card>
-            <CardHeader>
+            <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <FileText className="h-5 w-5" />
                 Fiche incident
               </CardTitle>
-              <CardDescription>
-                Export d'un incident unique au format PDF
+              <CardDescription className="text-sm">
+                Export d'un incident unique
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>Sélectionner un incident</Label>
+                <Label className="text-sm">Sélectionner un incident</Label>
                 <Select value={selectedIncident} onValueChange={setSelectedIncident}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Choisir un incident..." />
+                    <SelectValue placeholder="Choisir..." />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-popover z-50 max-h-[200px]">
                     {incidents.map(inc => (
                       <SelectItem key={inc.id} value={inc.id}>
-                        #{inc.numero} - {inc.titre.substring(0, 40)}
+                        #{inc.numero} - {inc.titre.substring(0, 30)}...
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -301,32 +302,33 @@ export default function Exports() {
               <Button 
                 onClick={exportIncidentPDF} 
                 disabled={!selectedIncident || loading === 'incident'}
+                size="sm"
               >
                 {loading === 'incident' ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
                   <Download className="h-4 w-4 mr-2" />
                 )}
-                Télécharger PDF
+                Télécharger
               </Button>
             </CardContent>
           </Card>
 
           {/* Export journal */}
           <Card>
-            <CardHeader>
+            <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <FileText className="h-5 w-5" />
                 Journal filtré
               </CardTitle>
-              <CardDescription>
-                Export du journal des incidents avec filtres de dates
+              <CardDescription className="text-sm">
+                Export avec filtres de dates
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Date début</Label>
+                  <Label className="text-sm">Date début</Label>
                   <Input 
                     type="date" 
                     value={dateDebut} 
@@ -334,7 +336,7 @@ export default function Exports() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Date fin</Label>
+                  <Label className="text-sm">Date fin</Label>
                   <Input 
                     type="date" 
                     value={dateFin} 
@@ -342,36 +344,36 @@ export default function Exports() {
                   />
                 </div>
               </div>
-              <Button onClick={exportJournalPDF} disabled={loading === 'journal'}>
+              <Button onClick={exportJournalPDF} disabled={loading === 'journal'} size="sm">
                 {loading === 'journal' ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
                   <Download className="h-4 w-4 mr-2" />
                 )}
-                Télécharger Journal PDF
+                Télécharger Journal
               </Button>
             </CardContent>
           </Card>
 
           {/* Rapport 6 mois */}
           <Card>
-            <CardHeader>
+            <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <FileText className="h-5 w-5" />
                 Rapport semestriel
               </CardTitle>
-              <CardDescription>
-                Synthèse des 6 derniers mois avec statistiques et top incidents
+              <CardDescription className="text-sm">
+                Synthèse des 6 derniers mois
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button onClick={exportRapport6Mois} disabled={loading === 'rapport'}>
+              <Button onClick={exportRapport6Mois} disabled={loading === 'rapport'} size="sm">
                 {loading === 'rapport' ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
                   <Download className="h-4 w-4 mr-2" />
                 )}
-                Télécharger Rapport PDF
+                Télécharger Rapport
               </Button>
             </CardContent>
           </Card>

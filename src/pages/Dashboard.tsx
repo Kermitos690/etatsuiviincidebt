@@ -63,70 +63,70 @@ export default function Dashboard() {
 
   return (
     <AppLayout>
-      <div className="p-6">
+      <div className="p-4 md:p-6">
         <PageHeader 
           title="Dashboard" 
           description="Vue d'ensemble des incidents et statistiques"
         />
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        {/* KPI Cards - Responsive grid */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 mb-6 md:mb-8">
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="pt-4 md:pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Total incidents</p>
-                  <p className="text-3xl font-bold">{kpis.total}</p>
+                  <p className="text-xs md:text-sm text-muted-foreground">Total</p>
+                  <p className="text-2xl md:text-3xl font-bold">{kpis.total}</p>
                 </div>
-                <AlertTriangle className="h-8 w-8 text-muted-foreground/50" />
+                <AlertTriangle className="h-6 w-6 md:h-8 md:w-8 text-muted-foreground/50 hidden sm:block" />
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="pt-4 md:pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Ouverts</p>
-                  <p className="text-3xl font-bold text-amber-600">{kpis.ouverts}</p>
+                  <p className="text-xs md:text-sm text-muted-foreground">Ouverts</p>
+                  <p className="text-2xl md:text-3xl font-bold text-amber-600">{kpis.ouverts}</p>
                 </div>
-                <Clock className="h-8 w-8 text-amber-500/50" />
+                <Clock className="h-6 w-6 md:h-8 md:w-8 text-amber-500/50 hidden sm:block" />
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="pt-4 md:pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Non résolus</p>
-                  <p className="text-3xl font-bold text-orange-600">{kpis.nonResolus}</p>
+                  <p className="text-xs md:text-sm text-muted-foreground">Non résolus</p>
+                  <p className="text-2xl md:text-3xl font-bold text-orange-600">{kpis.nonResolus}</p>
                 </div>
-                <AlertTriangle className="h-8 w-8 text-orange-500/50" />
+                <AlertTriangle className="h-6 w-6 md:h-8 md:w-8 text-orange-500/50 hidden sm:block" />
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="pt-4 md:pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Transmis JP</p>
-                  <p className="text-3xl font-bold text-purple-600">{kpis.transmisJP}</p>
+                  <p className="text-xs md:text-sm text-muted-foreground">Transmis JP</p>
+                  <p className="text-2xl md:text-3xl font-bold text-purple-600">{kpis.transmisJP}</p>
                 </div>
-                <Send className="h-8 w-8 text-purple-500/50" />
+                <Send className="h-6 w-6 md:h-8 md:w-8 text-purple-500/50 hidden sm:block" />
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="pt-6">
+          <Card className="col-span-2 md:col-span-1">
+            <CardContent className="pt-4 md:pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Score moyen</p>
-                  <p className="text-3xl font-bold text-blue-600">{kpis.scoreMoyen}</p>
+                  <p className="text-xs md:text-sm text-muted-foreground">Score moyen</p>
+                  <p className="text-2xl md:text-3xl font-bold text-blue-600">{kpis.scoreMoyen}</p>
                 </div>
-                <TrendingUp className="h-8 w-8 text-blue-500/50" />
+                <TrendingUp className="h-6 w-6 md:h-8 md:w-8 text-blue-500/50 hidden sm:block" />
               </div>
             </CardContent>
           </Card>
@@ -134,23 +134,23 @@ export default function Dashboard() {
 
         {incidents.length === 0 ? (
           <Card>
-            <CardContent className="py-12 text-center">
-              <AlertTriangle className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
-              <h3 className="font-medium text-lg mb-2">Aucun incident enregistré</h3>
-              <p className="text-muted-foreground">
-                Commencez par créer votre premier incident pour voir les statistiques.
+            <CardContent className="py-8 md:py-12 text-center">
+              <AlertTriangle className="h-10 w-10 md:h-12 md:w-12 mx-auto text-muted-foreground/50 mb-4" />
+              <h3 className="font-medium text-base md:text-lg mb-2">Aucun incident enregistré</h3>
+              <p className="text-sm text-muted-foreground">
+                Commencez par créer votre premier incident.
               </p>
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
             {/* Chart by Status */}
             <Card>
-              <CardHeader>
-                <CardTitle className="text-base font-medium">Par statut</CardTitle>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm md:text-base font-medium">Par statut</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="h-64">
+                <div className="h-48 md:h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
@@ -159,15 +159,15 @@ export default function Dashboard() {
                         nameKey="name"
                         cx="50%"
                         cy="50%"
-                        outerRadius={80}
+                        outerRadius="70%"
                         label={({ name, value }) => `${name}: ${value}`}
+                        labelLine={false}
                       >
                         {chartByStatus.map((_, index) => (
                           <Cell key={index} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
                       <Tooltip />
-                      <Legend />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -176,16 +176,16 @@ export default function Dashboard() {
 
             {/* Chart by Institution */}
             <Card>
-              <CardHeader>
-                <CardTitle className="text-base font-medium">Par institution</CardTitle>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm md:text-base font-medium">Par institution</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="h-64">
+                <div className="h-48 md:h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartByInstitution} layout="vertical">
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis type="number" />
-                      <YAxis type="category" dataKey="name" width={100} />
+                      <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 12 }} />
                       <Tooltip />
                       <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} />
                     </BarChart>
@@ -196,15 +196,15 @@ export default function Dashboard() {
 
             {/* Chart by Type */}
             <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle className="text-base font-medium">Par type de dysfonctionnement</CardTitle>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm md:text-base font-medium">Par type de dysfonctionnement</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
+                <div className="h-48 md:h-64 overflow-x-auto">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={300}>
                     <BarChart data={chartByType}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
+                      <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={60} />
                       <YAxis />
                       <Tooltip />
                       <Bar dataKey="value" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
