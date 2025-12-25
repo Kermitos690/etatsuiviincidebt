@@ -5,3 +5,9 @@ verify_jwt = false
 
 [functions.receive-email]
 verify_jwt = false
+
+[functions.send-email]
+verify_jwt = true
+
+[functions.notify-critical]
+verify_jwt = true

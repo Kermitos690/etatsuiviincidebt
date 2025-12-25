@@ -11,12 +11,69 @@ serve(async (req) => {
   }
 
   try {
-    const { text } = await req.json();
+    const body = await req.json();
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     
     if (!LOVABLE_API_KEY) {
       throw new Error('LOVABLE_API_KEY not configured');
     }
+
+    // Handle different request types
+    if (body.type === 'generate-response') {
+      // Generate email response
+      const { emailSubject, emailSender, emailBody, analysis } = body;
+      
+      const systemPrompt = `Tu es un assistant juridique professionnel. Génère une réponse email appropriée et professionnelle.
+
+CONTEXTE:
+- Email de: ${emailSender}
+- Sujet: ${emailSubject}
+- L'analyse IA a identifié: ${analysis.isIncident ? 'un incident potentiel' : 'pas d\'incident'}
+${analysis.isIncident ? `- Gravité suggérée: ${analysis.suggestedGravity}
+- Type: ${analysis.suggestedType}
+- Résumé: ${analysis.summary}` : ''}
+
+RÈGLES:
+- Reste professionnel et courtois
+- Accuse réception de l'email
+- Si c'est un incident: indique que la demande est prise en compte et sera traitée
+- Si ce n'est pas un incident: réponds de manière appropriée au contenu
+- Ne mentionne PAS l'IA ou l'analyse automatique
+- Termine par une formule de politesse
+- Garde un ton formel mais humain
+- Maximum 150 mots`;
+
+      const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'google/gemini-2.5-flash',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Email original:\n\n${emailBody}\n\nGénère une réponse appropriée.` }
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('AI Gateway error:', response.status, errorText);
+        throw new Error(`AI Gateway error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || '';
+
+      return new Response(JSON.stringify({ response: content }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Default: analyze incident text
+    const { text } = body;
 
     const systemPrompt = `Tu es un auditeur juridique factuel. Analyse le texte fourni et extrait UNIQUEMENT les informations présentes.
 
