@@ -268,28 +268,31 @@ serve(async (req) => {
         });
       }
 
-      // Prepare data for sheets
+      // Prepare data for sheets - 15 columns (A to O) to match user's structure
       const values = incidents.map((inc: any) => {
-        const row: string[] = new Array(11).fill("");
+        const row: string[] = new Array(15).fill("");
         const colIndex = (col: string) => col.charCodeAt(0) - 65;
         
         if (mapping.numero) row[colIndex(mapping.numero)] = String(inc.numero || "");
+        if (mapping.date_creation) row[colIndex(mapping.date_creation)] = inc.date_creation ? new Date(inc.date_creation).toLocaleDateString('fr-FR') : "";
         if (mapping.date_incident) row[colIndex(mapping.date_incident)] = inc.date_incident || "";
         if (mapping.institution) row[colIndex(mapping.institution)] = inc.institution || "";
         if (mapping.type) row[colIndex(mapping.type)] = inc.type || "";
-        if (mapping.titre) row[colIndex(mapping.titre)] = inc.titre || "";
         if (mapping.gravite) row[colIndex(mapping.gravite)] = inc.gravite || "";
         if (mapping.statut) row[colIndex(mapping.statut)] = inc.statut || "";
-        if (mapping.score) row[colIndex(mapping.score)] = String(inc.score || 0);
-        if (mapping.confidence) row[colIndex(mapping.confidence)] = inc.confidence_level || "";
+        if (mapping.transmis_jp) row[colIndex(mapping.transmis_jp)] = inc.transmis_jp ? "Oui" : "Non";
+        if (mapping.titre) row[colIndex(mapping.titre)] = inc.titre || "";
         if (mapping.faits) row[colIndex(mapping.faits)] = inc.faits || "";
         if (mapping.dysfonctionnement) row[colIndex(mapping.dysfonctionnement)] = inc.dysfonctionnement || "";
+        if (mapping.preuves) row[colIndex(mapping.preuves)] = inc.preuves ? JSON.stringify(inc.preuves) : "";
+        if (mapping.score) row[colIndex(mapping.score)] = String(inc.score || 0);
+        if (mapping.confidence) row[colIndex(mapping.confidence)] = inc.confidence_level || "";
         
         return row;
       });
 
-      // Write to Google Sheets
-      const range = `${config.sheet_name || "Incidents"}!A2:K${values.length + 1}`;
+      // Write to Google Sheets - columns A to O
+      const range = `${config.sheet_name || "INCIDENTS"}!A2:O${values.length + 1}`;
       const sheetsResponse = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${config.spreadsheet_id}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
         {
