@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Filter, Plus, Eye, Pencil, Send, FileText, MoreHorizontal, CalendarIcon, Download, ArrowUpDown, ArrowUp, ArrowDown, X, Check, ChevronsUpDown } from 'lucide-react';
 import { format } from 'date-fns';
@@ -61,7 +61,7 @@ type SortField = 'numero' | 'dateIncident' | 'titre' | 'institution' | 'type' | 
 type SortDirection = 'asc' | 'desc';
 
 export default function Incidents() {
-  const { incidents, config, updateIncident, filters, setFilters, clearFilters, getFilteredIncidents } = useIncidentStore();
+  const { incidents, config, updateIncident, filters, setFilters, clearFilters, getFilteredIncidents, loadFromSupabase, isLoading } = useIncidentStore();
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -79,7 +79,10 @@ export default function Incidents() {
   const [graviteOpen, setGraviteOpen] = useState(false);
   const [exportingPdf, setExportingPdf] = useState<string | null>(null);
 
-  // Apply date filters
+  // Load incidents from Supabase on mount
+  useEffect(() => {
+    loadFromSupabase();
+  }, [loadFromSupabase]);
   const handleDateDebutChange = (date: Date | undefined) => {
     setDateDebut(date);
     setFilters({ dateDebut: date ? format(date, 'yyyy-MM-dd') : undefined });

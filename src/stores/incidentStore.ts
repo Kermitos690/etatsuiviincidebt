@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Incident, FilterState, AppConfig } from '@/types/incident';
+import type { Incident, FilterState, AppConfig, Proof } from '@/types/incident';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   DEFAULT_INSTITUTIONS, 
   DEFAULT_TYPES, 
@@ -211,16 +212,18 @@ interface IncidentStore {
   incidents: Incident[];
   filters: FilterState;
   config: AppConfig;
+  isLoading: boolean;
   
   // Actions
   setIncidents: (incidents: Incident[]) => void;
-  addIncident: (incident: Omit<Incident, 'id' | 'numero' | 'score' | 'priorite' | 'dateCreation'>) => Incident;
+  addIncident: (incident: Omit<Incident, 'id' | 'numero' | 'score' | 'priorite' | 'dateCreation'>) => Promise<Incident | null>;
   updateIncident: (id: string, updates: Partial<Incident>) => void;
   deleteIncident: (id: string) => void;
   setFilters: (filters: Partial<FilterState>) => void;
   clearFilters: () => void;
   updateConfig: (config: Partial<AppConfig>) => void;
   loadTestData: () => void;
+  loadFromSupabase: () => Promise<void>;
   
   // Computed
   getFilteredIncidents: () => Incident[];
@@ -230,8 +233,9 @@ interface IncidentStore {
 export const useIncidentStore = create<IncidentStore>()(
   persist(
     (set, get) => ({
-      incidents: [], // Empty by default - no test data
+      incidents: [],
       filters: {},
+      isLoading: false,
       config: {
         googleSheetId: '',
         institutions: DEFAULT_INSTITUTIONS,
@@ -246,9 +250,49 @@ export const useIncidentStore = create<IncidentStore>()(
 
       loadTestData: () => set({ incidents: generateTestData() }),
 
-      addIncident: (incidentData) => {
+      loadFromSupabase: async () => {
+        set({ isLoading: true });
+        try {
+          const { data, error } = await supabase
+            .from('incidents')
+            .select('*')
+            .order('numero', { ascending: false });
+
+          if (error) {
+            console.error('Error loading incidents:', error);
+            return;
+          }
+
+          if (data) {
+            const incidents: Incident[] = data.map((inc) => ({
+              id: inc.id,
+              numero: inc.numero,
+              dateIncident: inc.date_incident,
+              dateCreation: inc.date_creation,
+              institution: inc.institution,
+              titre: inc.titre,
+              faits: inc.faits,
+              dysfonctionnement: inc.dysfonctionnement,
+              type: inc.type,
+              gravite: inc.gravite,
+              statut: inc.statut,
+              priorite: (inc.priorite as 'faible' | 'moyen' | 'eleve' | 'critique') || 'faible',
+              score: inc.score,
+              transmisJP: inc.transmis_jp,
+              dateTransmissionJP: inc.date_transmission_jp || undefined,
+              preuves: (inc.preuves as unknown as Proof[]) || [],
+            }));
+            set({ incidents });
+          }
+        } catch (error) {
+          console.error('Error loading incidents:', error);
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      addIncident: async (incidentData) => {
         const state = get();
-        const numero = state.getNextNumero();
         const score = calculateScore(
           incidentData.gravite,
           incidentData.type,
@@ -257,13 +301,51 @@ export const useIncidentStore = create<IncidentStore>()(
           state.config.poidsType
         );
         
+        const priorite = getPriorityFromScore(score);
+
+        // Insert into Supabase
+        const { data, error } = await supabase
+          .from('incidents')
+          .insert({
+            date_incident: incidentData.dateIncident,
+            institution: incidentData.institution,
+            type: incidentData.type,
+            gravite: incidentData.gravite,
+            statut: incidentData.statut,
+            titre: incidentData.titre,
+            faits: incidentData.faits,
+            dysfonctionnement: incidentData.dysfonctionnement,
+            transmis_jp: incidentData.transmisJP,
+            date_transmission_jp: incidentData.dateTransmissionJP || null,
+            preuves: incidentData.preuves as unknown as any,
+            score,
+            priorite
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Error adding incident:', error);
+          return null;
+        }
+
         const newIncident: Incident = {
-          ...incidentData,
-          id: crypto.randomUUID(),
-          numero,
-          score,
-          priorite: getPriorityFromScore(score),
-          dateCreation: new Date().toISOString()
+          id: data.id,
+          numero: data.numero,
+          dateIncident: data.date_incident,
+          dateCreation: data.date_creation,
+          institution: data.institution,
+          titre: data.titre,
+          faits: data.faits,
+          dysfonctionnement: data.dysfonctionnement,
+          type: data.type,
+          gravite: data.gravite,
+          statut: data.statut,
+          priorite: (data.priorite as 'faible' | 'moyen' | 'eleve' | 'critique') || 'faible',
+          score: data.score,
+          transmisJP: data.transmis_jp,
+          dateTransmissionJP: data.date_transmission_jp || undefined,
+          preuves: (data.preuves as unknown as Proof[]) || [],
         };
 
         set({ incidents: [...state.incidents, newIncident] });
