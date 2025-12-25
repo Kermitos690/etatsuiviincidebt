@@ -12,6 +12,10 @@ export default {
         "2xl": "1400px",
       },
     },
+    fontFamily: {
+      sans: ["Source Sans 3", "system-ui", "sans-serif"],
+      serif: ["Libre Baskerville", "Georgia", "serif"],
+    },
     extend: {
       colors: {
         border: "hsl(var(--border))",
