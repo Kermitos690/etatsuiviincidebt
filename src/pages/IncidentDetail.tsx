@@ -1,4 +1,5 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { 
   ArrowLeft, 
   Pencil, 
@@ -12,7 +13,8 @@ import {
   FileIcon,
   Mail,
   Image,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Loader2
 } from 'lucide-react';
 import { AppLayout, PageHeader } from '@/components/layout';
 import { PriorityBadge, StatusBadge } from '@/components/common';
@@ -33,9 +35,30 @@ const proofIcons = {
 export default function IncidentDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { incidents, updateIncident } = useIncidentStore();
+  const { incidents, updateIncident, loadFromSupabase, isLoading } = useIncidentStore();
+  const [hasLoaded, setHasLoaded] = useState(false);
+  
+  useEffect(() => {
+    const load = async () => {
+      await loadFromSupabase();
+      setHasLoaded(true);
+    };
+    load();
+  }, [loadFromSupabase]);
   
   const incident = incidents.find(i => i.id === id);
+
+  if (isLoading || !hasLoaded) {
+    return (
+      <AppLayout>
+        <div className="p-4 md:p-6">
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
 
   if (!incident) {
     return (
@@ -44,6 +67,7 @@ export default function IncidentDetail() {
           <div className="text-center py-12">
             <AlertTriangle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <h2 className="text-lg font-medium mb-2">Incident non trouvé</h2>
+            <p className="text-sm text-muted-foreground mb-4">ID: {id}</p>
             <Button variant="outline" asChild>
               <Link to="/incidents">Retour à la liste</Link>
             </Button>
@@ -82,11 +106,9 @@ export default function IncidentDetail() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" asChild>
-              <Link to={`/incidents/${incident.id}/edit`}>
-                <Pencil className="h-4 w-4 mr-2" />
-                Modifier
-              </Link>
+            <Button variant="outline" size="sm" disabled title="Fonctionnalité à venir">
+              <Pencil className="h-4 w-4 mr-2" />
+              Modifier
             </Button>
             <Button variant="outline" size="sm">
               <FileText className="h-4 w-4 mr-2" />
