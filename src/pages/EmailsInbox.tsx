@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Mail, Sparkles, Check, X, RefreshCw, AlertTriangle, ArrowRight, Clock, Brain, Send, MessageSquare, Settings } from 'lucide-react';
+import { Mail, Sparkles, Check, X, RefreshCw, AlertTriangle, ArrowRight, Clock, Brain, Send, MessageSquare, Settings, Zap, Play } from 'lucide-react';
 import { AppLayout, PageHeader } from '@/components/layout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -32,6 +34,7 @@ interface Email {
     suggestedResponse?: string;
   } | null;
   incident_id: string | null;
+  gmail_thread_id?: string;
   created_at: string;
 }
 
@@ -45,6 +48,8 @@ export default function EmailsInbox() {
   const [generatingResponse, setGeneratingResponse] = useState(false);
   const [aiResponse, setAiResponse] = useState('');
   const [sendingResponse, setSendingResponse] = useState(false);
+  const [autoProcessEnabled, setAutoProcessEnabled] = useState(true);
+  const [processingEmail, setProcessingEmail] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/receive-email`;
@@ -88,6 +93,34 @@ export default function EmailsInbox() {
     toast.success('Email d\'alerte enregistré');
   };
 
+  const processEmailWithAI = async (email: Email) => {
+    setProcessingEmail(email.id);
+    try {
+      const { data, error } = await supabase.functions.invoke('auto-process-email', {
+        body: { 
+          emailId: email.id,
+          autoCreate: autoProcessEnabled,
+          confidenceThreshold: 70
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.incidentCreated) {
+        toast.success(`Incident #${data.incident?.numero} créé automatiquement !`);
+      } else if (data?.analysis) {
+        toast.success('Analyse terminée');
+      }
+      
+      fetchEmails();
+    } catch (error) {
+      console.error('Error processing email:', error);
+      toast.error('Erreur lors de l\'analyse');
+    } finally {
+      setProcessingEmail(null);
+    }
+  };
+
   const generateAIResponse = async (email: Email) => {
     if (!email.ai_analysis) return;
     
@@ -107,7 +140,6 @@ export default function EmailsInbox() {
       });
 
       if (response.error) throw response.error;
-      
       setAiResponse(response.data.response || 'Impossible de générer une réponse.');
     } catch (error) {
       console.error('Error generating response:', error);
@@ -130,16 +162,13 @@ export default function EmailsInbox() {
           html: `<div style="font-family: Arial, sans-serif; padding: 20px;">
             <p>${aiResponse.replace(/\n/g, '<br/>')}</p>
             <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;" />
-            <p style="color: #666; font-size: 12px;">
-              Ce message a été envoyé par le système de gestion des incidents.
-            </p>
+            <p style="color: #666; font-size: 12px;">Ce message a été envoyé par le système de gestion des incidents.</p>
           </div>`,
           replyTo: alertEmail || undefined
         }
       });
 
       if (error) throw error;
-
       toast.success('Réponse envoyée avec succès !');
       setShowResponseDialog(false);
       setAiResponse('');
@@ -159,7 +188,6 @@ export default function EmailsInbox() {
 
     const analysis = email.ai_analysis;
 
-    // Send alert if critical
     if (alertEmail && (analysis.suggestedGravity === 'Critique' || analysis.suggestedGravity === 'Grave')) {
       try {
         await supabase.functions.invoke('notify-critical', {
@@ -196,11 +224,8 @@ export default function EmailsInbox() {
 
   const formatDate = (date: string) => {
     return new Date(date).toLocaleDateString('fr-FR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
     });
   };
 
@@ -234,19 +259,27 @@ export default function EmailsInbox() {
         <Dialog open={showSettings} onOpenChange={setShowSettings}>
           <DialogContent className="glass-card border-border/50">
             <DialogHeader>
-              <DialogTitle>Configuration des alertes</DialogTitle>
-              <DialogDescription>
-                Entrez votre email pour recevoir les alertes critiques
-              </DialogDescription>
+              <DialogTitle>Configuration</DialogTitle>
+              <DialogDescription>Paramètres de la boîte de réception</DialogDescription>
             </DialogHeader>
-            <div className="py-4">
-              <Input
-                type="email"
-                placeholder="votre@email.com"
-                value={alertEmail}
-                onChange={(e) => setAlertEmail(e.target.value)}
-                className="bg-secondary/50"
-              />
+            <div className="py-4 space-y-4">
+              <div>
+                <Label>Email pour les alertes critiques</Label>
+                <Input
+                  type="email"
+                  placeholder="votre@email.com"
+                  value={alertEmail}
+                  onChange={(e) => setAlertEmail(e.target.value)}
+                  className="bg-secondary/50 mt-1"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Création automatique d'incidents</Label>
+                  <p className="text-xs text-muted-foreground">Créer automatiquement les incidents (confiance &gt;70%)</p>
+                </div>
+                <Switch checked={autoProcessEnabled} onCheckedChange={setAutoProcessEnabled} />
+              </div>
             </div>
             <DialogFooter>
               <Button variant="secondary" onClick={() => setShowSettings(false)}>Annuler</Button>
@@ -263,9 +296,7 @@ export default function EmailsInbox() {
                 <MessageSquare className="h-5 w-5" />
                 Réponse générée par l'IA
               </DialogTitle>
-              <DialogDescription>
-                Vérifiez et modifiez la réponse avant envoi à {selectedEmail?.sender}
-              </DialogDescription>
+              <DialogDescription>Vérifiez et modifiez la réponse avant envoi à {selectedEmail?.sender}</DialogDescription>
             </DialogHeader>
             <div className="py-4">
               {generatingResponse ? (
@@ -284,15 +315,8 @@ export default function EmailsInbox() {
             </div>
             <DialogFooter>
               <Button variant="secondary" onClick={() => setShowResponseDialog(false)}>Annuler</Button>
-              <Button 
-                onClick={sendResponse} 
-                disabled={generatingResponse || sendingResponse || !aiResponse}
-              >
-                {sendingResponse ? (
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4 mr-2" />
-                )}
+              <Button onClick={sendResponse} disabled={generatingResponse || sendingResponse || !aiResponse}>
+                {sendingResponse ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
                 Envoyer
               </Button>
             </DialogFooter>
@@ -304,12 +328,8 @@ export default function EmailsInbox() {
           <div className="glass-card p-4 mb-6 border-amber-500/30 animate-scale-in">
             <div className="flex items-center gap-3">
               <AlertTriangle className="h-5 w-5 text-amber-500" />
-              <p className="text-sm text-muted-foreground">
-                Configurez votre email pour recevoir les alertes critiques
-              </p>
-              <Button variant="glass" size="sm" onClick={() => setShowSettings(true)}>
-                Configurer
-              </Button>
+              <p className="text-sm text-muted-foreground">Configurez votre email pour les alertes critiques</p>
+              <Button variant="glass" size="sm" onClick={() => setShowSettings(true)}>Configurer</Button>
             </div>
           </div>
         )}
@@ -318,36 +338,17 @@ export default function EmailsInbox() {
         <div className="glass-card p-6 mb-6 animate-scale-in">
           <div className="flex items-start gap-4">
             <div className="p-3 rounded-xl bg-gradient-primary shadow-glow-sm">
-              <Sparkles className="h-5 w-5 text-white" />
+              <Zap className="h-5 w-5 text-white" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold mb-2">Configuration Zapier</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Pour recevoir automatiquement vos emails, configurez Zapier :
+              <h3 className="font-semibold mb-2">Pipeline automatique actif</h3>
+              <p className="text-sm text-muted-foreground mb-3">
+                Les emails reçus sont automatiquement analysés par l'IA. Si un incident est détecté avec confiance &gt;70%, il est créé automatiquement, synchronisé avec Google Sheets, et une alerte est envoyée si critique.
               </p>
-              <ol className="text-sm text-muted-foreground space-y-2 mb-4">
-                <li>1. Créez un Zap avec le trigger "Email by Zapier"</li>
-                <li>2. Ajoutez une action "Webhooks by Zapier" → POST</li>
-                <li>3. Utilisez cette URL webhook :</li>
-              </ol>
               <div className="flex items-center gap-2">
-                <code className="flex-1 px-4 py-2 bg-secondary/50 rounded-lg text-xs break-all font-mono">
-                  {webhookUrl}
-                </code>
-                <Button 
-                  variant="glass" 
-                  size="sm"
-                  onClick={() => {
-                    navigator.clipboard.writeText(webhookUrl);
-                    toast.success('URL copiée !');
-                  }}
-                >
-                  Copier
-                </Button>
+                <code className="flex-1 px-4 py-2 bg-secondary/50 rounded-lg text-xs break-all font-mono">{webhookUrl}</code>
+                <Button variant="glass" size="sm" onClick={() => { navigator.clipboard.writeText(webhookUrl); toast.success('URL copiée !'); }}>Copier</Button>
               </div>
-              <p className="text-xs text-muted-foreground mt-3">
-                Body JSON : {`{ "subject": "{{subject}}", "sender": "{{from}}", "body": "{{body_plain}}" }`}
-              </p>
             </div>
           </div>
         </div>
@@ -368,7 +369,7 @@ export default function EmailsInbox() {
                   <Mail className="h-8 w-8 text-primary" />
                 </div>
                 <p className="text-muted-foreground">Aucun email reçu</p>
-                <p className="text-xs text-muted-foreground mt-2">Configurez Zapier pour commencer</p>
+                <p className="text-xs text-muted-foreground mt-2">Configurez le webhook ou Gmail pour commencer</p>
               </div>
             ) : (
               emails.map((email, index) => (
@@ -383,29 +384,40 @@ export default function EmailsInbox() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        {email.ai_analysis?.isIncident ? (
-                          <Badge className="bg-gradient-to-r from-red-500 to-rose-500 text-white text-xs">
-                            <AlertTriangle className="h-3 w-3 mr-1" />
-                            Incident
-                          </Badge>
-                        ) : email.processed ? (
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        {email.incident_id ? (
                           <Badge className="bg-gradient-to-r from-emerald-400 to-emerald-600 text-white text-xs">
                             <Check className="h-3 w-3 mr-1" />
-                            Traité
+                            Incident créé
+                          </Badge>
+                        ) : email.ai_analysis?.isIncident ? (
+                          <Badge className="bg-gradient-to-r from-red-500 to-rose-500 text-white text-xs">
+                            <AlertTriangle className="h-3 w-3 mr-1" />
+                            Incident détecté
+                          </Badge>
+                        ) : email.processed ? (
+                          <Badge variant="secondary" className="text-xs">
+                            <Check className="h-3 w-3 mr-1" />
+                            Analysé
                           </Badge>
                         ) : (
-                          <Badge variant="secondary" className="text-xs">
+                          <Badge variant="outline" className="text-xs">
                             <Clock className="h-3 w-3 mr-1" />
                             En attente
                           </Badge>
                         )}
+                        {email.ai_analysis?.confidence && (
+                          <span className={cn(
+                            "text-xs font-bold px-2 py-0.5 rounded-full bg-gradient-to-r text-white",
+                            getConfidenceColor(email.ai_analysis.confidence)
+                          )}>
+                            {email.ai_analysis.confidence}%
+                          </span>
+                        )}
                       </div>
                       <h4 className="font-medium truncate">{email.subject}</h4>
                       <p className="text-sm text-muted-foreground truncate">{email.sender}</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {formatDate(email.received_at)}
-                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">{formatDate(email.received_at)}</p>
                     </div>
                     <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                   </div>
@@ -420,7 +432,6 @@ export default function EmailsInbox() {
             
             {selectedEmail ? (
               <div className="space-y-4 animate-scale-in">
-                {/* Email Content */}
                 <div className="glass-card p-6">
                   <h4 className="font-semibold mb-2">{selectedEmail.subject}</h4>
                   <p className="text-sm text-muted-foreground mb-4">De : {selectedEmail.sender}</p>
@@ -429,7 +440,22 @@ export default function EmailsInbox() {
                   </div>
                 </div>
 
-                {/* AI Analysis */}
+                {/* Process Button for unprocessed emails */}
+                {!selectedEmail.processed && (
+                  <Button 
+                    onClick={() => processEmailWithAI(selectedEmail)} 
+                    disabled={processingEmail === selectedEmail.id}
+                    className="w-full glow-button"
+                  >
+                    {processingEmail === selectedEmail.id ? (
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Play className="h-4 w-4 mr-2" />
+                    )}
+                    Analyser avec l'IA
+                  </Button>
+                )}
+
                 {selectedEmail.ai_analysis ? (
                   <div className="glass-card p-6">
                     <div className="flex items-center gap-3 mb-4">
@@ -481,47 +507,48 @@ export default function EmailsInbox() {
                           </div>
                         </div>
 
-                        <div className="flex gap-2">
-                          <Button 
-                            variant="glass"
-                            className="flex-1"
-                            onClick={() => generateAIResponse(selectedEmail)}
-                          >
-                            <MessageSquare className="h-4 w-4 mr-2" />
-                            Générer réponse
-                          </Button>
-                          <Button 
-                            className="flex-1"
-                            onClick={() => createIncidentFromEmail(selectedEmail)}
-                          >
-                            <Sparkles className="h-4 w-4 mr-2" />
-                            Créer incident
-                          </Button>
-                        </div>
+                        {selectedEmail.incident_id ? (
+                          <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center">
+                            <Check className="h-6 w-6 text-emerald-500 mx-auto mb-2" />
+                            <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">Incident déjà créé</p>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <Button variant="glass" className="flex-1" onClick={() => generateAIResponse(selectedEmail)}>
+                              <MessageSquare className="h-4 w-4 mr-2" />
+                              Générer réponse
+                            </Button>
+                            <Button className="flex-1" onClick={() => createIncidentFromEmail(selectedEmail)}>
+                              <Sparkles className="h-4 w-4 mr-2" />
+                              Créer incident
+                            </Button>
+                          </div>
+                        )}
                       </>
                     ) : (
                       <div className="text-center py-4">
                         <Check className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
-                        <p className="text-sm text-muted-foreground">
-                          L'IA n'a pas détecté d'incident dans cet email
-                        </p>
-                        <Button 
-                          variant="glass" 
-                          className="mt-4"
-                          onClick={() => generateAIResponse(selectedEmail)}
-                        >
+                        <p className="text-sm text-muted-foreground">L'IA n'a pas détecté d'incident dans cet email</p>
+                        <Button variant="glass" className="mt-4" onClick={() => generateAIResponse(selectedEmail)}>
                           <MessageSquare className="h-4 w-4 mr-2" />
                           Générer une réponse
                         </Button>
                       </div>
                     )}
                   </div>
+                ) : selectedEmail.processed ? (
+                  <div className="glass-card p-6 text-center">
+                    <X className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">Aucune analyse disponible</p>
+                    <Button variant="glass" className="mt-4" onClick={() => processEmailWithAI(selectedEmail)}>
+                      <Play className="h-4 w-4 mr-2" />
+                      Réanalyser
+                    </Button>
+                  </div>
                 ) : (
                   <div className="glass-card p-6 text-center">
                     <Clock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">
-                      Analyse IA en attente
-                    </p>
+                    <p className="text-sm text-muted-foreground">Analyse IA en attente</p>
                   </div>
                 )}
               </div>
@@ -530,9 +557,7 @@ export default function EmailsInbox() {
                 <div className="w-16 h-16 rounded-2xl bg-gradient-secondary/10 flex items-center justify-center mx-auto mb-4">
                   <Brain className="h-8 w-8 text-accent" />
                 </div>
-                <p className="text-muted-foreground">
-                  Sélectionnez un email pour voir l'analyse
-                </p>
+                <p className="text-muted-foreground">Sélectionnez un email pour voir l'analyse</p>
               </div>
             )}
           </div>
