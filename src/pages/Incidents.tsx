@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Filter, Plus, Eye, Pencil, Send, FileText, MoreHorizontal, CalendarIcon, Download, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Search, Filter, Plus, Eye, Pencil, Send, FileText, MoreHorizontal, CalendarIcon, Download, ArrowUpDown, ArrowUp, ArrowDown, X, Check, ChevronsUpDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import jsPDF from 'jspdf';
 import { AppLayout, PageHeader } from '@/components/layout';
 import { PriorityBadge, StatusBadge } from '@/components/common';
 import { useIncidentStore } from '@/stores/incidentStore';
@@ -15,6 +16,15 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { Incident } from '@/types/incident';
+import { Badge } from '@/components/ui/badge';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import {
   Select,
   SelectContent,
@@ -59,6 +69,15 @@ export default function Incidents() {
   const [dateFin, setDateFin] = useState<Date | undefined>(undefined);
   const [sortField, setSortField] = useState<SortField>('numero');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  
+  // Multi-select states
+  const [selectedInstitutions, setSelectedInstitutions] = useState<string[]>([]);
+  const [selectedStatuts, setSelectedStatuts] = useState<string[]>([]);
+  const [selectedGravites, setSelectedGravites] = useState<string[]>([]);
+  const [institutionOpen, setInstitutionOpen] = useState(false);
+  const [statutOpen, setStatutOpen] = useState(false);
+  const [graviteOpen, setGraviteOpen] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState<string | null>(null);
 
   // Apply date filters
   const handleDateDebutChange = (date: Date | undefined) => {
@@ -77,8 +96,173 @@ export default function Incidents() {
     clearFilters();
     setDateDebut(undefined);
     setDateFin(undefined);
+    setSelectedInstitutions([]);
+    setSelectedStatuts([]);
+    setSelectedGravites([]);
     setCurrentPage(1);
   };
+
+  // Multi-select toggle functions
+  const toggleInstitution = (value: string) => {
+    const newValues = selectedInstitutions.includes(value)
+      ? selectedInstitutions.filter(v => v !== value)
+      : [...selectedInstitutions, value];
+    setSelectedInstitutions(newValues);
+    setCurrentPage(1);
+  };
+
+  const toggleStatut = (value: string) => {
+    const newValues = selectedStatuts.includes(value)
+      ? selectedStatuts.filter(v => v !== value)
+      : [...selectedStatuts, value];
+    setSelectedStatuts(newValues);
+    setCurrentPage(1);
+  };
+
+  const toggleGravite = (value: string) => {
+    const newValues = selectedGravites.includes(value)
+      ? selectedGravites.filter(v => v !== value)
+      : [...selectedGravites, value];
+    setSelectedGravites(newValues);
+    setCurrentPage(1);
+  };
+
+  // Export PDF for a single incident
+  const exportIncidentPDF = useCallback(async (incident: Incident) => {
+    setExportingPdf(incident.id);
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 20;
+      let y = 20;
+
+      // Header
+      doc.setFillColor(37, 99, 235);
+      doc.rect(0, 0, pageWidth, 40, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(24);
+      doc.setFont('helvetica', 'bold');
+      doc.text('FICHE INCIDENT', margin, 28);
+      doc.setFontSize(12);
+      doc.text(`N° ${incident.numero}`, pageWidth - margin - 20, 28);
+
+      y = 55;
+      doc.setTextColor(0, 0, 0);
+
+      // Info block
+      const addField = (label: string, value: string, bold = false) => {
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(100, 100, 100);
+        doc.text(label, margin, y);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', bold ? 'bold' : 'normal');
+        doc.setTextColor(0, 0, 0);
+        doc.text(value || '-', margin + 45, y);
+        y += 8;
+      };
+
+      addField('Date:', formatDate(incident.dateIncident));
+      addField('Institution:', incident.institution);
+      addField('Type:', incident.type);
+      addField('Gravité:', incident.gravite);
+      addField('Statut:', incident.statut);
+      addField('Priorité:', `${incident.priorite} (Score: ${incident.score})`);
+      addField('Transmis JP:', incident.transmisJP ? 'Oui' : 'Non');
+      if (incident.dateTransmissionJP) {
+        addField('Date transmission:', formatDate(incident.dateTransmissionJP));
+      }
+
+      y += 10;
+
+      // Title
+      doc.setFillColor(243, 244, 246);
+      doc.rect(margin, y, pageWidth - 2 * margin, 12, 'F');
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('TITRE', margin + 4, y + 8);
+      y += 18;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      const titleLines = doc.splitTextToSize(incident.titre, pageWidth - 2 * margin);
+      doc.text(titleLines, margin, y);
+      y += titleLines.length * 6 + 10;
+
+      // Facts
+      doc.setFillColor(243, 244, 246);
+      doc.rect(margin, y, pageWidth - 2 * margin, 12, 'F');
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('FAITS', margin + 4, y + 8);
+      y += 18;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      const factsLines = doc.splitTextToSize(incident.faits, pageWidth - 2 * margin);
+      doc.text(factsLines, margin, y);
+      y += factsLines.length * 5 + 10;
+
+      // Check page break
+      if (y > 250) {
+        doc.addPage();
+        y = 20;
+      }
+
+      // Dysfonctionnement
+      doc.setFillColor(243, 244, 246);
+      doc.rect(margin, y, pageWidth - 2 * margin, 12, 'F');
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('DYSFONCTIONNEMENT', margin + 4, y + 8);
+      y += 18;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      const dysfLines = doc.splitTextToSize(incident.dysfonctionnement, pageWidth - 2 * margin);
+      doc.text(dysfLines, margin, y);
+      y += dysfLines.length * 5 + 10;
+
+      // Preuves
+      if (incident.preuves && incident.preuves.length > 0) {
+        if (y > 250) {
+          doc.addPage();
+          y = 20;
+        }
+        doc.setFillColor(243, 244, 246);
+        doc.rect(margin, y, pageWidth - 2 * margin, 12, 'F');
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('PREUVES', margin + 4, y + 8);
+        y += 18;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        incident.preuves.forEach((preuve, index) => {
+          doc.text(`${index + 1}. ${preuve.label} (${preuve.type})`, margin, y);
+          y += 6;
+        });
+      }
+
+      // Footer
+      const pageCount = doc.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        doc.text(
+          `Généré le ${format(new Date(), 'dd/MM/yyyy à HH:mm', { locale: fr })} - Page ${i}/${pageCount}`,
+          pageWidth / 2,
+          doc.internal.pageSize.getHeight() - 10,
+          { align: 'center' }
+        );
+      }
+
+      doc.save(`incident_${incident.numero}_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+      toast.success(`PDF généré pour l'incident #${incident.numero}`);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      toast.error('Erreur lors de la génération du PDF');
+    } finally {
+      setExportingPdf(null);
+    }
+  }, []);
 
   // Toggle sort
   const handleSort = (field: SortField) => {
@@ -111,6 +295,17 @@ export default function Incidents() {
       );
     }
 
+    // Apply multi-select filters
+    if (selectedInstitutions.length > 0) {
+      result = result.filter(i => selectedInstitutions.includes(i.institution));
+    }
+    if (selectedStatuts.length > 0) {
+      result = result.filter(i => selectedStatuts.includes(i.statut));
+    }
+    if (selectedGravites.length > 0) {
+      result = result.filter(i => selectedGravites.includes(i.gravite));
+    }
+
     // Apply sorting
     result.sort((a, b) => {
       let comparison = 0;
@@ -141,7 +336,7 @@ export default function Incidents() {
     });
 
     return result;
-  }, [getFilteredIncidents, search, sortField, sortDirection]);
+  }, [getFilteredIncidents, search, sortField, sortDirection, selectedInstitutions, selectedStatuts, selectedGravites]);
 
   // Export CSV
   const exportToCSV = () => {
@@ -287,50 +482,151 @@ export default function Incidents() {
                   </PopoverContent>
                 </Popover>
 
-                <Select 
-                  value={filters.institution || 'all'} 
-                  onValueChange={(v) => { setFilters({ institution: v === 'all' ? undefined : v }); setCurrentPage(1); }}
-                >
-                  <SelectTrigger className="w-full sm:w-[160px]">
-                    <SelectValue placeholder="Institution" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover z-50">
-                    <SelectItem value="all">Toutes</SelectItem>
-                    {config.institutions.map(inst => (
-                      <SelectItem key={inst} value={inst}>{inst}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/* Multi-select Institution */}
+                <Popover open={institutionOpen} onOpenChange={setInstitutionOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={institutionOpen}
+                      className="w-full sm:w-[180px] justify-between"
+                    >
+                      {selectedInstitutions.length === 0
+                        ? "Institutions"
+                        : `${selectedInstitutions.length} sélectionnée(s)`}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[220px] p-0 bg-popover z-50" align="start">
+                    <Command>
+                      <CommandInput placeholder="Rechercher..." />
+                      <CommandList>
+                        <CommandEmpty>Aucune institution trouvée.</CommandEmpty>
+                        <CommandGroup>
+                          {config.institutions.map((inst) => (
+                            <CommandItem
+                              key={inst}
+                              value={inst}
+                              onSelect={() => toggleInstitution(inst)}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  selectedInstitutions.includes(inst) ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              {inst}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
 
-                <Select 
-                  value={filters.statut || 'all'} 
-                  onValueChange={(v) => { setFilters({ statut: v === 'all' ? undefined : v }); setCurrentPage(1); }}
-                >
-                  <SelectTrigger className="w-full sm:w-[140px]">
-                    <SelectValue placeholder="Statut" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover z-50">
-                    <SelectItem value="all">Tous</SelectItem>
-                    {config.statuts.map(s => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/* Multi-select Statut */}
+                <Popover open={statutOpen} onOpenChange={setStatutOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={statutOpen}
+                      className="w-full sm:w-[160px] justify-between"
+                    >
+                      {selectedStatuts.length === 0
+                        ? "Statuts"
+                        : `${selectedStatuts.length} sélectionné(s)`}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[180px] p-0 bg-popover z-50" align="start">
+                    <Command>
+                      <CommandList>
+                        <CommandGroup>
+                          {config.statuts.map((s) => (
+                            <CommandItem
+                              key={s}
+                              value={s}
+                              onSelect={() => toggleStatut(s)}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  selectedStatuts.includes(s) ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              {s}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
 
-                <Select 
-                  value={filters.gravite || 'all'} 
-                  onValueChange={(v) => { setFilters({ gravite: v === 'all' ? undefined : v }); setCurrentPage(1); }}
-                >
-                  <SelectTrigger className="w-full sm:w-[140px]">
-                    <SelectValue placeholder="Gravité" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover z-50">
-                    <SelectItem value="all">Toutes</SelectItem>
-                    {config.gravites.map(g => (
-                      <SelectItem key={g} value={g}>{g}</SelectItem>
+                {/* Multi-select Gravité */}
+                <Popover open={graviteOpen} onOpenChange={setGraviteOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={graviteOpen}
+                      className="w-full sm:w-[160px] justify-between"
+                    >
+                      {selectedGravites.length === 0
+                        ? "Gravités"
+                        : `${selectedGravites.length} sélectionnée(s)`}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[180px] p-0 bg-popover z-50" align="start">
+                    <Command>
+                      <CommandList>
+                        <CommandGroup>
+                          {config.gravites.map((g) => (
+                            <CommandItem
+                              key={g}
+                              value={g}
+                              onSelect={() => toggleGravite(g)}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  selectedGravites.includes(g) ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              {g}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+
+                {/* Selected filters badges */}
+                {(selectedInstitutions.length > 0 || selectedStatuts.length > 0 || selectedGravites.length > 0) && (
+                  <div className="flex flex-wrap gap-1 w-full sm:w-auto">
+                    {selectedInstitutions.map(inst => (
+                      <Badge key={inst} variant="secondary" className="text-xs">
+                        {inst}
+                        <X className="ml-1 h-3 w-3 cursor-pointer" onClick={() => toggleInstitution(inst)} />
+                      </Badge>
                     ))}
-                  </SelectContent>
-                </Select>
+                    {selectedStatuts.map(s => (
+                      <Badge key={s} variant="secondary" className="text-xs">
+                        {s}
+                        <X className="ml-1 h-3 w-3 cursor-pointer" onClick={() => toggleStatut(s)} />
+                      </Badge>
+                    ))}
+                    {selectedGravites.map(g => (
+                      <Badge key={g} variant="secondary" className="text-xs">
+                        {g}
+                        <X className="ml-1 h-3 w-3 cursor-pointer" onClick={() => toggleGravite(g)} />
+                      </Badge>
+                    ))}
+                  </div>
+                )}
 
                 <Button variant="outline" onClick={handleClearFilters} size="sm">
                   Effacer
@@ -386,6 +682,13 @@ export default function Incidents() {
                             Transmettre JP
                           </DropdownMenuItem>
                         )}
+                        <DropdownMenuItem 
+                          onClick={() => exportIncidentPDF(incident)}
+                          disabled={exportingPdf === incident.id}
+                        >
+                          <FileText className="h-4 w-4 mr-2" />
+                          {exportingPdf === incident.id ? 'Export...' : 'Export PDF'}
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
@@ -539,9 +842,12 @@ export default function Incidents() {
                                   Transmettre JP
                                 </DropdownMenuItem>
                               )}
-                              <DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => exportIncidentPDF(incident)}
+                                disabled={exportingPdf === incident.id}
+                              >
                                 <FileText className="h-4 w-4 mr-2" />
-                                Export PDF
+                                {exportingPdf === incident.id ? 'Export...' : 'Export PDF'}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>

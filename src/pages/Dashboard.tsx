@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, AreaChart, Area
+  PieChart, Pie, Cell, AreaChart, Area, LineChart, Line, Legend, RadialBarChart, RadialBar
 } from 'recharts';
 import { 
   AlertTriangle, 
@@ -11,14 +11,24 @@ import {
   TrendingUp,
   Sparkles,
   Zap,
-  Shield
+  Shield,
+  Activity,
+  CalendarDays
 } from 'lucide-react';
 import { AppLayout, PageHeader } from '@/components/layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useIncidentStore } from '@/stores/incidentStore';
 import { cn } from '@/lib/utils';
+import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval, parseISO } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 const COLORS = ['hsl(211, 100%, 50%)', 'hsl(280, 100%, 65%)', 'hsl(142, 76%, 36%)', 'hsl(38, 92%, 50%)', 'hsl(330, 100%, 60%)'];
+const GRAVITE_COLORS: Record<string, string> = {
+  'Critique': 'hsl(0, 84%, 60%)',
+  'Grave': 'hsl(25, 95%, 53%)',
+  'Modéré': 'hsl(45, 93%, 47%)',
+  'Mineur': 'hsl(142, 76%, 36%)'
+};
 
 const kpiConfig = [
   { key: 'total', label: 'Total', icon: AlertTriangle, gradient: 'from-azure-500 to-azure-600' },
@@ -71,6 +81,73 @@ export default function Dashboard() {
     return Object.entries(counts)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
+  }, [incidents]);
+
+  // New chart: By Gravité (for radial bar)
+  const chartByGravite = useMemo(() => {
+    const counts: Record<string, number> = {};
+    config.gravites.forEach(g => counts[g] = 0);
+    incidents.forEach(i => {
+      counts[i.gravite] = (counts[i.gravite] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .map(([name, value], index) => ({ 
+        name, 
+        value, 
+        fill: GRAVITE_COLORS[name] || COLORS[index % COLORS.length]
+      }))
+      .filter(d => d.value > 0);
+  }, [incidents, config.gravites]);
+
+  // New chart: Evolution over last 6 months
+  const chartEvolution = useMemo(() => {
+    const now = new Date();
+    const sixMonthsAgo = subMonths(now, 5);
+    const months = eachMonthOfInterval({ start: startOfMonth(sixMonthsAgo), end: endOfMonth(now) });
+    
+    return months.map(month => {
+      const monthStart = startOfMonth(month);
+      const monthEnd = endOfMonth(month);
+      const monthIncidents = incidents.filter(i => {
+        const date = parseISO(i.dateIncident);
+        return date >= monthStart && date <= monthEnd;
+      });
+      
+      return {
+        name: format(month, 'MMM yy', { locale: fr }),
+        total: monthIncidents.length,
+        transmisJP: monthIncidents.filter(i => i.transmisJP).length,
+        critiques: monthIncidents.filter(i => i.gravite === 'Critique' || i.gravite === 'Grave').length
+      };
+    });
+  }, [incidents]);
+
+  // New chart: Top 5 incidents by score
+  const topIncidents = useMemo(() => {
+    return [...incidents]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .map(i => ({
+        name: i.titre.length > 25 ? i.titre.substring(0, 22) + '...' : i.titre,
+        score: i.score,
+        gravite: i.gravite
+      }));
+  }, [incidents]);
+
+  // Stats by priority
+  const priorityStats = useMemo(() => {
+    const stats = {
+      critique: incidents.filter(i => i.priorite === 'critique').length,
+      eleve: incidents.filter(i => i.priorite === 'eleve').length,
+      moyen: incidents.filter(i => i.priorite === 'moyen').length,
+      faible: incidents.filter(i => i.priorite === 'faible').length
+    };
+    return [
+      { name: 'Critique', value: stats.critique, fill: 'hsl(0, 84%, 60%)' },
+      { name: 'Élevée', value: stats.eleve, fill: 'hsl(25, 95%, 53%)' },
+      { name: 'Moyenne', value: stats.moyen, fill: 'hsl(45, 93%, 47%)' },
+      { name: 'Faible', value: stats.faible, fill: 'hsl(142, 76%, 36%)' }
+    ];
   }, [incidents]);
 
   return (
@@ -154,6 +231,43 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
+            {/* Evolution over time */}
+            <div className="glass-card p-4 md:p-6 lg:col-span-2 animate-scale-in" style={{ animationDelay: '150ms' }}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 shadow-glow-sm">
+                  <CalendarDays className="h-4 w-4 text-white" />
+                </div>
+                <h3 className="font-semibold">Évolution sur 6 mois</h3>
+              </div>
+              <div className="h-56 md:h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartEvolution}>
+                    <defs>
+                      <linearGradient id="totalGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(211, 100%, 50%)" stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor="hsl(211, 100%, 50%)" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
+                    <XAxis dataKey="name" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+                    <YAxis tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                    <Tooltip 
+                      contentStyle={{ 
+                        background: 'hsl(var(--card))', 
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '12px',
+                        boxShadow: 'var(--shadow-elevated)'
+                      }}
+                    />
+                    <Legend />
+                    <Line type="monotone" dataKey="total" stroke="hsl(211, 100%, 50%)" strokeWidth={3} dot={{ fill: 'hsl(211, 100%, 50%)' }} name="Total" />
+                    <Line type="monotone" dataKey="transmisJP" stroke="hsl(280, 100%, 65%)" strokeWidth={2} dot={{ fill: 'hsl(280, 100%, 65%)' }} name="Transmis JP" />
+                    <Line type="monotone" dataKey="critiques" stroke="hsl(0, 84%, 60%)" strokeWidth={2} dot={{ fill: 'hsl(0, 84%, 60%)' }} name="Critiques/Graves" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
             {/* Chart by Status */}
             <div className="glass-card p-4 md:p-6 animate-scale-in" style={{ animationDelay: '200ms' }}>
               <div className="flex items-center gap-3 mb-4">
@@ -202,6 +316,47 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* Chart by Gravité */}
+            <div className="glass-card p-4 md:p-6 animate-scale-in" style={{ animationDelay: '250ms' }}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-xl bg-gradient-to-br from-red-500 to-orange-500 shadow-glow-sm">
+                  <AlertTriangle className="h-4 w-4 text-white" />
+                </div>
+                <h3 className="font-semibold">Par gravité</h3>
+              </div>
+              <div className="h-56 md:h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RadialBarChart 
+                    cx="50%" 
+                    cy="50%" 
+                    innerRadius="20%" 
+                    outerRadius="90%" 
+                    barSize={20} 
+                    data={chartByGravite}
+                  >
+                    <RadialBar
+                      label={{ position: 'insideStart', fill: '#fff', fontSize: 11 }}
+                      background
+                      dataKey="value"
+                    />
+                    <Legend 
+                      iconSize={10} 
+                      layout="horizontal" 
+                      verticalAlign="bottom" 
+                      wrapperStyle={{ fontSize: 11 }}
+                    />
+                    <Tooltip 
+                      contentStyle={{ 
+                        background: 'hsl(var(--card))', 
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '12px'
+                      }}
+                    />
+                  </RadialBarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
             {/* Chart by Institution */}
             <div className="glass-card p-4 md:p-6 animate-scale-in" style={{ animationDelay: '300ms' }}>
               <div className="flex items-center gap-3 mb-4">
@@ -231,6 +386,39 @@ export default function Dashboard() {
                       }}
                     />
                     <Bar dataKey="value" fill="url(#barGradient)" radius={[0, 8, 8, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Top 5 incidents by score */}
+            <div className="glass-card p-4 md:p-6 animate-scale-in" style={{ animationDelay: '350ms' }}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-xl bg-gradient-to-br from-amber-500 to-red-500 shadow-glow-sm">
+                  <Activity className="h-4 w-4 text-white" />
+                </div>
+                <h3 className="font-semibold">Top 5 incidents (par score)</h3>
+              </div>
+              <div className="h-56 md:h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={topIncidents} layout="vertical">
+                    <defs>
+                      <linearGradient id="scoreGradient" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="hsl(38, 92%, 50%)" />
+                        <stop offset="100%" stopColor="hsl(0, 84%, 60%)" />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
+                    <XAxis type="number" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                    <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
+                    <Tooltip 
+                      contentStyle={{ 
+                        background: 'hsl(var(--card))', 
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '12px'
+                      }}
+                    />
+                    <Bar dataKey="score" fill="url(#scoreGradient)" radius={[0, 8, 8, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -273,6 +461,34 @@ export default function Dashboard() {
                     />
                   </AreaChart>
                 </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Priority distribution */}
+            <div className="glass-card p-4 md:p-6 lg:col-span-2 animate-scale-in" style={{ animationDelay: '450ms' }}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 shadow-glow-sm">
+                  <Zap className="h-4 w-4 text-white" />
+                </div>
+                <h3 className="font-semibold">Distribution par priorité</h3>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {priorityStats.map((stat, index) => (
+                  <div 
+                    key={stat.name} 
+                    className="relative p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-card transition-colors"
+                  >
+                    <div 
+                      className="absolute top-0 left-0 right-0 h-1 rounded-t-xl"
+                      style={{ background: stat.fill }}
+                    />
+                    <p className="text-sm text-muted-foreground mb-1">{stat.name}</p>
+                    <p className="text-2xl font-bold" style={{ color: stat.fill }}>{stat.value}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {incidents.length > 0 ? `${Math.round(stat.value / incidents.length * 100)}%` : '0%'}
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
