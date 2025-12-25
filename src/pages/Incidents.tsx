@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Filter, Plus, Eye, Pencil, Send, FileText, MoreHorizontal } from 'lucide-react';
+import { Search, Filter, Plus, Eye, Pencil, Send, FileText, MoreHorizontal, CalendarIcon } from 'lucide-react';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { AppLayout, PageHeader } from '@/components/layout';
 import { PriorityBadge, StatusBadge } from '@/components/common';
 import { useIncidentStore } from '@/stores/incidentStore';
@@ -8,6 +10,9 @@ import { formatDate } from '@/config/appConfig';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
 import {
   Select,
   SelectContent,
@@ -29,11 +34,44 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
+
+const ITEMS_PER_PAGE = 10;
 
 export default function Incidents() {
   const { incidents, config, updateIncident, filters, setFilters, clearFilters, getFilteredIncidents } = useIncidentStore();
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [dateDebut, setDateDebut] = useState<Date | undefined>(undefined);
+  const [dateFin, setDateFin] = useState<Date | undefined>(undefined);
+
+  // Apply date filters
+  const handleDateDebutChange = (date: Date | undefined) => {
+    setDateDebut(date);
+    setFilters({ dateDebut: date ? format(date, 'yyyy-MM-dd') : undefined });
+    setCurrentPage(1);
+  };
+
+  const handleDateFinChange = (date: Date | undefined) => {
+    setDateFin(date);
+    setFilters({ dateFin: date ? format(date, 'yyyy-MM-dd') : undefined });
+    setCurrentPage(1);
+  };
+
+  const handleClearFilters = () => {
+    clearFilters();
+    setDateDebut(undefined);
+    setDateFin(undefined);
+    setCurrentPage(1);
+  };
 
   const filteredIncidents = useMemo(() => {
     let result = getFilteredIncidents();
@@ -49,6 +87,13 @@ export default function Incidents() {
 
     return result.sort((a, b) => b.numero - a.numero);
   }, [getFilteredIncidents, search]);
+
+  // Pagination
+  const totalPages = Math.ceil(filteredIncidents.length / ITEMS_PER_PAGE);
+  const paginatedIncidents = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredIncidents.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredIncidents, currentPage]);
 
   const markTransmisJP = (id: string) => {
     updateIncident(id, { 
@@ -102,9 +147,61 @@ export default function Incidents() {
 
               {/* Filter selects - Always visible on desktop, toggleable on mobile */}
               <div className={`flex-wrap gap-2 ${showFilters ? 'flex' : 'hidden'} md:flex`}>
+                {/* Date début */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full sm:w-[140px] justify-start text-left font-normal",
+                        !dateDebut && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {dateDebut ? format(dateDebut, "dd/MM/yyyy") : "Date début"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={dateDebut}
+                      onSelect={handleDateDebutChange}
+                      initialFocus
+                      locale={fr}
+                      className="pointer-events-auto"
+                    />
+                  </PopoverContent>
+                </Popover>
+
+                {/* Date fin */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full sm:w-[140px] justify-start text-left font-normal",
+                        !dateFin && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {dateFin ? format(dateFin, "dd/MM/yyyy") : "Date fin"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={dateFin}
+                      onSelect={handleDateFinChange}
+                      initialFocus
+                      locale={fr}
+                      className="pointer-events-auto"
+                    />
+                  </PopoverContent>
+                </Popover>
+
                 <Select 
                   value={filters.institution || 'all'} 
-                  onValueChange={(v) => setFilters({ institution: v === 'all' ? undefined : v })}
+                  onValueChange={(v) => { setFilters({ institution: v === 'all' ? undefined : v }); setCurrentPage(1); }}
                 >
                   <SelectTrigger className="w-full sm:w-[160px]">
                     <SelectValue placeholder="Institution" />
@@ -119,7 +216,7 @@ export default function Incidents() {
 
                 <Select 
                   value={filters.statut || 'all'} 
-                  onValueChange={(v) => setFilters({ statut: v === 'all' ? undefined : v })}
+                  onValueChange={(v) => { setFilters({ statut: v === 'all' ? undefined : v }); setCurrentPage(1); }}
                 >
                   <SelectTrigger className="w-full sm:w-[140px]">
                     <SelectValue placeholder="Statut" />
@@ -134,7 +231,7 @@ export default function Incidents() {
 
                 <Select 
                   value={filters.gravite || 'all'} 
-                  onValueChange={(v) => setFilters({ gravite: v === 'all' ? undefined : v })}
+                  onValueChange={(v) => { setFilters({ gravite: v === 'all' ? undefined : v }); setCurrentPage(1); }}
                 >
                   <SelectTrigger className="w-full sm:w-[140px]">
                     <SelectValue placeholder="Gravité" />
@@ -147,7 +244,7 @@ export default function Incidents() {
                   </SelectContent>
                 </Select>
 
-                <Button variant="outline" onClick={clearFilters} size="sm">
+                <Button variant="outline" onClick={handleClearFilters} size="sm">
                   Effacer
                 </Button>
               </div>
@@ -157,14 +254,14 @@ export default function Incidents() {
 
         {/* Mobile Cards View */}
         <div className="md:hidden space-y-3">
-          {filteredIncidents.length === 0 ? (
+          {paginatedIncidents.length === 0 ? (
             <Card>
               <CardContent className="py-8 text-center text-muted-foreground">
                 Aucun incident trouvé
               </CardContent>
             </Card>
           ) : (
-            filteredIncidents.map((incident) => (
+            paginatedIncidents.map((incident) => (
               <Card key={incident.id}>
                 <CardContent className="pt-4">
                   <div className="flex items-start justify-between mb-2">
@@ -241,14 +338,14 @@ export default function Incidents() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredIncidents.length === 0 ? (
+                  {paginatedIncidents.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                         Aucun incident trouvé
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredIncidents.map((incident) => (
+                    paginatedIncidents.map((incident) => (
                       <TableRow key={incident.id}>
                         <TableCell className="font-mono font-medium">
                           {incident.numero}
@@ -313,6 +410,54 @@ export default function Incidents() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-sm text-muted-foreground">
+              Affichage de {((currentPage - 1) * ITEMS_PER_PAGE) + 1} à {Math.min(currentPage * ITEMS_PER_PAGE, filteredIncidents.length)} sur {filteredIncidents.length} incidents
+            </p>
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious 
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                  />
+                </PaginationItem>
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum: number;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+                  return (
+                    <PaginationItem key={pageNum}>
+                      <PaginationLink
+                        onClick={() => setCurrentPage(pageNum)}
+                        isActive={currentPage === pageNum}
+                        className="cursor-pointer"
+                      >
+                        {pageNum}
+                      </PaginationLink>
+                    </PaginationItem>
+                  );
+                })}
+                <PaginationItem>
+                  <PaginationNext 
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
+        )}
       </div>
     </AppLayout>
   );
