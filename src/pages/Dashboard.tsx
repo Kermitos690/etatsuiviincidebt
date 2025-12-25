@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useCallback, useState, useEffect } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, AreaChart, Area, LineChart, Line, Legend, RadialBarChart, RadialBar
@@ -13,14 +13,20 @@ import {
   Zap,
   Shield,
   Activity,
-  CalendarDays
+  CalendarDays,
+  Download,
+  FileText,
+  Loader2
 } from 'lucide-react';
 import { AppLayout, PageHeader } from '@/components/layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { useIncidentStore } from '@/stores/incidentStore';
 import { cn } from '@/lib/utils';
 import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import jsPDF from 'jspdf';
+import { toast } from 'sonner';
 
 const COLORS = ['hsl(211, 100%, 50%)', 'hsl(280, 100%, 65%)', 'hsl(142, 76%, 36%)', 'hsl(38, 92%, 50%)', 'hsl(330, 100%, 60%)'];
 const GRAVITE_COLORS: Record<string, string> = {
@@ -39,7 +45,12 @@ const kpiConfig = [
 ];
 
 export default function Dashboard() {
-  const { incidents, config } = useIncidentStore();
+  const { incidents, config, loadFromSupabase } = useIncidentStore();
+  const [exportingPdf, setExportingPdf] = useState(false);
+
+  useEffect(() => {
+    loadFromSupabase();
+  }, [loadFromSupabase]);
 
   const kpis = useMemo(() => {
     const total = incidents.length;
@@ -150,26 +161,251 @@ export default function Dashboard() {
     ];
   }, [incidents]);
 
+  // Export Dashboard to PDF
+  const exportDashboardPDF = useCallback(async () => {
+    setExportingPdf(true);
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 15;
+      let y = 15;
+
+      const addPageIfNeeded = (requiredSpace: number) => {
+        if (y + requiredSpace > pageHeight - 20) {
+          doc.addPage();
+          y = 20;
+          return true;
+        }
+        return false;
+      };
+
+      const drawSection = (title: string) => {
+        addPageIfNeeded(20);
+        doc.setFillColor(243, 244, 246);
+        doc.roundedRect(margin, y, pageWidth - 2 * margin, 10, 2, 2, 'F');
+        doc.setTextColor(37, 99, 235);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text(title, margin + 4, y + 7);
+        y += 15;
+        doc.setTextColor(0, 0, 0);
+      };
+
+      // Header
+      doc.setFillColor(37, 99, 235);
+      doc.rect(0, 0, pageWidth, 35, 'F');
+      doc.setFillColor(139, 92, 246);
+      doc.rect(pageWidth - 60, 0, 60, 35, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(22);
+      doc.setFont('helvetica', 'bold');
+      doc.text('TABLEAU DE BORD', margin, 18);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Registre des Incidents', margin, 26);
+      doc.setFontSize(9);
+      doc.text(format(new Date(), "dd MMMM yyyy HH:mm", { locale: fr }), pageWidth - margin - 50, 22);
+      y = 45;
+
+      // KPIs
+      drawSection('INDICATEURS CLÉS');
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(60, 60, 60);
+      doc.text('Total: ' + kpis.total, margin + 5, y);
+      doc.text('Ouverts: ' + kpis.ouverts, margin + 50, y);
+      doc.text('Non résolus: ' + kpis.nonResolus, margin + 100, y);
+      y += 8;
+      doc.text('Transmis JP: ' + kpis.transmisJP, margin + 5, y);
+      doc.text('Score moyen: ' + kpis.scoreMoyen, margin + 50, y);
+      y += 12;
+
+      // Par statut
+      drawSection('RÉPARTITION PAR STATUT');
+      doc.setFontSize(9);
+      chartByStatus.filter(d => d.value > 0).forEach((stat) => {
+        const pct = incidents.length > 0 ? Math.round(stat.value / incidents.length * 100) : 0;
+        doc.setFont('helvetica', 'normal');
+        doc.text(stat.name + ': ' + stat.value + ' (' + pct + '%)', margin + 5, y);
+        y += 7;
+      });
+      y += 5;
+
+      // Par gravité
+      drawSection('RÉPARTITION PAR GRAVITÉ');
+      chartByGravite.forEach((g) => {
+        const pct = incidents.length > 0 ? Math.round(g.value / incidents.length * 100) : 0;
+        doc.text(g.name + ': ' + g.value + ' (' + pct + '%)', margin + 5, y);
+        y += 7;
+      });
+      y += 5;
+
+      // Par priorité
+      drawSection('RÉPARTITION PAR PRIORITÉ');
+      priorityStats.forEach((p) => {
+        const pct = incidents.length > 0 ? Math.round(p.value / incidents.length * 100) : 0;
+        doc.text(p.name + ': ' + p.value + ' (' + pct + '%)', margin + 5, y);
+        y += 7;
+      });
+      y += 5;
+
+      // Par institution
+      addPageIfNeeded(50);
+      drawSection('PAR INSTITUTION');
+      chartByInstitution.forEach((inst) => {
+        addPageIfNeeded(10);
+        const pct = incidents.length > 0 ? Math.round(inst.value / incidents.length * 100) : 0;
+        doc.text(inst.name + ': ' + inst.value + ' (' + pct + '%)', margin + 5, y);
+        y += 7;
+      });
+      y += 5;
+
+      // Par type
+      addPageIfNeeded(50);
+      drawSection('PAR TYPE DE DYSFONCTIONNEMENT');
+      chartByType.forEach((type) => {
+        addPageIfNeeded(10);
+        const pct = incidents.length > 0 ? Math.round(type.value / incidents.length * 100) : 0;
+        const name = type.name.length > 40 ? type.name.substring(0, 37) + '...' : type.name;
+        doc.text(name + ': ' + type.value + ' (' + pct + '%)', margin + 5, y);
+        y += 7;
+      });
+      y += 5;
+
+      // Évolution 6 mois
+      addPageIfNeeded(60);
+      drawSection('ÉVOLUTION SUR 6 MOIS');
+      doc.setFontSize(8);
+      doc.setFillColor(37, 99, 235);
+      doc.rect(margin, y, pageWidth - 2 * margin, 7, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Mois', margin + 5, y + 5);
+      doc.text('Total', margin + 45, y + 5);
+      doc.text('Transmis JP', margin + 75, y + 5);
+      doc.text('Critiques', margin + 115, y + 5);
+      y += 9;
+      doc.setTextColor(60, 60, 60);
+      doc.setFont('helvetica', 'normal');
+      chartEvolution.forEach((m, idx) => {
+        doc.setFillColor(idx % 2 === 0 ? 249 : 255, 250, 251);
+        doc.rect(margin, y - 2, pageWidth - 2 * margin, 6, 'F');
+        doc.text(m.name, margin + 5, y + 2);
+        doc.text(String(m.total), margin + 45, y + 2);
+        doc.text(String(m.transmisJP), margin + 75, y + 2);
+        doc.text(String(m.critiques), margin + 115, y + 2);
+        y += 6;
+      });
+      y += 8;
+
+      // Top 5 incidents
+      addPageIfNeeded(50);
+      drawSection('TOP 5 INCIDENTS PAR SCORE');
+      doc.setFontSize(9);
+      topIncidents.forEach((inc, idx) => {
+        addPageIfNeeded(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text('#' + (idx + 1), margin + 5, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(inc.name + ' - Score: ' + inc.score + ' (' + inc.gravite + ')', margin + 15, y);
+        y += 8;
+      });
+
+      // Liste détaillée
+      doc.addPage();
+      y = 20;
+      doc.setFillColor(37, 99, 235);
+      doc.rect(0, 0, pageWidth, 20, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('LISTE DÉTAILLÉE DES INCIDENTS', margin, 14);
+      y = 30;
+
+      incidents.slice(0, 25).forEach((inc, idx) => {
+        addPageIfNeeded(18);
+        doc.setFillColor(idx % 2 === 0 ? 249 : 255, 250, 251);
+        doc.setDrawColor(229, 231, 235);
+        doc.roundedRect(margin, y, pageWidth - 2 * margin, 14, 1, 1, 'FD');
+        doc.setTextColor(37, 99, 235);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.text('#' + inc.numero, margin + 3, y + 5);
+        doc.setTextColor(60, 60, 60);
+        doc.setFont('helvetica', 'normal');
+        const titre = inc.titre.length > 55 ? inc.titre.substring(0, 52) + '...' : inc.titre;
+        doc.text(titre, margin + 15, y + 5);
+        doc.setFontSize(7);
+        doc.text(inc.dateIncident + ' | ' + inc.institution + ' | ' + inc.gravite + ' | ' + inc.statut + ' | Score: ' + inc.score, margin + 3, y + 11);
+        y += 16;
+      });
+
+      if (incidents.length > 25) {
+        doc.setTextColor(100, 100, 100);
+        doc.setFontSize(8);
+        doc.text('... et ' + (incidents.length - 25) + ' autres incidents', margin, y + 5);
+      }
+
+      // Footer
+      const pageCount = doc.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(7);
+        doc.setTextColor(120, 120, 120);
+        doc.text(
+          'Registre des Incidents - Page ' + i + '/' + pageCount,
+          pageWidth / 2,
+          pageHeight - 5,
+          { align: 'center' }
+        );
+      }
+
+      doc.save('dashboard_incidents_' + format(new Date(), 'yyyy-MM-dd_HHmm') + '.pdf');
+      toast.success('Dashboard exporté en PDF');
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      toast.error('Erreur lors de la génération du PDF');
+    } finally {
+      setExportingPdf(false);
+    }
+  }, [kpis, chartByStatus, chartByGravite, priorityStats, chartByInstitution, chartByType, chartEvolution, topIncidents, incidents]);
+
   return (
     <AppLayout>
       <div className="p-4 md:p-8">
-        <div className="flex items-center gap-4 mb-8">
-          <div className="relative">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-glow animate-float">
-              <TrendingUp className="h-8 w-8 text-white" />
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-glow animate-float">
+                <TrendingUp className="h-8 w-8 text-white" />
+              </div>
+              <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-gradient-secondary flex items-center justify-center animate-pulse-glow">
+                <Sparkles className="h-3 w-3 text-white" />
+              </div>
             </div>
-            <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-gradient-secondary flex items-center justify-center animate-pulse-glow">
-              <Sparkles className="h-3 w-3 text-white" />
+            <div>
+              <h1 className="text-3xl md:text-4xl font-bold gradient-text animate-scale-in">
+                Dashboard
+              </h1>
+              <p className="text-muted-foreground animate-slide-up" style={{ animationDelay: '100ms' }}>
+                Vue d'ensemble des incidents et statistiques
+              </p>
             </div>
           </div>
-          <div>
-            <h1 className="text-3xl md:text-4xl font-bold gradient-text animate-scale-in">
-              Dashboard
-            </h1>
-            <p className="text-muted-foreground animate-slide-up" style={{ animationDelay: '100ms' }}>
-              Vue d'ensemble des incidents et statistiques
-            </p>
-          </div>
+          <Button 
+            onClick={exportDashboardPDF} 
+            disabled={exportingPdf || incidents.length === 0}
+            className="animate-scale-in"
+            style={{ animationDelay: '200ms' }}
+          >
+            {exportingPdf ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <FileText className="h-4 w-4 mr-2" />
+            )}
+            Exporter en PDF
+          </Button>
         </div>
 
         {/* KPI Cards - Premium Glass Design */}
