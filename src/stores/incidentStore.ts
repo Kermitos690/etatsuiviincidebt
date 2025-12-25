@@ -230,7 +230,7 @@ interface IncidentStore {
 export const useIncidentStore = create<IncidentStore>()(
   persist(
     (set, get) => ({
-      incidents: generateTestData(), // Load test data by default
+      incidents: [], // Empty by default - no test data
       filters: {},
       config: {
         googleSheetId: '',
