@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Filter, Plus, Eye, Pencil, Send, FileText, MoreHorizontal, CalendarIcon } from 'lucide-react';
+import { Search, Filter, Plus, Eye, Pencil, Send, FileText, MoreHorizontal, CalendarIcon, Download, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { AppLayout, PageHeader } from '@/components/layout';
@@ -13,6 +13,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import type { Incident } from '@/types/incident';
 import {
   Select,
   SelectContent,
@@ -45,6 +47,9 @@ import {
 
 const ITEMS_PER_PAGE = 10;
 
+type SortField = 'numero' | 'dateIncident' | 'titre' | 'institution' | 'type' | 'statut' | 'score';
+type SortDirection = 'asc' | 'desc';
+
 export default function Incidents() {
   const { incidents, config, updateIncident, filters, setFilters, clearFilters, getFilteredIncidents } = useIncidentStore();
   const [search, setSearch] = useState('');
@@ -52,6 +57,8 @@ export default function Incidents() {
   const [currentPage, setCurrentPage] = useState(1);
   const [dateDebut, setDateDebut] = useState<Date | undefined>(undefined);
   const [dateFin, setDateFin] = useState<Date | undefined>(undefined);
+  const [sortField, setSortField] = useState<SortField>('numero');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   // Apply date filters
   const handleDateDebutChange = (date: Date | undefined) => {
@@ -73,6 +80,25 @@ export default function Incidents() {
     setCurrentPage(1);
   };
 
+  // Toggle sort
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('desc');
+    }
+    setCurrentPage(1);
+  };
+
+  // Sort icon component
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="h-4 w-4 ml-1 opacity-50" />;
+    return sortDirection === 'asc' 
+      ? <ArrowUp className="h-4 w-4 ml-1" />
+      : <ArrowDown className="h-4 w-4 ml-1" />;
+  };
+
   const filteredIncidents = useMemo(() => {
     let result = getFilteredIncidents();
     
@@ -85,8 +111,64 @@ export default function Incidents() {
       );
     }
 
-    return result.sort((a, b) => b.numero - a.numero);
-  }, [getFilteredIncidents, search]);
+    // Apply sorting
+    result.sort((a, b) => {
+      let comparison = 0;
+      switch (sortField) {
+        case 'numero':
+          comparison = a.numero - b.numero;
+          break;
+        case 'dateIncident':
+          comparison = a.dateIncident.localeCompare(b.dateIncident);
+          break;
+        case 'titre':
+          comparison = a.titre.localeCompare(b.titre);
+          break;
+        case 'institution':
+          comparison = a.institution.localeCompare(b.institution);
+          break;
+        case 'type':
+          comparison = a.type.localeCompare(b.type);
+          break;
+        case 'statut':
+          comparison = a.statut.localeCompare(b.statut);
+          break;
+        case 'score':
+          comparison = a.score - b.score;
+          break;
+      }
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+
+    return result;
+  }, [getFilteredIncidents, search, sortField, sortDirection]);
+
+  // Export CSV
+  const exportToCSV = () => {
+    const headers = ['N°', 'Date', 'Titre', 'Institution', 'Type', 'Gravité', 'Statut', 'Priorité', 'Score', 'Transmis JP'];
+    const rows = filteredIncidents.map(inc => [
+      inc.numero,
+      inc.dateIncident,
+      `"${inc.titre.replace(/"/g, '""')}"`,
+      inc.institution,
+      inc.type,
+      inc.gravite,
+      inc.statut,
+      inc.priorite,
+      inc.score,
+      inc.transmisJP ? 'Oui' : 'Non'
+    ]);
+    
+    const csvContent = [headers.join(';'), ...rows.map(row => row.join(';'))].join('\n');
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `incidents_${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success(`${filteredIncidents.length} incidents exportés en CSV`);
+  };
 
   // Pagination
   const totalPages = Math.ceil(filteredIncidents.length / ITEMS_PER_PAGE);
@@ -110,13 +192,19 @@ export default function Incidents() {
           title="Liste des incidents" 
           description={`${incidents.length} incidents enregistrés`}
           actions={
-            <Button asChild size="sm">
-              <Link to="/nouveau">
-                <Plus className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">Nouvel incident</span>
-                <span className="sm:hidden">Nouveau</span>
-              </Link>
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={exportToCSV} disabled={filteredIncidents.length === 0}>
+                <Download className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">Export CSV</span>
+              </Button>
+              <Button asChild size="sm">
+                <Link to="/nouveau">
+                  <Plus className="h-4 w-4 mr-2" />
+                  <span className="hidden sm:inline">Nouvel incident</span>
+                  <span className="sm:hidden">Nouveau</span>
+                </Link>
+              </Button>
+            </div>
           }
         />
 
@@ -327,13 +415,69 @@ export default function Incidents() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-16">N°</TableHead>
-                    <TableHead className="w-24">Date</TableHead>
-                    <TableHead>Titre</TableHead>
-                    <TableHead>Institution</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Statut</TableHead>
-                    <TableHead>Priorité</TableHead>
+                    <TableHead 
+                      className="w-16 cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleSort('numero')}
+                    >
+                      <div className="flex items-center">
+                        N°
+                        <SortIcon field="numero" />
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="w-24 cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleSort('dateIncident')}
+                    >
+                      <div className="flex items-center">
+                        Date
+                        <SortIcon field="dateIncident" />
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleSort('titre')}
+                    >
+                      <div className="flex items-center">
+                        Titre
+                        <SortIcon field="titre" />
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleSort('institution')}
+                    >
+                      <div className="flex items-center">
+                        Institution
+                        <SortIcon field="institution" />
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleSort('type')}
+                    >
+                      <div className="flex items-center">
+                        Type
+                        <SortIcon field="type" />
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleSort('statut')}
+                    >
+                      <div className="flex items-center">
+                        Statut
+                        <SortIcon field="statut" />
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleSort('score')}
+                    >
+                      <div className="flex items-center">
+                        Priorité
+                        <SortIcon field="score" />
+                      </div>
+                    </TableHead>
                     <TableHead className="w-16"></TableHead>
                   </TableRow>
                 </TableHeader>
