@@ -19,7 +19,7 @@ import { PriorityBadge, StatusBadge } from '@/components/common';
 import { useIncidentStore } from '@/stores/incidentStore';
 import { formatDate, formatDateTime } from '@/config/appConfig';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 
@@ -40,7 +40,7 @@ export default function IncidentDetail() {
   if (!incident) {
     return (
       <AppLayout>
-        <div className="p-6">
+        <div className="p-4 md:p-6">
           <div className="text-center py-12">
             <AlertTriangle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <h2 className="text-lg font-medium mb-2">Incident non trouvé</h2>
@@ -63,48 +63,54 @@ export default function IncidentDetail() {
 
   return (
     <AppLayout>
-      <div className="p-6">
-        <div className="mb-6">
+      <div className="p-4 md:p-6">
+        <div className="mb-4 md:mb-6">
           <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Retour
           </Button>
         </div>
 
-        <PageHeader 
-          title={`Incident #${incident.numero}`}
-          description={incident.titre}
-          actions={
-            <div className="flex gap-2">
-              <Button variant="outline" asChild>
-                <Link to={`/incidents/${incident.id}/edit`}>
-                  <Pencil className="h-4 w-4 mr-2" />
-                  Modifier
-                </Link>
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6">
+          <div>
+            <h1 className="font-serif text-xl md:text-2xl font-semibold">
+              Incident #{incident.numero}
+            </h1>
+            <p className="text-sm md:text-base text-muted-foreground mt-1">
+              {incident.titre}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link to={`/incidents/${incident.id}/edit`}>
+                <Pencil className="h-4 w-4 mr-2" />
+                Modifier
+              </Link>
+            </Button>
+            <Button variant="outline" size="sm">
+              <FileText className="h-4 w-4 mr-2" />
+              PDF
+            </Button>
+            {!incident.transmisJP && (
+              <Button size="sm" onClick={markTransmisJP}>
+                <Send className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">Transmettre JP</span>
+                <span className="sm:hidden">JP</span>
               </Button>
-              <Button variant="outline">
-                <FileText className="h-4 w-4 mr-2" />
-                PDF
-              </Button>
-              {!incident.transmisJP && (
-                <Button onClick={markTransmisJP}>
-                  <Send className="h-4 w-4 mr-2" />
-                  Transmettre JP
-                </Button>
-              )}
-            </div>
-          }
-        />
+            )}
+          </div>
+        </div>
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        {/* Summary Cards - Responsive grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
           <Card>
             <CardContent className="pt-4">
-              <div className="flex items-center gap-3">
-                <Calendar className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <p className="text-xs text-muted-foreground">Date incident</p>
-                  <p className="font-medium">{formatDate(incident.dateIncident)}</p>
+              <div className="flex items-center gap-2 md:gap-3">
+                <Calendar className="h-4 w-4 md:h-5 md:w-5 text-muted-foreground flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Date</p>
+                  <p className="font-medium text-sm md:text-base truncate">{formatDate(incident.dateIncident)}</p>
                 </div>
               </div>
             </CardContent>
@@ -112,11 +118,11 @@ export default function IncidentDetail() {
 
           <Card>
             <CardContent className="pt-4">
-              <div className="flex items-center gap-3">
-                <Building className="h-5 w-5 text-muted-foreground" />
-                <div>
+              <div className="flex items-center gap-2 md:gap-3">
+                <Building className="h-4 w-4 md:h-5 md:w-5 text-muted-foreground flex-shrink-0" />
+                <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">Institution</p>
-                  <p className="font-medium">{incident.institution}</p>
+                  <p className="font-medium text-sm md:text-base truncate">{incident.institution}</p>
                 </div>
               </div>
             </CardContent>
@@ -124,11 +130,11 @@ export default function IncidentDetail() {
 
           <Card>
             <CardContent className="pt-4">
-              <div className="flex items-center gap-3">
-                <Tag className="h-5 w-5 text-muted-foreground" />
-                <div>
+              <div className="flex items-center gap-2 md:gap-3">
+                <Tag className="h-4 w-4 md:h-5 md:w-5 text-muted-foreground flex-shrink-0" />
+                <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">Type</p>
-                  <p className="font-medium">{incident.type}</p>
+                  <p className="font-medium text-sm md:text-base truncate">{incident.type}</p>
                 </div>
               </div>
             </CardContent>
@@ -136,11 +142,11 @@ export default function IncidentDetail() {
 
           <Card>
             <CardContent className="pt-4">
-              <div className="flex items-center gap-3">
-                <AlertTriangle className="h-5 w-5 text-muted-foreground" />
-                <div>
+              <div className="flex items-center gap-2 md:gap-3">
+                <AlertTriangle className="h-4 w-4 md:h-5 md:w-5 text-muted-foreground flex-shrink-0" />
+                <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">Gravité</p>
-                  <p className="font-medium">{incident.gravite}</p>
+                  <p className="font-medium text-sm md:text-base truncate">{incident.gravite}</p>
                 </div>
               </div>
             </CardContent>
@@ -148,7 +154,7 @@ export default function IncidentDetail() {
         </div>
 
         {/* Status & Priority */}
-        <div className="flex items-center gap-4 mb-6">
+        <div className="flex flex-wrap items-center gap-2 md:gap-4 mb-6">
           <StatusBadge status={incident.statut} />
           <PriorityBadge 
             priority={incident.priorite} 
@@ -166,9 +172,11 @@ export default function IncidentDetail() {
 
         {/* Content Tabs */}
         <Tabs defaultValue="resume" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="resume">Résumé</TabsTrigger>
-            <TabsTrigger value="preuves">Preuves ({incident.preuves.length})</TabsTrigger>
+          <TabsList className="w-full md:w-auto">
+            <TabsTrigger value="resume" className="flex-1 md:flex-none">Résumé</TabsTrigger>
+            <TabsTrigger value="preuves" className="flex-1 md:flex-none">
+              Preuves ({incident.preuves.length})
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="resume">
@@ -176,14 +184,14 @@ export default function IncidentDetail() {
               <CardContent className="pt-6 space-y-6">
                 <div>
                   <h3 className="font-medium mb-2">Faits constatés</h3>
-                  <p className="text-muted-foreground whitespace-pre-wrap">
+                  <p className="text-sm md:text-base text-muted-foreground whitespace-pre-wrap">
                     {incident.faits || 'Non renseigné'}
                   </p>
                 </div>
                 <Separator />
                 <div>
                   <h3 className="font-medium mb-2">Dysfonctionnement</h3>
-                  <p className="text-muted-foreground whitespace-pre-wrap">
+                  <p className="text-sm md:text-base text-muted-foreground whitespace-pre-wrap">
                     {incident.dysfonctionnement || 'Non renseigné'}
                   </p>
                 </div>
@@ -211,9 +219,9 @@ export default function IncidentDetail() {
                           key={preuve.id}
                           className="flex items-center gap-3 p-3 rounded-lg border bg-muted/50"
                         >
-                          <Icon className="h-5 w-5 text-muted-foreground" />
-                          <div className="flex-1">
-                            <p className="font-medium">{preuve.label}</p>
+                          <Icon className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium truncate">{preuve.label}</p>
                             <p className="text-xs text-muted-foreground capitalize">{preuve.type}</p>
                           </div>
                           {preuve.url && (
