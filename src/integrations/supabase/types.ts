@@ -19,39 +19,91 @@ export type Database = {
           ai_analysis: Json | null
           body: string
           created_at: string
+          gmail_message_id: string | null
+          gmail_thread_id: string | null
           id: string
           incident_id: string | null
           processed: boolean
           received_at: string
           sender: string
           subject: string
+          thread_analysis: Json | null
         }
         Insert: {
           ai_analysis?: Json | null
           body: string
           created_at?: string
+          gmail_message_id?: string | null
+          gmail_thread_id?: string | null
           id?: string
           incident_id?: string | null
           processed?: boolean
           received_at?: string
           sender: string
           subject: string
+          thread_analysis?: Json | null
         }
         Update: {
           ai_analysis?: Json | null
           body?: string
           created_at?: string
+          gmail_message_id?: string | null
+          gmail_thread_id?: string | null
           id?: string
           incident_id?: string | null
           processed?: boolean
           received_at?: string
           sender?: string
           subject?: string
+          thread_analysis?: Json | null
+        }
+        Relationships: []
+      }
+      gmail_config: {
+        Row: {
+          access_token: string
+          created_at: string | null
+          domains: string[] | null
+          id: string
+          keywords: string[] | null
+          last_sync: string | null
+          refresh_token: string | null
+          sync_enabled: boolean | null
+          token_expiry: string | null
+          updated_at: string | null
+          user_email: string
+        }
+        Insert: {
+          access_token: string
+          created_at?: string | null
+          domains?: string[] | null
+          id?: string
+          keywords?: string[] | null
+          last_sync?: string | null
+          refresh_token?: string | null
+          sync_enabled?: boolean | null
+          token_expiry?: string | null
+          updated_at?: string | null
+          user_email: string
+        }
+        Update: {
+          access_token?: string
+          created_at?: string | null
+          domains?: string[] | null
+          id?: string
+          keywords?: string[] | null
+          last_sync?: string | null
+          refresh_token?: string | null
+          sync_enabled?: boolean | null
+          token_expiry?: string | null
+          updated_at?: string | null
+          user_email?: string
         }
         Relationships: []
       }
       incidents: {
         Row: {
+          confidence_level: string | null
           created_at: string
           date_creation: string
           date_incident: string
@@ -59,6 +111,7 @@ export type Database = {
           dysfonctionnement: string
           email_source_id: string | null
           faits: string
+          gmail_references: Json | null
           gravite: string
           id: string
           institution: string
@@ -73,6 +126,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          confidence_level?: string | null
           created_at?: string
           date_creation?: string
           date_incident: string
@@ -80,6 +134,7 @@ export type Database = {
           dysfonctionnement: string
           email_source_id?: string | null
           faits: string
+          gmail_references?: Json | null
           gravite: string
           id?: string
           institution: string
@@ -94,6 +149,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          confidence_level?: string | null
           created_at?: string
           date_creation?: string
           date_incident?: string
@@ -101,6 +157,7 @@ export type Database = {
           dysfonctionnement?: string
           email_source_id?: string | null
           faits?: string
+          gmail_references?: Json | null
           gravite?: string
           id?: string
           institution?: string
@@ -123,6 +180,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sheets_config: {
+        Row: {
+          column_mapping: Json | null
+          created_at: string | null
+          id: string
+          last_sync: string | null
+          sheet_name: string | null
+          spreadsheet_id: string | null
+          sync_enabled: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          column_mapping?: Json | null
+          created_at?: string | null
+          id?: string
+          last_sync?: string | null
+          sheet_name?: string | null
+          spreadsheet_id?: string | null
+          sync_enabled?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          column_mapping?: Json | null
+          created_at?: string | null
+          id?: string
+          last_sync?: string | null
+          sheet_name?: string | null
+          spreadsheet_id?: string | null
+          sync_enabled?: boolean | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
     }
     Views: {
