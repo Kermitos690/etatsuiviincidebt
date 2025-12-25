@@ -10,11 +10,15 @@ import {
   Settings,
   Menu,
   Sparkles,
-  Mail
+  Mail,
+  Table,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -23,6 +27,8 @@ const navItems = [
   { to: '/incidents', icon: AlertTriangle, label: 'Incidents' },
   { to: '/nouveau', icon: Plus, label: 'Nouvel incident' },
   { to: '/ia-auditeur', icon: Brain, label: 'IA Auditeur' },
+  { to: '/gmail-config', icon: Mail, label: 'Config Gmail' },
+  { to: '/sheets-config', icon: Table, label: 'Config Sheets' },
   { to: '/exports', icon: FileText, label: 'Exports PDF' },
   { to: '/admin', icon: Settings, label: 'Administration' },
 ];
@@ -173,14 +179,17 @@ export function DesktopSidebar() {
       {/* Footer */}
       <div className="relative p-4 border-t border-glass">
         <div className="glass-card p-4">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 rounded-xl bg-gradient-secondary flex items-center justify-center">
-              <Sparkles className="h-4 w-4 text-white" />
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-gradient-secondary flex items-center justify-center">
+                <Sparkles className="h-4 w-4 text-white" />
+              </div>
+              <div>
+                <p className="text-xs font-medium">Liquid Glass</p>
+                <p className="text-[10px] text-muted-foreground">2026 Edition</p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs font-medium">Liquid Glass</p>
-              <p className="text-[10px] text-muted-foreground">2026 Edition</p>
-            </div>
+            <ThemeToggle />
           </div>
           <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
             <div className="h-full w-3/4 rounded-full bg-gradient-primary animate-shimmer" 

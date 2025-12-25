@@ -11,3 +11,15 @@ verify_jwt = true
 
 [functions.notify-critical]
 verify_jwt = true
+
+[functions.gmail-oauth]
+verify_jwt = false
+
+[functions.gmail-sync]
+verify_jwt = false
+
+[functions.sheets-sync]
+verify_jwt = false
+
+[functions.analyze-thread]
+verify_jwt = false
