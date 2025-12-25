@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Mail, Sparkles, Check, X, RefreshCw, AlertTriangle, ArrowRight, Clock, Brain } from 'lucide-react';
+import { Mail, Sparkles, Check, X, RefreshCw, AlertTriangle, ArrowRight, Clock, Brain, Send, MessageSquare, Settings } from 'lucide-react';
 import { AppLayout, PageHeader } from '@/components/layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -26,6 +29,7 @@ interface Email {
     suggestedType: string;
     suggestedGravity: string;
     summary: string;
+    suggestedResponse?: string;
   } | null;
   incident_id: string | null;
   created_at: string;
@@ -35,6 +39,12 @@ export default function EmailsInbox() {
   const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
+  const [alertEmail, setAlertEmail] = useState(() => localStorage.getItem('alertEmail') || '');
+  const [showSettings, setShowSettings] = useState(false);
+  const [showResponseDialog, setShowResponseDialog] = useState(false);
+  const [generatingResponse, setGeneratingResponse] = useState(false);
+  const [aiResponse, setAiResponse] = useState('');
+  const [sendingResponse, setSendingResponse] = useState(false);
   const navigate = useNavigate();
 
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/receive-email`;
@@ -60,7 +70,6 @@ export default function EmailsInbox() {
   useEffect(() => {
     fetchEmails();
 
-    // Subscribe to realtime updates
     const channel = supabase
       .channel('emails-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'emails' }, () => {
@@ -73,6 +82,75 @@ export default function EmailsInbox() {
     };
   }, []);
 
+  const saveAlertEmail = () => {
+    localStorage.setItem('alertEmail', alertEmail);
+    setShowSettings(false);
+    toast.success('Email d\'alerte enregistré');
+  };
+
+  const generateAIResponse = async (email: Email) => {
+    if (!email.ai_analysis) return;
+    
+    setGeneratingResponse(true);
+    setShowResponseDialog(true);
+    setAiResponse('');
+
+    try {
+      const response = await supabase.functions.invoke('analyze-incident', {
+        body: {
+          type: 'generate-response',
+          emailSubject: email.subject,
+          emailSender: email.sender,
+          emailBody: email.body,
+          analysis: email.ai_analysis
+        }
+      });
+
+      if (response.error) throw response.error;
+      
+      setAiResponse(response.data.response || 'Impossible de générer une réponse.');
+    } catch (error) {
+      console.error('Error generating response:', error);
+      toast.error('Erreur lors de la génération de la réponse');
+      setAiResponse('Erreur lors de la génération. Veuillez réessayer.');
+    } finally {
+      setGeneratingResponse(false);
+    }
+  };
+
+  const sendResponse = async () => {
+    if (!selectedEmail || !aiResponse) return;
+
+    setSendingResponse(true);
+    try {
+      const { error } = await supabase.functions.invoke('send-email', {
+        body: {
+          to: selectedEmail.sender,
+          subject: `Re: ${selectedEmail.subject}`,
+          html: `<div style="font-family: Arial, sans-serif; padding: 20px;">
+            <p>${aiResponse.replace(/\n/g, '<br/>')}</p>
+            <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;" />
+            <p style="color: #666; font-size: 12px;">
+              Ce message a été envoyé par le système de gestion des incidents.
+            </p>
+          </div>`,
+          replyTo: alertEmail || undefined
+        }
+      });
+
+      if (error) throw error;
+
+      toast.success('Réponse envoyée avec succès !');
+      setShowResponseDialog(false);
+      setAiResponse('');
+    } catch (error: any) {
+      console.error('Error sending response:', error);
+      toast.error(error.message || 'Erreur lors de l\'envoi');
+    } finally {
+      setSendingResponse(false);
+    }
+  };
+
   const createIncidentFromEmail = async (email: Email) => {
     if (!email.ai_analysis) {
       toast.error('Pas d\'analyse IA disponible');
@@ -81,7 +159,26 @@ export default function EmailsInbox() {
 
     const analysis = email.ai_analysis;
 
-    // Navigate to new incident form with pre-filled data
+    // Send alert if critical
+    if (alertEmail && (analysis.suggestedGravity === 'Critique' || analysis.suggestedGravity === 'Grave')) {
+      try {
+        await supabase.functions.invoke('notify-critical', {
+          body: {
+            alertEmail,
+            incidentTitle: analysis.suggestedTitle,
+            incidentType: analysis.suggestedType,
+            incidentGravite: analysis.suggestedGravity,
+            incidentScore: analysis.confidence,
+            incidentFaits: analysis.suggestedFacts,
+            incidentInstitution: analysis.suggestedInstitution
+          }
+        });
+        toast.success('Alerte critique envoyée !');
+      } catch (error) {
+        console.error('Error sending critical alert:', error);
+      }
+    }
+
     navigate('/nouveau', { 
       state: { 
         prefillData: {
@@ -121,12 +218,101 @@ export default function EmailsInbox() {
           description="Emails reçus et analysés par l'IA"
           icon={<Mail className="h-7 w-7 text-white" />}
           actions={
-            <Button onClick={fetchEmails} variant="glass" disabled={loading}>
-              <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
-              Actualiser
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={() => setShowSettings(true)} variant="glass" size="icon">
+                <Settings className="h-4 w-4" />
+              </Button>
+              <Button onClick={fetchEmails} variant="glass" disabled={loading}>
+                <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
+                Actualiser
+              </Button>
+            </div>
           }
         />
+
+        {/* Settings Dialog */}
+        <Dialog open={showSettings} onOpenChange={setShowSettings}>
+          <DialogContent className="glass-card border-border/50">
+            <DialogHeader>
+              <DialogTitle>Configuration des alertes</DialogTitle>
+              <DialogDescription>
+                Entrez votre email pour recevoir les alertes critiques
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <Input
+                type="email"
+                placeholder="votre@email.com"
+                value={alertEmail}
+                onChange={(e) => setAlertEmail(e.target.value)}
+                className="bg-secondary/50"
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setShowSettings(false)}>Annuler</Button>
+              <Button onClick={saveAlertEmail}>Enregistrer</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Response Dialog */}
+        <Dialog open={showResponseDialog} onOpenChange={setShowResponseDialog}>
+          <DialogContent className="glass-card border-border/50 max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <MessageSquare className="h-5 w-5" />
+                Réponse générée par l'IA
+              </DialogTitle>
+              <DialogDescription>
+                Vérifiez et modifiez la réponse avant envoi à {selectedEmail?.sender}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              {generatingResponse ? (
+                <div className="flex items-center justify-center py-8">
+                  <RefreshCw className="h-8 w-8 animate-spin text-primary" />
+                  <span className="ml-3">Génération en cours...</span>
+                </div>
+              ) : (
+                <Textarea
+                  value={aiResponse}
+                  onChange={(e) => setAiResponse(e.target.value)}
+                  className="min-h-[200px] bg-secondary/50"
+                  placeholder="La réponse générée apparaîtra ici..."
+                />
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setShowResponseDialog(false)}>Annuler</Button>
+              <Button 
+                onClick={sendResponse} 
+                disabled={generatingResponse || sendingResponse || !aiResponse}
+              >
+                {sendingResponse ? (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4 mr-2" />
+                )}
+                Envoyer
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Alert Email Status */}
+        {!alertEmail && (
+          <div className="glass-card p-4 mb-6 border-amber-500/30 animate-scale-in">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              <p className="text-sm text-muted-foreground">
+                Configurez votre email pour recevoir les alertes critiques
+              </p>
+              <Button variant="glass" size="sm" onClick={() => setShowSettings(true)}>
+                Configurer
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Webhook Configuration */}
         <div className="glass-card p-6 mb-6 animate-scale-in">
@@ -282,18 +468,36 @@ export default function EmailsInbox() {
                             </div>
                             <div>
                               <p className="text-xs text-muted-foreground">Gravité</p>
-                              <p className="text-sm font-medium">{selectedEmail.ai_analysis.suggestedGravity}</p>
+                              <Badge className={cn(
+                                "text-white",
+                                selectedEmail.ai_analysis.suggestedGravity === 'Critique' && "bg-gradient-to-r from-red-500 to-rose-500",
+                                selectedEmail.ai_analysis.suggestedGravity === 'Grave' && "bg-gradient-to-r from-orange-500 to-amber-500",
+                                selectedEmail.ai_analysis.suggestedGravity === 'Modéré' && "bg-gradient-to-r from-amber-400 to-yellow-500",
+                                selectedEmail.ai_analysis.suggestedGravity === 'Mineur' && "bg-gradient-to-r from-emerald-400 to-emerald-600"
+                              )}>
+                                {selectedEmail.ai_analysis.suggestedGravity}
+                              </Badge>
                             </div>
                           </div>
                         </div>
 
-                        <Button 
-                          className="w-full"
-                          onClick={() => createIncidentFromEmail(selectedEmail)}
-                        >
-                          <Sparkles className="h-4 w-4 mr-2" />
-                          Créer l'incident
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button 
+                            variant="glass"
+                            className="flex-1"
+                            onClick={() => generateAIResponse(selectedEmail)}
+                          >
+                            <MessageSquare className="h-4 w-4 mr-2" />
+                            Générer réponse
+                          </Button>
+                          <Button 
+                            className="flex-1"
+                            onClick={() => createIncidentFromEmail(selectedEmail)}
+                          >
+                            <Sparkles className="h-4 w-4 mr-2" />
+                            Créer incident
+                          </Button>
+                        </div>
                       </>
                     ) : (
                       <div className="text-center py-4">
@@ -301,6 +505,14 @@ export default function EmailsInbox() {
                         <p className="text-sm text-muted-foreground">
                           L'IA n'a pas détecté d'incident dans cet email
                         </p>
+                        <Button 
+                          variant="glass" 
+                          className="mt-4"
+                          onClick={() => generateAIResponse(selectedEmail)}
+                        >
+                          <MessageSquare className="h-4 w-4 mr-2" />
+                          Générer une réponse
+                        </Button>
                       </div>
                     )}
                   </div>
