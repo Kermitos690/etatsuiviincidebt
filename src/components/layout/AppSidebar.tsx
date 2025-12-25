@@ -9,7 +9,8 @@ import {
   FileText,
   Settings,
   Menu,
-  Sparkles
+  Sparkles,
+  Mail
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/emails', icon: Mail, label: 'Boîte de réception' },
   { to: '/journal', icon: BookOpen, label: 'Journal' },
   { to: '/incidents', icon: AlertTriangle, label: 'Incidents' },
   { to: '/nouveau', icon: Plus, label: 'Nouvel incident' },
