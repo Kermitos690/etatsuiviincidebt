@@ -95,6 +95,34 @@ serve(async (req) => {
     const { action, spreadsheetId, sheetName, columnMapping, incidentId } = await req.json();
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+    if (action === "get-service-account-email") {
+      const serviceAccountJson = Deno.env.get("GOOGLE_SHEETS_SERVICE_ACCOUNT");
+      if (!serviceAccountJson) {
+        return new Response(JSON.stringify({ 
+          error: "Service account not configured" 
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      
+      try {
+        const serviceAccount = JSON.parse(serviceAccountJson);
+        return new Response(JSON.stringify({ 
+          email: serviceAccount.client_email 
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch {
+        return new Response(JSON.stringify({ 
+          error: "Invalid service account JSON" 
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     if (action === "get-config") {
       const { data: config, error } = await supabase
         .from("sheets_config")
