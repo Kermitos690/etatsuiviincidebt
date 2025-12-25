@@ -103,14 +103,14 @@ export default function Incidents() {
               {/* Filter selects - Always visible on desktop, toggleable on mobile */}
               <div className={`flex-wrap gap-2 ${showFilters ? 'flex' : 'hidden'} md:flex`}>
                 <Select 
-                  value={filters.institution || ''} 
-                  onValueChange={(v) => setFilters({ institution: v || undefined })}
+                  value={filters.institution || 'all'} 
+                  onValueChange={(v) => setFilters({ institution: v === 'all' ? undefined : v })}
                 >
                   <SelectTrigger className="w-full sm:w-[160px]">
                     <SelectValue placeholder="Institution" />
                   </SelectTrigger>
                   <SelectContent className="bg-popover z-50">
-                    <SelectItem value="">Toutes</SelectItem>
+                    <SelectItem value="all">Toutes</SelectItem>
                     {config.institutions.map(inst => (
                       <SelectItem key={inst} value={inst}>{inst}</SelectItem>
                     ))}
@@ -118,14 +118,14 @@ export default function Incidents() {
                 </Select>
 
                 <Select 
-                  value={filters.statut || ''} 
-                  onValueChange={(v) => setFilters({ statut: v || undefined })}
+                  value={filters.statut || 'all'} 
+                  onValueChange={(v) => setFilters({ statut: v === 'all' ? undefined : v })}
                 >
                   <SelectTrigger className="w-full sm:w-[140px]">
                     <SelectValue placeholder="Statut" />
                   </SelectTrigger>
                   <SelectContent className="bg-popover z-50">
-                    <SelectItem value="">Tous</SelectItem>
+                    <SelectItem value="all">Tous</SelectItem>
                     {config.statuts.map(s => (
                       <SelectItem key={s} value={s}>{s}</SelectItem>
                     ))}
@@ -133,14 +133,14 @@ export default function Incidents() {
                 </Select>
 
                 <Select 
-                  value={filters.gravite || ''} 
-                  onValueChange={(v) => setFilters({ gravite: v || undefined })}
+                  value={filters.gravite || 'all'} 
+                  onValueChange={(v) => setFilters({ gravite: v === 'all' ? undefined : v })}
                 >
                   <SelectTrigger className="w-full sm:w-[140px]">
                     <SelectValue placeholder="Gravité" />
                   </SelectTrigger>
                   <SelectContent className="bg-popover z-50">
-                    <SelectItem value="">Toutes</SelectItem>
+                    <SelectItem value="all">Toutes</SelectItem>
                     {config.gravites.map(g => (
                       <SelectItem key={g} value={g}>{g}</SelectItem>
                     ))}
