@@ -14,7 +14,116 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      emails: {
+        Row: {
+          ai_analysis: Json | null
+          body: string
+          created_at: string
+          id: string
+          incident_id: string | null
+          processed: boolean
+          received_at: string
+          sender: string
+          subject: string
+        }
+        Insert: {
+          ai_analysis?: Json | null
+          body: string
+          created_at?: string
+          id?: string
+          incident_id?: string | null
+          processed?: boolean
+          received_at?: string
+          sender: string
+          subject: string
+        }
+        Update: {
+          ai_analysis?: Json | null
+          body?: string
+          created_at?: string
+          id?: string
+          incident_id?: string | null
+          processed?: boolean
+          received_at?: string
+          sender?: string
+          subject?: string
+        }
+        Relationships: []
+      }
+      incidents: {
+        Row: {
+          created_at: string
+          date_creation: string
+          date_incident: string
+          date_transmission_jp: string | null
+          dysfonctionnement: string
+          email_source_id: string | null
+          faits: string
+          gravite: string
+          id: string
+          institution: string
+          numero: number
+          preuves: Json | null
+          priorite: string
+          score: number
+          statut: string
+          titre: string
+          transmis_jp: boolean
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          date_creation?: string
+          date_incident: string
+          date_transmission_jp?: string | null
+          dysfonctionnement: string
+          email_source_id?: string | null
+          faits: string
+          gravite: string
+          id?: string
+          institution: string
+          numero?: number
+          preuves?: Json | null
+          priorite?: string
+          score?: number
+          statut?: string
+          titre: string
+          transmis_jp?: boolean
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          date_creation?: string
+          date_incident?: string
+          date_transmission_jp?: string | null
+          dysfonctionnement?: string
+          email_source_id?: string | null
+          faits?: string
+          gravite?: string
+          id?: string
+          institution?: string
+          numero?: number
+          preuves?: Json | null
+          priorite?: string
+          score?: number
+          statut?: string
+          titre?: string
+          transmis_jp?: boolean
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "incidents_email_source_id_fkey"
+            columns: ["email_source_id"]
+            isOneToOne: false
+            referencedRelation: "emails"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

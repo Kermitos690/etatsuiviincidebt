@@ -8,6 +8,7 @@ import Incidents from "./pages/Incidents";
 import IncidentDetail from "./pages/IncidentDetail";
 import NewIncident from "./pages/NewIncident";
 import IAAuditeur from "./pages/IAAuditeur";
+import EmailsInbox from "./pages/EmailsInbox";
 import Exports from "./pages/Exports";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
@@ -26,6 +27,7 @@ const App = () => (
           <Route path="/incidents/:id" element={<IncidentDetail />} />
           <Route path="/nouveau" element={<NewIncident />} />
           <Route path="/ia-auditeur" element={<IAAuditeur />} />
+          <Route path="/emails" element={<EmailsInbox />} />
           <Route path="/exports" element={<Exports />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<NotFound />} />
