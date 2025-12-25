@@ -1,23 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AppSidebar } from '@/components/layout/AppSidebar';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { 
-  Table, 
-  Settings, 
-  Check, 
-  X, 
-  RefreshCw, 
-  ExternalLink,
-  Link2,
-  Clock,
-  ArrowUpDown
+  Table, Check, X, RefreshCw, ExternalLink,
+  Link2, Clock, ArrowUpDown, AlertCircle, Info
 } from 'lucide-react';
 
 interface SheetsConfig {
@@ -26,33 +20,13 @@ interface SheetsConfig {
   sheetName: string;
   syncEnabled: boolean;
   lastSync?: string;
-  columnMapping: {
-    institution: string;
-    type: string;
-    gravite: string;
-    statut: string;
-    faits: string;
-    dysfonctionnement: string;
-    impact: string;
-    preuves: string;
-    score: string;
-    confidence: string;
-    gmailRefs: string;
-  };
+  columnMapping: Record<string, string>;
 }
 
 const defaultColumnMapping = {
-  institution: 'A',
-  type: 'B',
-  gravite: 'C',
-  statut: 'D',
-  faits: 'E',
-  dysfonctionnement: 'F',
-  impact: 'G',
-  preuves: 'H',
-  score: 'I',
-  confidence: 'J',
-  gmailRefs: 'K'
+  numero: 'A', date_incident: 'B', institution: 'C', type: 'D',
+  titre: 'E', gravite: 'F', statut: 'G', score: 'H',
+  confidence: 'I', faits: 'J', dysfonctionnement: 'K'
 };
 
 export default function SheetsConfig() {
@@ -65,6 +39,34 @@ export default function SheetsConfig() {
   });
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+
+  useEffect(() => {
+    loadConfig();
+  }, []);
+
+  const loadConfig = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('sheets-sync', {
+        body: { action: 'get-config' }
+      });
+      if (error) throw error;
+      if (data?.config) {
+        setConfig({
+          connected: data.connected,
+          spreadsheetId: data.config.spreadsheet_id || '',
+          sheetName: data.config.sheet_name || 'Incidents',
+          syncEnabled: data.config.sync_enabled || false,
+          lastSync: data.config.last_sync,
+          columnMapping: data.config.column_mapping || defaultColumnMapping
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load config:', error);
+    } finally {
+      setInitialLoading(false);
+    }
+  };
 
   const handleConnect = async () => {
     if (!config.spreadsheetId) {
@@ -86,11 +88,13 @@ export default function SheetsConfig() {
       
       if (data?.success) {
         setConfig(prev => ({ ...prev, connected: true }));
-        toast.success('Connexion au Google Sheet réussie');
+        toast.success(`Connecté à "${data.title || 'Google Sheet'}"`);
+      } else if (data?.error) {
+        toast.error(data.error);
       }
     } catch (error) {
       console.error('Sheets connection error:', error);
-      toast.error('Erreur lors de la connexion au Google Sheet');
+      toast.error('Erreur lors de la connexion');
     } finally {
       setLoading(false);
     }
@@ -110,8 +114,12 @@ export default function SheetsConfig() {
 
       if (error) throw error;
       
-      toast.success(`${data?.rowsUpdated || 0} incidents synchronisés`);
-      setConfig(prev => ({ ...prev, lastSync: new Date().toISOString() }));
+      if (data?.error) {
+        toast.error(data.error);
+      } else {
+        toast.success(`${data?.rowsUpdated || 0} incidents synchronisés`);
+        setConfig(prev => ({ ...prev, lastSync: new Date().toISOString() }));
+      }
     } catch (error) {
       console.error('Sheets sync error:', error);
       toast.error('Erreur lors de la synchronisation');
@@ -120,28 +128,63 @@ export default function SheetsConfig() {
     }
   };
 
-  const updateColumnMapping = (key: keyof typeof defaultColumnMapping, value: string) => {
+  const saveConfig = async () => {
+    try {
+      const { error } = await supabase.functions.invoke('sheets-sync', {
+        body: { 
+          action: 'save-config',
+          spreadsheetId: config.spreadsheetId,
+          sheetName: config.sheetName,
+          columnMapping: config.columnMapping
+        }
+      });
+      if (error) throw error;
+      toast.success('Configuration sauvegardée');
+    } catch (error) {
+      console.error('Save config error:', error);
+      toast.error('Erreur lors de la sauvegarde');
+    }
+  };
+
+  const updateColumnMapping = (key: string, value: string) => {
     setConfig(prev => ({
       ...prev,
       columnMapping: { ...prev.columnMapping, [key]: value.toUpperCase() }
     }));
   };
 
+  if (initialLoading) {
+    return (
+      <div className="min-h-screen flex flex-col lg:flex-row mesh-bg">
+        <AppSidebar />
+        <main className="flex-1 p-8 flex items-center justify-center">
+          <RefreshCw className="h-8 w-8 animate-spin text-primary" />
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col lg:flex-row mesh-bg">
       <AppSidebar />
-      
       <main className="flex-1 p-4 lg:p-8 overflow-auto">
         <div className="max-w-4xl mx-auto space-y-6">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold gradient-text">Configuration Google Sheets</h1>
-              <p className="text-muted-foreground mt-1">
-                Synchronisez vos incidents avec un Google Sheet comme registre officiel
-              </p>
-            </div>
+          <div>
+            <h1 className="text-3xl font-bold gradient-text">Configuration Google Sheets</h1>
+            <p className="text-muted-foreground mt-1">
+              Synchronisez vos incidents avec un Google Sheet comme registre officiel
+            </p>
           </div>
+
+          {/* Service Account Info */}
+          <Alert className="border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-900/20">
+            <Info className="h-4 w-4 text-blue-600" />
+            <AlertDescription className="text-blue-700 dark:text-blue-300">
+              <strong>Configuration requise :</strong> Un Service Account Google est nécessaire. 
+              Ajoutez le secret <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">GOOGLE_SHEETS_SERVICE_ACCOUNT</code> avec 
+              le JSON du compte de service, puis partagez le Sheet avec l'email du service account.
+            </AlertDescription>
+          </Alert>
 
           {/* Connection Settings */}
           <Card className="glass-card">
@@ -179,34 +222,15 @@ export default function SheetsConfig() {
               <div className="flex items-center justify-between p-4 rounded-xl bg-muted/50">
                 <div className="flex items-center gap-3">
                   <div className={`p-2 rounded-full ${config.connected ? 'bg-green-100 dark:bg-green-900/30' : 'bg-muted'}`}>
-                    {config.connected ? (
-                      <Check className="h-5 w-5 text-green-600 dark:text-green-400" />
-                    ) : (
-                      <X className="h-5 w-5 text-muted-foreground" />
-                    )}
+                    {config.connected ? <Check className="h-5 w-5 text-green-600" /> : <X className="h-5 w-5 text-muted-foreground" />}
                   </div>
                   <div>
-                    <p className="font-medium">
-                      {config.connected ? 'Connecté' : 'Non connecté'}
-                    </p>
-                    {config.connected && (
-                      <p className="text-sm text-muted-foreground">
-                        Feuille : {config.sheetName}
-                      </p>
-                    )}
+                    <p className="font-medium">{config.connected ? 'Connecté' : 'Non connecté'}</p>
+                    {config.connected && <p className="text-sm text-muted-foreground">Feuille : {config.sheetName}</p>}
                   </div>
                 </div>
-                <Button
-                  onClick={handleConnect}
-                  disabled={loading || !config.spreadsheetId}
-                  variant={config.connected ? 'outline' : 'default'}
-                  className={!config.connected ? 'glow-button' : ''}
-                >
-                  {loading ? (
-                    <RefreshCw className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                  )}
+                <Button onClick={handleConnect} disabled={loading || !config.spreadsheetId} variant={config.connected ? 'outline' : 'default'}>
+                  {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <ExternalLink className="h-4 w-4 mr-2" />}
                   {config.connected ? 'Reconnecter' : 'Connecter'}
                 </Button>
               </div>
@@ -225,21 +249,22 @@ export default function SheetsConfig() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {Object.entries(config.columnMapping).map(([key, value]) => (
                   <div key={key} className="space-y-1.5">
-                    <Label className="text-sm capitalize">
-                      {key.replace(/([A-Z])/g, ' $1').trim()}
-                    </Label>
+                    <Label className="text-sm capitalize">{key.replace(/_/g, ' ')}</Label>
                     <Input
                       value={value}
-                      onChange={(e) => updateColumnMapping(key as keyof typeof defaultColumnMapping, e.target.value)}
-                      className="w-20 uppercase"
+                      onChange={(e) => updateColumnMapping(key, e.target.value)}
+                      className="w-16 uppercase text-center"
                       maxLength={2}
                     />
                   </div>
                 ))}
               </div>
+              <Button variant="outline" onClick={saveConfig} className="mt-4">
+                Sauvegarder le mapping
+              </Button>
             </CardContent>
           </Card>
 
@@ -253,43 +278,28 @@ export default function SheetsConfig() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
+                <div>
                   <Label className="text-base">Synchronisation automatique</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Mettre à jour le Sheet automatiquement à chaque modification d'incident
-                  </p>
+                  <p className="text-sm text-muted-foreground">Mettre à jour le Sheet à chaque modification</p>
                 </div>
-                <Switch
-                  checked={config.syncEnabled}
-                  onCheckedChange={(checked) => 
-                    setConfig(prev => ({ ...prev, syncEnabled: checked }))
-                  }
+                <Switch 
+                  checked={config.syncEnabled} 
+                  onCheckedChange={(checked) => setConfig(prev => ({ ...prev, syncEnabled: checked }))} 
                 />
               </div>
 
               <Separator />
 
               <div className="flex items-center justify-between">
-                <div className="space-y-1">
+                <div>
                   <p className="font-medium">Dernière synchronisation</p>
                   <p className="text-sm text-muted-foreground flex items-center gap-1">
                     <Clock className="h-4 w-4" />
-                    {config.lastSync 
-                      ? new Date(config.lastSync).toLocaleString('fr-CH')
-                      : 'Jamais'
-                    }
+                    {config.lastSync ? new Date(config.lastSync).toLocaleString('fr-CH') : 'Jamais'}
                   </p>
                 </div>
-                <Button
-                  onClick={handleSync}
-                  disabled={syncing || !config.connected}
-                  className="glow-button"
-                >
-                  {syncing ? (
-                    <RefreshCw className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                  )}
+                <Button onClick={handleSync} disabled={syncing || !config.connected} className="glow-button">
+                  {syncing ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
                   Synchroniser maintenant
                 </Button>
               </div>
@@ -300,15 +310,13 @@ export default function SheetsConfig() {
           <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/20">
             <CardContent className="pt-6">
               <div className="flex gap-3">
-                <Table className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                <Table className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
                 <div className="space-y-2 text-sm">
-                  <p className="font-medium text-blue-800 dark:text-blue-300">
-                    Google Sheets = Registre Officiel
-                  </p>
+                  <p className="font-medium text-blue-800 dark:text-blue-300">Google Sheets = Registre Officiel</p>
                   <p className="text-blue-700 dark:text-blue-400">
                     Le Sheet sert de source de vérité. Chaque incident validé sera automatiquement 
-                    ajouté avec toutes les métadonnées : institution, type, gravité, faits, 
-                    dysfonctionnement, score, niveau de confiance IA, et références Gmail.
+                    ajouté avec toutes les métadonnées : numéro, date, institution, type, gravité, 
+                    faits, dysfonctionnement, score et niveau de confiance IA.
                   </p>
                 </div>
               </div>
