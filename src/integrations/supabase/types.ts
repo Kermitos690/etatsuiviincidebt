@@ -370,6 +370,48 @@ export type Database = {
         }
         Relationships: []
       }
+      sync_status: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          error_message: string | null
+          id: string
+          last_processed_id: string | null
+          new_emails: number | null
+          processed_emails: number | null
+          started_at: string | null
+          stats: Json | null
+          status: string | null
+          total_emails: number | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          last_processed_id?: string | null
+          new_emails?: number | null
+          processed_emails?: number | null
+          started_at?: string | null
+          stats?: Json | null
+          status?: string | null
+          total_emails?: number | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          last_processed_id?: string | null
+          new_emails?: number | null
+          processed_emails?: number | null
+          started_at?: string | null
+          stats?: Json | null
+          status?: string | null
+          total_emails?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

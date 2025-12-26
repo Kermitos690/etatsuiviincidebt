@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.generate-monthly-report]
 verify_jwt = false
+
+[functions.sync-status]
+verify_jwt = false

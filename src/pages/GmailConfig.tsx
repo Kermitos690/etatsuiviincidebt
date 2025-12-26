@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,12 +10,14 @@ import { Separator } from '@/components/ui/separator';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Progress } from '@/components/ui/progress';
 import { AppSidebar } from '@/components/layout/AppSidebar';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   Mail, Settings, Check, X, RefreshCw, Plus, 
-  ExternalLink, Shield, Clock, CalendarIcon, ChevronLeft, ChevronRight
+  ExternalLink, Shield, Clock, CalendarIcon, ChevronLeft, ChevronRight,
+  Loader2, CheckCircle2, AlertCircle
 } from 'lucide-react';
 import { INSTITUTIONAL_DOMAINS, SYNC_KEYWORDS } from '@/config/appConfig';
 import { format, setMonth, setYear } from 'date-fns';
@@ -29,6 +31,17 @@ interface GmailConfig {
   syncEnabled: boolean;
   domains: string[];
   keywords: string[];
+}
+
+interface SyncStatus {
+  id: string;
+  status: 'processing' | 'completed' | 'error';
+  total_emails: number;
+  processed_emails: number;
+  new_emails: number;
+  stats: { received: number; sent: number; replied: number; forwarded: number };
+  progress: number;
+  error_message?: string;
 }
 
 const MONTHS = [
@@ -48,11 +61,13 @@ export default function GmailConfig() {
   });
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [newDomain, setNewDomain] = useState('');
   const [newKeyword, setNewKeyword] = useState('');
   const [syncFromDate, setSyncFromDate] = useState<Date | undefined>(new Date('2024-01-01'));
   const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
   const [configId, setConfigId] = useState<string | null>(null);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   // Save config to database
   const saveConfigToDb = useCallback(async (domains: string[], keywords: string[], syncEnabled: boolean) => {
@@ -74,6 +89,15 @@ export default function GmailConfig() {
       console.error('Failed to save config:', error);
     }
   }, [configId]);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
+    };
+  }, []);
 
   // Handle OAuth callback from mobile redirect
   useEffect(() => {
@@ -123,14 +147,11 @@ export default function GmailConfig() {
       if (error) throw error;
       
       if (data?.url) {
-        // Detect mobile devices
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
         
         if (isMobile) {
-          // On mobile, use direct redirect (popups are often blocked)
           window.location.href = data.url;
         } else {
-          // On desktop, use popup
           const width = 600, height = 700;
           const left = window.screenX + (window.outerWidth - width) / 2;
           const top = window.screenY + (window.outerHeight - height) / 2;
@@ -161,27 +182,87 @@ export default function GmailConfig() {
     }
   };
 
+  const pollSyncStatus = useCallback(async (syncId: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('sync-status', {
+        body: { syncId }
+      });
+      
+      if (error) throw error;
+      
+      if (data) {
+        setSyncStatus(data);
+        
+        if (data.status === 'completed') {
+          setSyncing(false);
+          if (pollingRef.current) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+          }
+          setConfig(prev => ({ ...prev, lastSync: new Date().toISOString() }));
+          toast.success(`Synchronisation terminée: ${data.new_emails} nouveaux emails sur ${data.processed_emails} traités`);
+          
+          // Clear status after delay
+          setTimeout(() => setSyncStatus(null), 10000);
+        } else if (data.status === 'error') {
+          setSyncing(false);
+          if (pollingRef.current) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+          }
+          toast.error(`Erreur: ${data.error_message || 'Erreur inconnue'}`);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to poll sync status:', error);
+    }
+  }, []);
+
   const handleSync = async () => {
     setSyncing(true);
+    setSyncStatus(null);
+    
     try {
-      // Format date for Gmail query (YYYY/MM/DD)
       const afterDate = syncFromDate ? format(syncFromDate, 'yyyy/MM/dd') : null;
       
       const { data, error } = await supabase.functions.invoke('gmail-sync', {
         body: { 
           domains: config.domains, 
           keywords: config.keywords,
-          afterDate,
-          maxResults: 100
+          afterDate
         }
       });
+      
       if (error) throw error;
-      toast.success(`${data?.emailsProcessed || 0} emails synchronisés`);
-      setConfig(prev => ({ ...prev, lastSync: new Date().toISOString() }));
+      
+      if (data?.status === 'processing' && data?.syncId) {
+        // Start polling
+        setSyncStatus({
+          id: data.syncId,
+          status: 'processing',
+          total_emails: data.totalEmails,
+          processed_emails: 0,
+          new_emails: 0,
+          stats: { received: 0, sent: 0, replied: 0, forwarded: 0 },
+          progress: 0
+        });
+        
+        toast.info(`Traitement de ${data.totalEmails} emails en arrière-plan...`);
+        
+        // Poll every 2 seconds
+        pollingRef.current = setInterval(() => {
+          pollSyncStatus(data.syncId);
+        }, 2000);
+        
+      } else if (data?.status === 'completed') {
+        // No emails to process
+        setSyncing(false);
+        toast.success('Aucun email à synchroniser');
+      }
+      
     } catch (error) {
       console.error('Gmail sync error:', error);
       toast.error('Erreur lors de la synchronisation');
-    } finally {
       setSyncing(false);
     }
   };
@@ -234,6 +315,67 @@ export default function GmailConfig() {
               Connectez votre compte Gmail pour analyser automatiquement les emails
             </p>
           </div>
+
+          {/* Sync Progress Card */}
+          {syncStatus && (
+            <Card className={cn(
+              "glass-card border-2 transition-all",
+              syncStatus.status === 'processing' && "border-primary/50",
+              syncStatus.status === 'completed' && "border-green-500/50",
+              syncStatus.status === 'error' && "border-destructive/50"
+            )}>
+              <CardContent className="pt-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {syncStatus.status === 'processing' && (
+                        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                      )}
+                      {syncStatus.status === 'completed' && (
+                        <CheckCircle2 className="h-5 w-5 text-green-500" />
+                      )}
+                      {syncStatus.status === 'error' && (
+                        <AlertCircle className="h-5 w-5 text-destructive" />
+                      )}
+                      <div>
+                        <p className="font-medium">
+                          {syncStatus.status === 'processing' && 'Synchronisation en cours...'}
+                          {syncStatus.status === 'completed' && 'Synchronisation terminée'}
+                          {syncStatus.status === 'error' && 'Erreur de synchronisation'}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {syncStatus.processed_emails} / {syncStatus.total_emails} emails traités
+                          {syncStatus.new_emails > 0 && ` (${syncStatus.new_emails} nouveaux)`}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-2xl font-bold text-primary">
+                      {syncStatus.progress}%
+                    </span>
+                  </div>
+                  
+                  <Progress value={syncStatus.progress} className="h-3" />
+                  
+                  {syncStatus.stats && (syncStatus.stats.received > 0 || syncStatus.stats.sent > 0) && (
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
+                        📥 {syncStatus.stats.received} reçus
+                      </Badge>
+                      <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                        📤 {syncStatus.stats.sent} envoyés
+                      </Badge>
+                      <Badge variant="outline" className="bg-purple-500/10 text-purple-600 border-purple-500/20">
+                        ↩️ {syncStatus.stats.replied} réponses
+                      </Badge>
+                      <Badge variant="outline" className="bg-orange-500/10 text-orange-600 border-orange-500/20">
+                        ↪️ {syncStatus.stats.forwarded} transférés
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Card className="glass-card">
             <CardHeader>
@@ -341,7 +483,6 @@ export default function GmailConfig() {
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
                     <div className="p-3 space-y-3">
-                      {/* Year/Month selector */}
                       <div className="flex items-center justify-between gap-2">
                         <Button
                           variant="outline"
@@ -417,9 +558,22 @@ export default function GmailConfig() {
                     {config.lastSync ? new Date(config.lastSync).toLocaleString('fr-CH') : 'Jamais'}
                   </p>
                 </div>
-                <Button onClick={handleSync} disabled={syncing || !config.connected} className="glow-button w-full sm:w-auto">
-                  {syncing ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                  Synchroniser
+                <Button 
+                  onClick={handleSync} 
+                  disabled={syncing || !config.connected} 
+                  className="glow-button w-full sm:w-auto"
+                >
+                  {syncing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      En cours...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Synchroniser
+                    </>
+                  )}
                 </Button>
               </div>
             </CardContent>
