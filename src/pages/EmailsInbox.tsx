@@ -158,6 +158,14 @@ export default function EmailsInbox() {
   const [processingEmail, setProcessingEmail] = useState<string | null>(null);
   const [processingThread, setProcessingThread] = useState<string | null>(null);
   const [advancedAnalyzing, setAdvancedAnalyzing] = useState(false);
+  const [deepAnalyzing, setDeepAnalyzing] = useState(false);
+  const [deepAnalysisProgress, setDeepAnalysisProgress] = useState<{
+    analyzed: number;
+    total: number;
+    incidents: number;
+    newPatterns: number;
+    repeatedPatterns: number;
+  } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [viewMode, setViewMode] = useState<'threads' | 'list'>('threads');
@@ -519,6 +527,69 @@ export default function EmailsInbox() {
     }
   };
 
+  // Deep multi-perspective analysis
+  const runDeepAnalysis = async (batchSize: number = 20) => {
+    setDeepAnalyzing(true);
+    setDeepAnalysisProgress({ analyzed: 0, total: emails.length, incidents: 0, newPatterns: 0, repeatedPatterns: 0 });
+    
+    toast.info(`Lancement de l'analyse approfondie multi-perspectives...`, {
+      description: "5 perspectives d'analyse seront utilisées pour chaque email"
+    });
+
+    try {
+      const totalBatches = Math.ceil(emails.length / batchSize);
+      let totalIncidents = 0;
+      let totalNewPatterns = 0;
+      let totalRepeatedPatterns = 0;
+      let totalAnalyzed = 0;
+
+      for (let batch = 0; batch < totalBatches; batch++) {
+        const { data, error } = await supabase.functions.invoke('deep-analyze-emails', {
+          body: { 
+            batchSize,
+            minConfidence: 50
+          }
+        });
+
+        if (error) {
+          console.error('Deep analysis error:', error);
+          continue;
+        }
+
+        if (data) {
+          totalAnalyzed += data.analyzed || 0;
+          totalIncidents += data.totalIncidents || 0;
+          totalNewPatterns += data.newPatterns || 0;
+          totalRepeatedPatterns += data.repeatedPatterns || 0;
+
+          setDeepAnalysisProgress({
+            analyzed: totalAnalyzed,
+            total: emails.length,
+            incidents: totalIncidents,
+            newPatterns: totalNewPatterns,
+            repeatedPatterns: totalRepeatedPatterns
+          });
+
+          // If no more emails to analyze, stop
+          if ((data.analyzed || 0) === 0) break;
+        }
+      }
+
+      toast.success(`Analyse approfondie terminée !`, {
+        description: `${totalIncidents} incidents détectés • ${totalNewPatterns} nouveaux patterns • ${totalRepeatedPatterns} patterns répétés`
+      });
+
+      fetchEmails();
+      
+    } catch (error) {
+      console.error('Deep analysis error:', error);
+      toast.error('Erreur lors de l\'analyse approfondie');
+    } finally {
+      setDeepAnalyzing(false);
+      setDeepAnalysisProgress(null);
+    }
+  };
+
   const generateAIResponse = async (email: Email) => {
     if (!email.ai_analysis) return;
     
@@ -687,11 +758,41 @@ export default function EmailsInbox() {
               <Button 
                 onClick={analyzeAllThreads} 
                 className="glow-button text-white"
-                disabled={processingThread !== null}
+                disabled={processingThread !== null || deepAnalyzing}
               >
                 <Brain className="h-4 w-4 mr-2" />
-                Analyser tout
+                Analyser
               </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      onClick={() => runDeepAnalysis(15)} 
+                      className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
+                      disabled={deepAnalyzing || processingThread !== null}
+                    >
+                      {deepAnalyzing ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          {deepAnalysisProgress ? `${deepAnalysisProgress.analyzed}/${deepAnalysisProgress.total}` : 'Analyse...'}
+                        </>
+                      ) : (
+                        <>
+                          <Layers className="h-4 w-4 mr-2" />
+                          Analyse Multi-Passes
+                        </>
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p className="font-semibold">Analyse Approfondie Multi-Perspectives</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      5 perspectives d'analyse : Collaboration, Consentement, Documents, Délais, Comportement.
+                      Détecte les patterns récurrents et les nouveaux incidents.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           }
         />
