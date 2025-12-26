@@ -109,7 +109,7 @@ export default function SwipeTraining() {
           current_streak: statsData.current_streak || 0,
           max_streak: statsData.max_streak || 0,
           correct_predictions: statsData.correct_predictions || 0,
-          badges: statsData.badges || [],
+          badges: Array.isArray(statsData.badges) ? statsData.badges : [],
         });
       }
     } catch (error) {
@@ -257,20 +257,21 @@ export default function SwipeTraining() {
           title="Entraînement IA - Mode Swipe"
           description="Validez les connexions entre emails pour améliorer l'IA"
           icon={<GraduationCap className="h-6 w-6" />}
-        >
-          <Button
-            onClick={generatePairs}
-            disabled={isGenerating}
-            className="gap-2"
-          >
-            {isGenerating ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            Générer des paires
-          </Button>
-        </PageHeader>
+          actions={
+            <Button
+              onClick={generatePairs}
+              disabled={isGenerating}
+              className="gap-2"
+            >
+              {isGenerating ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Générer des paires
+            </Button>
+          }
+        />
 
         {/* Stats */}
         <SwipeStats
