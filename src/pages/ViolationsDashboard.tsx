@@ -22,10 +22,12 @@ import {
   BarChart3,
   PieChart,
   Clock,
-  Building2
+  Building2,
+  Mail
 } from "lucide-react";
 import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import { toast } from "sonner";
+import { EmailLink } from "@/components/email";
 
 interface ViolationStats {
   consentViolations: number;
@@ -583,8 +585,7 @@ export default function ViolationsDashboard() {
                     {violations.length > 0 ? violations.map((violation) => (
                       <div
                         key={violation.id}
-                        className="p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors cursor-pointer"
-                        onClick={() => navigate(`/emails?emailId=${violation.emailId}`)}
+                        className="p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
                       >
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex items-start gap-3 flex-1">
@@ -613,7 +614,13 @@ export default function ViolationsDashboard() {
                               </div>
                             </div>
                           </div>
-                          <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                          <EmailLink
+                            emailId={violation.emailId}
+                            label="Voir l'email"
+                            variant="cta"
+                            size="sm"
+                            tooltip="Voir l'email source de cette violation"
+                          />
                         </div>
                       </div>
                     )) : (

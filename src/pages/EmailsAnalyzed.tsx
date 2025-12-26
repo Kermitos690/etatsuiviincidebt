@@ -36,6 +36,8 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { EmailLink } from '@/components/email';
+import { useNavigate } from 'react-router-dom';
 
 interface AIAnalysis {
   is_incident?: boolean;
@@ -334,13 +336,24 @@ export default function EmailsAnalyzed() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => handleEmailClick(email)}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <EmailLink
+                            emailId={email.id}
+                            label=""
+                            variant="cta"
+                            size="icon"
+                            showIcon
+                            tooltip="Voir l'email complet"
+                          />
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => handleEmailClick(email)}
+                            title="Voir l'analyse"
+                          >
+                            <Brain className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
