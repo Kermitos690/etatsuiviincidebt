@@ -6,14 +6,19 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { AppSidebar } from '@/components/layout/AppSidebar';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   Mail, Settings, Check, X, RefreshCw, Plus, 
-  ExternalLink, Shield, Clock
+  ExternalLink, Shield, Clock, CalendarIcon
 } from 'lucide-react';
 import { INSTITUTIONAL_DOMAINS, SYNC_KEYWORDS } from '@/config/appConfig';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 
 interface GmailConfig {
   connected: boolean;
@@ -35,6 +40,7 @@ export default function GmailConfig() {
   const [syncing, setSyncing] = useState(false);
   const [newDomain, setNewDomain] = useState('');
   const [newKeyword, setNewKeyword] = useState('');
+  const [syncFromDate, setSyncFromDate] = useState<Date | undefined>(new Date('2025-12-18'));
 
   // Load config from database on mount
   useEffect(() => {
@@ -103,8 +109,16 @@ export default function GmailConfig() {
   const handleSync = async () => {
     setSyncing(true);
     try {
+      // Format date for Gmail query (YYYY/MM/DD)
+      const afterDate = syncFromDate ? format(syncFromDate, 'yyyy/MM/dd') : null;
+      
       const { data, error } = await supabase.functions.invoke('gmail-sync', {
-        body: { domains: config.domains, keywords: config.keywords }
+        body: { 
+          domains: config.domains, 
+          keywords: config.keywords,
+          afterDate,
+          maxResults: 100
+        }
       });
       if (error) throw error;
       toast.success(`${data?.emailsProcessed || 0} emails synchronisés`);
@@ -239,7 +253,37 @@ export default function GmailConfig() {
                 Synchronisation manuelle
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
+                <Label className="text-base">Synchroniser depuis</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full md:w-[280px] justify-start text-left font-normal",
+                        !syncFromDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {syncFromDate ? format(syncFromDate, "dd MMMM yyyy", { locale: fr }) : "Sélectionner une date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={syncFromDate}
+                      onSelect={setSyncFromDate}
+                      initialFocus
+                      className={cn("p-3 pointer-events-auto")}
+                    />
+                  </PopoverContent>
+                </Popover>
+                <p className="text-sm text-muted-foreground">
+                  Les emails reçus après cette date seront synchronisés
+                </p>
+              </div>
+              <Separator />
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium">Dernière synchronisation</p>

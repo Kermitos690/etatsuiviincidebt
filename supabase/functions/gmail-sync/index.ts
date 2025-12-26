@@ -95,12 +95,14 @@ serve(async (req) => {
     let domains = config.domains || [];
     let keywords = config.keywords || [];
     let maxResults = 50;
+    let afterDate = null;
 
     try {
       const body = await req.json();
       if (body.domains) domains = body.domains;
       if (body.keywords) keywords = body.keywords;
       if (body.maxResults) maxResults = body.maxResults;
+      if (body.afterDate) afterDate = body.afterDate; // Format: YYYY/MM/DD
     } catch {
       // No body or invalid JSON, use defaults from config
     }
@@ -112,7 +114,12 @@ serve(async (req) => {
     const keywordQuery = keywords?.length 
       ? `(${keywords.join(" OR ")})` 
       : "";
-    const query = [domainQuery, keywordQuery].filter(Boolean).join(" ");
+    
+    // Add date filter if specified
+    const dateQuery = afterDate ? `after:${afterDate}` : "";
+    
+    const queryParts = [domainQuery, keywordQuery, dateQuery].filter(Boolean);
+    const query = queryParts.join(" ");
 
     console.log("Gmail search query:", query);
 
