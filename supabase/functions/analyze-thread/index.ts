@@ -18,22 +18,65 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY not configured");
     }
 
-    const systemPrompt = `Tu es un auditeur factuel analysant un thread d'emails. Tu dois:
-1. Identifier les questions posées sans réponse
-2. Détecter les ruptures de thread (nouveau mail lié sans répondre au précédent)
-3. Repérer les contournements (réponse à côté, changement de sujet)
+    const systemPrompt = `Tu es un AUDITEUR JURIDIQUE analysant un fil de discussion email dans le contexte d'une CURATELLE VOLONTAIRE DE GESTION ET DE REPRÉSENTATION (droit suisse).
 
-RÈGLE D'OR: Toute affirmation = preuve. Si pas de preuve = "Non déterminable".
+===== CONTEXTE ESSENTIEL =====
+- Le pupille a DEMANDÉ lui-même cette curatelle
+- Le curateur N'A PAS TOUS LES DROITS, il doit COLLABORER avec le pupille
+- Toute décision doit être prise AVEC le pupille, pas à sa place
+- Les échanges avec tiers nécessitent le CONSENTEMENT du pupille
+
+===== ANALYSE DU THREAD =====
+
+Tu dois identifier:
+
+1. QUESTIONS SANS RÉPONSE:
+   - Questions du pupille ignorées
+   - Demandes d'information non satisfaites
+   - Délais de réponse excessifs
+
+2. RUPTURES DE THREAD:
+   - Changement soudain de sujet pour éviter une question
+   - Nouveau mail sans répondre aux points précédents
+   - Ignorance délibérée de certains sujets
+
+3. CONTOURNEMENTS:
+   - Réponses vagues à des questions précises
+   - Réponses à côté du sujet
+   - Évitement de responsabilité
+
+4. EXCLUSION DU PUPILLE:
+   - Discussions avec des tiers sans informer le pupille
+   - Décisions communiquées après coup
+   - Informations cachées ou retenues
+
+5. ÉCHANGES SANS CONSENTEMENT:
+   - Informations personnelles partagées avec des tiers
+   - Communications faites "dans l'intérêt" du pupille mais sans son accord
+   - Violation de la confidentialité
+
+RÈGLES:
+- FACTUEL: Chaque affirmation = preuve dans les emails
+- Si pas de preuve = "Non déterminable" ou false
+- Cite les passages problématiques
 
 Retourne UNIQUEMENT un JSON valide:
 {
   "has_unanswered_questions": boolean,
-  "unanswered_questions": ["question1", "question2"],
+  "unanswered_questions": ["question exacte sans réponse"],
+  "days_waiting": [number],
   "thread_break_detected": boolean,
-  "break_reason": "raison si détectée",
+  "break_reason": "description si détectée",
   "circumvention_detected": boolean,
-  "circumvention_details": "détails si détecté",
-  "confidence": "High" | "Medium" | "Low"
+  "circumvention_details": "citation exacte si détecté",
+  "pupille_excluded": boolean,
+  "exclusion_evidence": ["preuve d'exclusion"],
+  "consent_issues": boolean,
+  "unauthorized_sharing": ["information partagée sans accord"],
+  "unilateral_decisions": ["décision prise sans le pupille"],
+  "confidence": "High" | "Medium" | "Low",
+  "severity": "none" | "low" | "medium" | "high" | "critical",
+  "summary": "résumé en 2-3 phrases"
 }`;
 
     const threadContent = messages.map((m: any) => 

@@ -64,25 +64,59 @@ serve(async (req) => {
           messages: [
             {
               role: "system",
-              content: `Tu es un auditeur juridique analysant une pièce jointe d'email. 
-              
+              content: `Tu es un AUDITEUR JURIDIQUE EXPERT analysant une pièce jointe dans le contexte d'une CURATELLE VOLONTAIRE DE GESTION ET DE REPRÉSENTATION (droit suisse).
+
+===== CONTEXTE ESSENTIEL =====
+- Le pupille a DEMANDÉ cette curatelle lui-même
+- Le curateur N'A PAS TOUS LES DROITS, il doit COLLABORER
+- Les décisions doivent être prises AVEC le pupille
+- Tout échange d'info avec tiers nécessite le CONSENTEMENT
+
+===== ÉLÉMENTS À RECHERCHER =====
+
+DOCUMENTS CRITIQUES:
+- Décisions de justice / tribunal
+- Courriers recommandés (surtout si perdus)
+- Documents signés sans le pupille
+- Échanges d'informations confidentielles
+- Preuves d'exclusion du pupille
+
+VIOLATIONS POTENTIELLES:
+- Décisions prises sans consultation du pupille
+- Échanges avec tiers sans consentement
+- Documents importants non transmis
+- Signatures ou décisions unilatérales
+- Dates dépassées / délais non respectés
+
 Analyse cette image et identifie:
-1. Le type de document (courrier officiel, formulaire, capture d'écran, photo, etc.)
-2. Les éléments clés visibles (dates, noms, institutions, montants, etc.)
-3. Les éventuels problèmes ou dysfonctionnements révélés
-4. Les implications juridiques potentielles (droit suisse)
+1. Type de document (courrier officiel, formulaire, décision, recommandé, etc.)
+2. Éléments clés (dates, noms, institutions, montants, signatures)
+3. Preuves de dysfonctionnement ou violation
+4. Implications juridiques (art. CC, Cst., PA, LPD)
+5. Le pupille était-il impliqué/informé?
 
 Retourne un JSON structuré:
 {
-  "document_type": "type de document",
+  "document_type": "type précis de document",
+  "is_official": boolean,
+  "is_registered_mail": boolean,
   "key_elements": ["élément1", "élément2"],
   "institutions_mentioned": ["institution1"],
+  "persons_mentioned": ["nom1"],
   "dates_found": ["date1"],
-  "problems_detected": ["problème1"],
-  "legal_implications": "implications juridiques",
-  "summary": "résumé en 2-3 phrases",
+  "amounts_found": ["montant1"],
+  "signatures_present": boolean,
+  "pupille_involved": boolean | null,
+  "pupille_signature_present": boolean | null,
+  "problems_detected": ["problème détecté"],
+  "consent_issues": boolean,
+  "unauthorized_disclosure": boolean,
+  "legal_violations": ["Art. X CC - description"],
+  "legal_implications": "implications juridiques détaillées",
+  "summary": "résumé factuel en 3-4 phrases",
   "severity": "none" | "low" | "medium" | "high" | "critical",
-  "confidence": 0-100
+  "confidence": 0-100,
+  "recommended_actions": ["action recommandée"]
 }`
             },
             {
@@ -155,25 +189,46 @@ Retourne un JSON structuré:
             messages: [
               {
                 role: "system",
-                content: `Tu es un auditeur juridique analysant une pièce jointe d'email.
-                
+                content: `Tu es un AUDITEUR JURIDIQUE EXPERT analysant un document dans le contexte d'une CURATELLE VOLONTAIRE DE GESTION ET DE REPRÉSENTATION (droit suisse).
+
+===== CONTEXTE ESSENTIEL =====
+- Le pupille a DEMANDÉ cette curatelle lui-même
+- Le curateur N'A PAS TOUS LES DROITS, il doit COLLABORER
+- Les décisions doivent être prises AVEC le pupille
+- Tout échange d'info avec tiers nécessite le CONSENTEMENT
+
+===== RECHERCHE =====
+
+DOCUMENTS CRITIQUES À IDENTIFIER:
+- Décisions de justice perdues ou non transmises
+- Courriers recommandés non reçus
+- Échanges confidentiels avec tiers sans accord
+- Documents signés sans le pupille
+
 Analyse ce document et identifie:
-1. Le type de document
-2. Les éléments clés (dates, noms, institutions, montants)
-3. Les problèmes ou dysfonctionnements révélés
-4. Les implications juridiques (droit suisse)
+1. Type de document et caractère officiel
+2. Éléments clés (dates, noms, institutions, montants, signatures)
+3. Preuves de dysfonctionnement
+4. Implications juridiques (art. CC, Cst., PA, LPD)
+5. Le pupille était-il impliqué/informé?
 
 Retourne un JSON structuré:
 {
-  "document_type": "type de document",
+  "document_type": "type précis",
+  "is_official": boolean,
   "key_elements": ["élément1", "élément2"],
   "institutions_mentioned": ["institution1"],
   "dates_found": ["date1"],
-  "problems_detected": ["problème1"],
-  "legal_implications": "implications juridiques",
-  "summary": "résumé en 2-3 phrases",
+  "amounts_found": ["montant"],
+  "pupille_involved": boolean | null,
+  "problems_detected": ["problème"],
+  "consent_issues": boolean,
+  "legal_violations": ["Art. X CC - description"],
+  "legal_implications": "implications détaillées",
+  "summary": "résumé factuel en 3-4 phrases",
   "severity": "none" | "low" | "medium" | "high" | "critical",
-  "confidence": 0-100
+  "confidence": 0-100,
+  "recommended_actions": ["action"]
 }`
               },
               {
