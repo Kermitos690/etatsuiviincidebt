@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { AuthGuard } from "@/components/auth/AuthGuard";
 import Dashboard from "./pages/Dashboard";
 import Journal from "./pages/Journal";
 import Incidents from "./pages/Incidents";
@@ -16,6 +17,7 @@ import Exports from "./pages/Exports";
 import Admin from "./pages/Admin";
 import GmailConfig from "./pages/GmailConfig";
 import SheetsConfig from "./pages/SheetsConfig";
+import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,18 +30,22 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/journal" element={<Journal />} />
-            <Route path="/incidents" element={<Incidents />} />
-            <Route path="/incidents/:id" element={<IncidentDetail />} />
-            <Route path="/incidents/:id/edit" element={<EditIncident />} />
-            <Route path="/nouveau" element={<NewIncident />} />
-            <Route path="/ia-auditeur" element={<IAAuditeur />} />
-            <Route path="/emails" element={<EmailsInbox />} />
-            <Route path="/exports" element={<Exports />} />
-            <Route path="/admin" element={<Admin />} />
-            <Route path="/gmail-config" element={<GmailConfig />} />
-            <Route path="/sheets-config" element={<SheetsConfig />} />
+            {/* Public route */}
+            <Route path="/auth" element={<Auth />} />
+            
+            {/* Protected routes */}
+            <Route path="/" element={<AuthGuard><Dashboard /></AuthGuard>} />
+            <Route path="/journal" element={<AuthGuard><Journal /></AuthGuard>} />
+            <Route path="/incidents" element={<AuthGuard><Incidents /></AuthGuard>} />
+            <Route path="/incidents/:id" element={<AuthGuard><IncidentDetail /></AuthGuard>} />
+            <Route path="/incidents/:id/edit" element={<AuthGuard><EditIncident /></AuthGuard>} />
+            <Route path="/nouveau" element={<AuthGuard><NewIncident /></AuthGuard>} />
+            <Route path="/ia-auditeur" element={<AuthGuard><IAAuditeur /></AuthGuard>} />
+            <Route path="/emails" element={<AuthGuard><EmailsInbox /></AuthGuard>} />
+            <Route path="/exports" element={<AuthGuard><Exports /></AuthGuard>} />
+            <Route path="/admin" element={<AuthGuard><Admin /></AuthGuard>} />
+            <Route path="/gmail-config" element={<AuthGuard><GmailConfig /></AuthGuard>} />
+            <Route path="/sheets-config" element={<AuthGuard><SheetsConfig /></AuthGuard>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

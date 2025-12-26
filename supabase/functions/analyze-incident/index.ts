@@ -5,6 +5,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Sanitize and truncate strings
+const sanitizeString = (str: string | undefined, maxLength: number): string => {
+  if (!str) return '';
+  return str.substring(0, maxLength).trim();
+};
+
+// Email validation regex
+const isValidEmail = (email: string): boolean => {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -20,8 +31,19 @@ serve(async (req) => {
 
     // Handle different request types
     if (body.type === 'generate-response') {
-      // Generate email response
-      const { emailSubject, emailSender, emailBody, analysis } = body;
+      // Validate and sanitize inputs
+      const emailSubject = sanitizeString(body.emailSubject, 500);
+      const emailSender = sanitizeString(body.emailSender, 255);
+      const emailBody = sanitizeString(body.emailBody, 10000);
+      const analysis = body.analysis || {};
+      
+      // Validate sender email format if provided
+      if (emailSender && !isValidEmail(emailSender)) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid email sender format' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
       
       const systemPrompt = `Tu es un assistant juridique professionnel. Génère une réponse email appropriée et professionnelle.
 
@@ -29,9 +51,9 @@ CONTEXTE:
 - Email de: ${emailSender}
 - Sujet: ${emailSubject}
 - L'analyse IA a identifié: ${analysis.isIncident ? 'un incident potentiel' : 'pas d\'incident'}
-${analysis.isIncident ? `- Gravité suggérée: ${analysis.suggestedGravity}
-- Type: ${analysis.suggestedType}
-- Résumé: ${analysis.summary}` : ''}
+${analysis.isIncident ? `- Gravité suggérée: ${sanitizeString(analysis.suggestedGravity, 50)}
+- Type: ${sanitizeString(analysis.suggestedType, 50)}
+- Résumé: ${sanitizeString(analysis.summary, 500)}` : ''}
 
 RÈGLES:
 - Reste professionnel et courtois
@@ -73,7 +95,14 @@ RÈGLES:
     }
 
     // Default: analyze incident text
-    const { text } = body;
+    const text = sanitizeString(body.text, 20000);
+    
+    if (!text) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required field: text' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const systemPrompt = `Tu es un auditeur juridique factuel. Analyse le texte fourni et extrait UNIQUEMENT les informations présentes.
 

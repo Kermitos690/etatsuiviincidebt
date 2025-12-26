@@ -10,19 +10,49 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
+// Email validation regex
+const isValidEmail = (email: string): boolean => {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+};
+
+// Sanitize and truncate strings
+const sanitizeString = (str: string | undefined, maxLength: number): string => {
+  if (!str) return '';
+  return str.substring(0, maxLength).trim();
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { subject, sender, body, received_at, autoProcess = true, confidenceThreshold = 70 } = await req.json();
+    const body = await req.json();
+    
+    // Extract and validate inputs
+    const subject = sanitizeString(body.subject, 500);
+    const sender = sanitizeString(body.sender, 255);
+    const emailBody = sanitizeString(body.body, 50000);
+    const received_at = body.received_at;
+    const autoProcess = body.autoProcess !== false;
+    const confidenceThreshold = typeof body.confidenceThreshold === 'number' 
+      ? Math.min(100, Math.max(0, body.confidenceThreshold)) 
+      : 70;
 
-    console.log('Received email:', { subject, sender, bodyLength: body?.length });
+    console.log('Received email:', { subject: subject.substring(0, 50), sender, bodyLength: emailBody?.length });
 
-    if (!subject || !sender || !body) {
+    // Validate required fields
+    if (!subject || !sender || !emailBody) {
       return new Response(
         JSON.stringify({ error: 'Missing required fields: subject, sender, body' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate sender email format
+    if (!isValidEmail(sender)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid sender email format' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -34,6 +64,9 @@ serve(async (req) => {
     
     if (LOVABLE_API_KEY) {
       console.log('Analyzing email with AI...');
+      
+      // Limit content sent to AI to prevent token exhaustion
+      const truncatedBody = emailBody.substring(0, 10000);
       
       const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
         method: 'POST',
@@ -66,7 +99,7 @@ Réponds UNIQUEMENT en JSON valide avec cette structure:
             },
             {
               role: 'user',
-              content: `Email de: ${sender}\nSujet: ${subject}\n\nContenu:\n${body}`
+              content: `Email de: ${sender}\nSujet: ${subject}\n\nContenu:\n${truncatedBody}`
             }
           ]
         })
@@ -81,7 +114,7 @@ Réponds UNIQUEMENT en JSON valide avec cette structure:
             const jsonMatch = content.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
               aiAnalysis = JSON.parse(jsonMatch[0]);
-              console.log('AI analysis:', aiAnalysis);
+              console.log('AI analysis:', { isIncident: aiAnalysis.isIncident, confidence: aiAnalysis.confidence });
             }
           } catch (parseError) {
             console.error('Failed to parse AI response:', parseError);
@@ -98,7 +131,7 @@ Réponds UNIQUEMENT en JSON valide avec cette structure:
       .insert({
         subject,
         sender,
-        body,
+        body: emailBody,
         received_at: received_at || new Date().toISOString(),
         processed: !!aiAnalysis,
         ai_analysis: aiAnalysis
@@ -119,21 +152,22 @@ Réponds UNIQUEMENT en JSON valide avec cette structure:
     if (autoProcess && aiAnalysis?.isIncident && aiAnalysis.confidence >= confidenceThreshold) {
       console.log(`Auto-creating incident (confidence: ${aiAnalysis.confidence}%)`);
 
+      // Sanitize AI suggestions before inserting
       const { data: incident, error: incError } = await supabase
         .from('incidents')
         .insert({
-          titre: aiAnalysis.suggestedTitle || subject,
-          faits: aiAnalysis.suggestedFacts || body.substring(0, 1000),
-          dysfonctionnement: aiAnalysis.suggestedDysfunction || 'À compléter',
-          institution: aiAnalysis.suggestedInstitution || 'Non identifiée',
-          type: aiAnalysis.suggestedType || 'Autre',
-          gravite: aiAnalysis.suggestedGravity || 'Modéré',
+          titre: sanitizeString(aiAnalysis.suggestedTitle || subject, 500),
+          faits: sanitizeString(aiAnalysis.suggestedFacts || emailBody, 5000),
+          dysfonctionnement: sanitizeString(aiAnalysis.suggestedDysfunction || 'À compléter', 1000),
+          institution: sanitizeString(aiAnalysis.suggestedInstitution || 'Non identifiée', 255),
+          type: sanitizeString(aiAnalysis.suggestedType || 'Autre', 50),
+          gravite: sanitizeString(aiAnalysis.suggestedGravity || 'Modéré', 20),
           priorite: aiAnalysis.suggestedGravity === 'Critique' ? 'critique' : 
                    aiAnalysis.suggestedGravity === 'Grave' ? 'haute' : 'normale',
           date_incident: new Date().toISOString().split('T')[0],
           email_source_id: email.id,
-          confidence_level: `${aiAnalysis.confidence}%`,
-          score: aiAnalysis.confidence,
+          confidence_level: `${Math.round(aiAnalysis.confidence)}%`,
+          score: Math.round(aiAnalysis.confidence),
         })
         .select()
         .single();

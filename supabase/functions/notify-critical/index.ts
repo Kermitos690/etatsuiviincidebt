@@ -5,6 +5,22 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// HTML escape function to prevent XSS
+const escapeHtml = (str: string): string => {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+};
+
+// Email validation regex
+const isValidEmail = (email: string): boolean => {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+};
+
 interface NotifyCriticalRequest {
   alertEmail: string;
   incidentTitle: string;
@@ -26,6 +42,9 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error("RESEND_API_KEY not configured");
     }
 
+    const body = await req.json();
+    
+    // Input validation
     const { 
       alertEmail, 
       incidentTitle, 
@@ -34,10 +53,51 @@ const handler = async (req: Request): Promise<Response> => {
       incidentScore,
       incidentFaits,
       incidentInstitution
-    }: NotifyCriticalRequest = await req.json();
+    }: NotifyCriticalRequest = body;
+
+    // Validate required fields
+    if (!alertEmail || !incidentTitle) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required fields: alertEmail, incidentTitle' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate email format
+    if (!isValidEmail(alertEmail)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid email address format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate string lengths to prevent abuse
+    if (incidentTitle.length > 500) {
+      return new Response(
+        JSON.stringify({ error: 'incidentTitle exceeds maximum length of 500 characters' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (incidentFaits && incidentFaits.length > 10000) {
+      return new Response(
+        JSON.stringify({ error: 'incidentFaits exceeds maximum length of 10000 characters' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate score is a number between 0-100
+    const score = typeof incidentScore === 'number' ? Math.min(100, Math.max(0, incidentScore)) : 0;
 
     console.log("Sending critical alert to:", alertEmail);
-    console.log("Incident:", incidentTitle);
+    console.log("Incident:", incidentTitle.substring(0, 50));
+
+    // Escape all user inputs for HTML
+    const safeTitle = escapeHtml(incidentTitle);
+    const safeInstitution = escapeHtml(incidentInstitution || 'Non spécifiée');
+    const safeType = escapeHtml(incidentType || 'Non spécifié');
+    const safeGravite = escapeHtml(incidentGravite || 'Non spécifiée');
+    const safeFaits = escapeHtml(incidentFaits || 'Aucun détail fourni');
 
     const html = `
       <!DOCTYPE html>
@@ -55,7 +115,7 @@ const handler = async (req: Request): Promise<Response> => {
           .detail-row:last-child { border-bottom: none; }
           .label { color: #a0a0a0; }
           .value { color: #fff; font-weight: 500; }
-          .faits { background: rgba(239, 68, 68, 0.1); border-left: 4px solid #ef4444; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0; }
+          .faits { background: rgba(239, 68, 68, 0.1); border-left: 4px solid #ef4444; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0; white-space: pre-wrap; word-break: break-word; }
           .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
         </style>
       </head>
@@ -63,29 +123,29 @@ const handler = async (req: Request): Promise<Response> => {
         <div class="container">
           <div class="header">
             <span class="alert-badge">🚨 ALERTE CRITIQUE</span>
-            <h1>${incidentTitle}</h1>
+            <h1>${safeTitle}</h1>
           </div>
           
-          <div class="score">Score: ${incidentScore}/100</div>
+          <div class="score">Score: ${score}/100</div>
           
           <div class="details">
             <div class="detail-row">
               <span class="label">Institution</span>
-              <span class="value">${incidentInstitution}</span>
+              <span class="value">${safeInstitution}</span>
             </div>
             <div class="detail-row">
               <span class="label">Type</span>
-              <span class="value">${incidentType}</span>
+              <span class="value">${safeType}</span>
             </div>
             <div class="detail-row">
               <span class="label">Gravité</span>
-              <span class="value">${incidentGravite}</span>
+              <span class="value">${safeGravite}</span>
             </div>
           </div>
           
           <div class="faits">
             <strong>Faits constatés:</strong><br/>
-            ${incidentFaits}
+            ${safeFaits}
           </div>
           
           <div class="footer">
@@ -105,7 +165,7 @@ const handler = async (req: Request): Promise<Response> => {
       body: JSON.stringify({
         from: "Alertes Incidents <onboarding@resend.dev>",
         to: [alertEmail],
-        subject: `🚨 ALERTE CRITIQUE: ${incidentTitle} (Score: ${incidentScore})`,
+        subject: `🚨 ALERTE CRITIQUE: ${safeTitle.substring(0, 100)} (Score: ${score})`,
         html: html,
       }),
     });

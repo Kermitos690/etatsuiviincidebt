@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   BookOpen, 
@@ -12,13 +12,14 @@ import {
   Sparkles,
   Mail,
   Table,
-  Sun,
-  Moon
+  LogOut
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { useAuth } from '@/hooks/useAuth';
+import { toast } from 'sonner';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -35,46 +36,79 @@ const navItems = [
 
 function NavContent({ onItemClick }: { onItemClick?: () => void }) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { signOut, user } = useAuth();
+
+  const handleSignOut = async () => {
+    const { error } = await signOut();
+    if (error) {
+      toast.error('Erreur lors de la déconnexion');
+    } else {
+      toast.success('Déconnexion réussie');
+      navigate('/auth');
+    }
+    onItemClick?.();
+  };
 
   return (
-    <nav className="flex-1 p-3 space-y-1.5">
-      {navItems.map((item, index) => {
-        const isActive = location.pathname === item.to || 
-          (item.to !== '/' && location.pathname.startsWith(item.to));
-        
-        return (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            onClick={onItemClick}
-            className={cn(
-              "group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300",
-              "hover:bg-sidebar-accent/80 hover:scale-[1.02] hover:shadow-glow-sm",
-              "animate-slide-up",
-              isActive 
-                ? "bg-gradient-primary text-primary-foreground shadow-glow font-medium" 
-                : "text-sidebar-foreground"
-            )}
-            style={{ animationDelay: `${index * 50}ms` }}
-          >
-            <div className={cn(
-              "relative p-1.5 rounded-lg transition-all duration-300",
-              isActive 
-                ? "bg-white/20" 
-                : "bg-sidebar-accent/50 group-hover:bg-primary/10"
-            )}>
-              <item.icon className="h-4 w-4 flex-shrink-0" />
-              {isActive && (
-                <div className="absolute inset-0 rounded-lg animate-pulse-glow" />
+    <nav className="flex-1 p-3 space-y-1.5 flex flex-col">
+      <div className="flex-1 space-y-1.5">
+        {navItems.map((item, index) => {
+          const isActive = location.pathname === item.to || 
+            (item.to !== '/' && location.pathname.startsWith(item.to));
+          
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={onItemClick}
+              className={cn(
+                "group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300",
+                "hover:bg-sidebar-accent/80 hover:scale-[1.02] hover:shadow-glow-sm",
+                "animate-slide-up",
+                isActive 
+                  ? "bg-gradient-primary text-primary-foreground shadow-glow font-medium" 
+                  : "text-sidebar-foreground"
               )}
-            </div>
-            <span className="font-medium">{item.label}</span>
-            {isActive && (
-              <Sparkles className="h-3 w-3 ml-auto opacity-60 animate-float" />
-            )}
-          </NavLink>
-        );
-      })}
+              style={{ animationDelay: `${index * 50}ms` }}
+            >
+              <div className={cn(
+                "relative p-1.5 rounded-lg transition-all duration-300",
+                isActive 
+                  ? "bg-white/20" 
+                  : "bg-sidebar-accent/50 group-hover:bg-primary/10"
+              )}>
+                <item.icon className="h-4 w-4 flex-shrink-0" />
+                {isActive && (
+                  <div className="absolute inset-0 rounded-lg animate-pulse-glow" />
+                )}
+              </div>
+              <span className="font-medium">{item.label}</span>
+              {isActive && (
+                <Sparkles className="h-3 w-3 ml-auto opacity-60 animate-float" />
+              )}
+            </NavLink>
+          );
+        })}
+      </div>
+      
+      {/* User info and logout */}
+      <div className="pt-2 border-t border-glass/50">
+        {user && (
+          <p className="px-4 py-2 text-xs text-muted-foreground truncate">
+            {user.email}
+          </p>
+        )}
+        <button
+          onClick={handleSignOut}
+          className="w-full group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+        >
+          <div className="p-1.5 rounded-lg bg-sidebar-accent/50 group-hover:bg-destructive/20 transition-all duration-300">
+            <LogOut className="h-4 w-4 flex-shrink-0" />
+          </div>
+          <span className="font-medium">Déconnexion</span>
+        </button>
+      </div>
     </nav>
   );
 }
