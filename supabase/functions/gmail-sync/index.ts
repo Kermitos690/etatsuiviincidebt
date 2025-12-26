@@ -80,6 +80,89 @@ function determineEmailType(
   }
 }
 
+// Check for attachments in message parts
+function findAttachments(parts: any[]): any[] {
+  const attachments: any[] = [];
+  for (const part of parts) {
+    if (part.filename && part.filename.length > 0 && part.body?.attachmentId) {
+      attachments.push({
+        attachmentId: part.body.attachmentId,
+        filename: part.filename,
+        mimeType: part.mimeType,
+        size: part.body.size || 0,
+      });
+    }
+    if (part.parts) {
+      attachments.push(...findAttachments(part.parts));
+    }
+  }
+  return attachments;
+}
+
+// Download and store attachments
+async function downloadAttachments(
+  emailId: string,
+  messageId: string,
+  attachments: any[],
+  accessToken: string,
+  supabase: any
+) {
+  const downloaded = [];
+  
+  for (const attachment of attachments) {
+    try {
+      const attachmentResponse = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachment.attachmentId}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+
+      if (!attachmentResponse.ok) {
+        console.error(`Failed to download attachment: ${attachment.filename}`);
+        continue;
+      }
+
+      const attachmentData = await attachmentResponse.json();
+      const base64Data = attachmentData.data.replace(/-/g, "+").replace(/_/g, "/");
+      const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+
+      const timestamp = Date.now();
+      const sanitizedFilename = attachment.filename.replace(/[^a-zA-Z0-9.-]/g, "_");
+      const storagePath = `${emailId}/${timestamp}_${sanitizedFilename}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("email-attachments")
+        .upload(storagePath, binaryData, {
+          contentType: attachment.mimeType,
+          upsert: true,
+        });
+
+      if (uploadError) {
+        console.error(`Failed to upload ${attachment.filename}:`, uploadError);
+        continue;
+      }
+
+      const { error: saveError } = await supabase
+        .from("email_attachments")
+        .insert({
+          email_id: emailId,
+          filename: attachment.filename,
+          mime_type: attachment.mimeType,
+          size_bytes: attachment.size,
+          storage_path: storagePath,
+          gmail_attachment_id: attachment.attachmentId,
+        });
+
+      if (!saveError) {
+        downloaded.push(attachment.filename);
+      }
+    } catch (error) {
+      console.error(`Error downloading ${attachment.filename}:`, error);
+    }
+  }
+  
+  return downloaded;
+}
+
 // Background task for processing emails
 async function processEmailsInBackground(
   syncId: string,
@@ -90,9 +173,10 @@ async function processEmailsInBackground(
 ) {
   console.log(`[Background] Starting processing of ${allMessages.length} emails for sync ${syncId}`);
   
-  const stats = { received: 0, sent: 0, replied: 0, forwarded: 0 };
+  const stats = { received: 0, sent: 0, replied: 0, forwarded: 0, attachments: 0 };
   let processedCount = 0;
   let newEmailsCount = 0;
+  let attachmentsCount = 0;
   const BATCH_SIZE = 10;
   const UPDATE_INTERVAL = 20;
 
@@ -126,6 +210,9 @@ async function processEmailsInBackground(
 
           const { is_sent, email_type } = determineEmailType(labels, subject, sender, config.user_email);
 
+          // Find attachments
+          const attachments = msgData.payload?.parts ? findAttachments(msgData.payload.parts) : [];
+
           // Extract body
           let body = "";
           if (msgData.payload?.body?.data) {
@@ -153,7 +240,7 @@ async function processEmailsInBackground(
           const isNew = !existingEmail;
 
           // Upsert email
-          const { error: insertError } = await supabase
+          const { data: savedEmail, error: insertError } = await supabase
             .from("emails")
             .upsert({
               subject,
@@ -165,14 +252,30 @@ async function processEmailsInBackground(
               gmail_thread_id: msgData.threadId,
               is_sent,
               email_type,
-            }, { onConflict: "gmail_message_id" });
+            }, { onConflict: "gmail_message_id" })
+            .select("id")
+            .single();
 
           if (insertError) {
             console.error(`Failed to store email ${msg.id}:`, insertError);
             return { success: false };
           }
 
-          return { success: true, email_type, isNew };
+          // Download attachments for new emails
+          let downloadedAttachments = 0;
+          if (isNew && attachments.length > 0 && savedEmail) {
+            const downloaded = await downloadAttachments(
+              savedEmail.id,
+              msg.id,
+              attachments,
+              accessToken,
+              supabase
+            );
+            downloadedAttachments = downloaded.length;
+            console.log(`Downloaded ${downloadedAttachments} attachments for email ${msg.id}`);
+          }
+
+          return { success: true, email_type, isNew, attachmentsCount: downloadedAttachments };
         } catch (err) {
           console.error(`Error processing message ${msg.id}:`, err);
           return { success: false };
@@ -185,6 +288,7 @@ async function processEmailsInBackground(
         if (result.success) {
           processedCount++;
           if (result.isNew) newEmailsCount++;
+          if (result.attachmentsCount) attachmentsCount += result.attachmentsCount;
           
           if (result.email_type === "received") stats.received++;
           else if (result.email_type === "sent") stats.sent++;
@@ -192,6 +296,8 @@ async function processEmailsInBackground(
           else if (result.email_type === "forwarded") stats.forwarded++;
         }
       }
+      
+      stats.attachments = attachmentsCount;
 
       // Update status periodically
       if (processedCount % UPDATE_INTERVAL === 0 || i + BATCH_SIZE >= allMessages.length) {

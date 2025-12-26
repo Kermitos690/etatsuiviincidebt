@@ -71,6 +71,56 @@ export type Database = {
           },
         ]
       }
+      email_attachments: {
+        Row: {
+          ai_analysis: Json | null
+          analyzed_at: string | null
+          created_at: string
+          email_id: string
+          extracted_text: string | null
+          filename: string
+          gmail_attachment_id: string | null
+          id: string
+          mime_type: string
+          size_bytes: number
+          storage_path: string
+        }
+        Insert: {
+          ai_analysis?: Json | null
+          analyzed_at?: string | null
+          created_at?: string
+          email_id: string
+          extracted_text?: string | null
+          filename: string
+          gmail_attachment_id?: string | null
+          id?: string
+          mime_type: string
+          size_bytes?: number
+          storage_path: string
+        }
+        Update: {
+          ai_analysis?: Json | null
+          analyzed_at?: string | null
+          created_at?: string
+          email_id?: string
+          extracted_text?: string | null
+          filename?: string
+          gmail_attachment_id?: string | null
+          id?: string
+          mime_type?: string
+          size_bytes?: number
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_attachments_email_id_fkey"
+            columns: ["email_id"]
+            isOneToOne: false
+            referencedRelation: "emails"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       emails: {
         Row: {
           ai_analysis: Json | null
