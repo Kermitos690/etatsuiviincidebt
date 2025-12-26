@@ -16,7 +16,8 @@ import {
   BarChart3,
   Scale,
   Paperclip,
-  GraduationCap
+  GraduationCap,
+  HelpCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -42,6 +43,7 @@ const navItems = [
   { to: '/sheets-config', icon: Table, label: 'Config Sheets' },
   { to: '/exports', icon: FileText, label: 'Exports PDF' },
   { to: '/admin', icon: Settings, label: 'Administration' },
+  { to: '/tutorial', icon: HelpCircle, label: 'Tutoriel' },
 ];
 
 function NavContent({ onItemClick }: { onItemClick?: () => void }) {
