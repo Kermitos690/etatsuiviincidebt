@@ -434,7 +434,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { threadId, batchSize = 10 } = await req.json().catch(() => ({}));
+    const { threadId, batchSize = 10, domains, keywords } = await req.json().catch(() => ({}));
 
     let threadsToAnalyze: string[] = [];
 
@@ -447,14 +447,36 @@ serve(async (req) => {
       
       const analyzedThreads = new Set(existingAnalyses?.map(a => a.thread_id) || []);
 
+      // Fetch emails with sender/recipient for filtering
       const { data: emails } = await supabase
         .from('emails')
-        .select('gmail_thread_id')
+        .select('gmail_thread_id, sender, recipient, subject, body')
         .not('gmail_thread_id', 'is', null)
         .not('body', 'is', null)
         .not('body', 'eq', '');
 
-      const uniqueThreads = [...new Set(emails?.map(e => e.gmail_thread_id).filter(Boolean) || [])];
+      // Apply domain and keyword filters
+      let filteredEmails = emails || [];
+      
+      if (domains && domains.length > 0) {
+        filteredEmails = filteredEmails.filter(email => {
+          const sender = email.sender?.toLowerCase() || '';
+          const recipient = email.recipient?.toLowerCase() || '';
+          return domains.some((d: string) => sender.includes(d.toLowerCase()) || recipient.includes(d.toLowerCase()));
+        });
+        console.log(`After domain filter (${domains.join(', ')}): ${filteredEmails.length} emails`);
+      }
+      
+      if (keywords && keywords.length > 0) {
+        filteredEmails = filteredEmails.filter(email => {
+          const subject = email.subject?.toLowerCase() || '';
+          const body = email.body?.toLowerCase() || '';
+          return keywords.some((k: string) => subject.includes(k.toLowerCase()) || body.includes(k.toLowerCase()));
+        });
+        console.log(`After keyword filter (${keywords.join(', ')}): ${filteredEmails.length} emails`);
+      }
+
+      const uniqueThreads = [...new Set(filteredEmails.map(e => e.gmail_thread_id).filter(Boolean))];
       threadsToAnalyze = uniqueThreads.filter(t => !analyzedThreads.has(t!)).slice(0, batchSize) as string[];
     }
 

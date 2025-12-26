@@ -236,7 +236,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { batchSize = 100, emailIds } = await req.json().catch(() => ({}));
+    const { batchSize = 100, emailIds, domains, keywords } = await req.json().catch(() => ({}));
 
     // Get emails to process
     let query = supabase
@@ -260,7 +260,28 @@ serve(async (req) => {
 
     if (emailsError) throw emailsError;
 
-    const emailsToProcess = (emails || []).filter(e => !processedIds.has(e.id)).slice(0, batchSize);
+    // Apply domain and keyword filters
+    let filteredEmails = (emails || []).filter(e => !processedIds.has(e.id));
+    
+    if (domains && domains.length > 0) {
+      filteredEmails = filteredEmails.filter(email => {
+        const sender = email.sender?.toLowerCase() || '';
+        const recipient = email.recipient?.toLowerCase() || '';
+        return domains.some((d: string) => sender.includes(d.toLowerCase()) || recipient.includes(d.toLowerCase()));
+      });
+      console.log(`After domain filter (${domains.join(', ')}): ${filteredEmails.length} emails`);
+    }
+    
+    if (keywords && keywords.length > 0) {
+      filteredEmails = filteredEmails.filter(email => {
+        const subject = email.subject?.toLowerCase() || '';
+        const body = email.body?.toLowerCase() || '';
+        return keywords.some((k: string) => subject.includes(k.toLowerCase()) || body.includes(k.toLowerCase()));
+      });
+      console.log(`After keyword filter (${keywords.join(', ')}): ${filteredEmails.length} emails`);
+    }
+
+    const emailsToProcess = filteredEmails.slice(0, batchSize);
 
     console.log(`Processing ${emailsToProcess.length} emails for fact extraction`);
 

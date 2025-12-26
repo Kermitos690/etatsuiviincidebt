@@ -504,14 +504,29 @@ serve(async (req) => {
     let syncMode = 'all'; // 'all', 'filtered', 'label'
     let specificLabel = null;
     let afterDate = null;
+    let requestDomains: string[] | null = null;
+    let requestKeywords: string[] | null = null;
 
     try {
       const body = await req.json();
       if (body.syncMode) syncMode = body.syncMode;
       if (body.label) specificLabel = body.label;
       if (body.afterDate) afterDate = body.afterDate;
+      if (body.domains) requestDomains = body.domains;
+      if (body.keywords) requestKeywords = body.keywords;
     } catch {
       // No body or invalid JSON - use defaults
+    }
+
+    // Auto-detect filtered mode if domains or keywords are provided in request or config
+    const domains = requestDomains || config.domains || [];
+    const keywords = requestKeywords || config.keywords || [];
+    const hasFilters = domains.length > 0 || keywords.length > 0;
+    
+    // If filters exist and syncMode wasn't explicitly set to 'all', use filtered mode
+    if (hasFilters && syncMode === 'all') {
+      syncMode = 'filtered';
+      console.log('Auto-switching to filtered mode because domains/keywords are configured');
     }
 
     // Fetch custom labels if doing full sync
@@ -534,18 +549,18 @@ serve(async (req) => {
       console.log(`Label sync mode - fetching emails from ${specificLabel}`);
     } else {
       // Filtered mode - use config domains/keywords
-      const domains = config.domains || [];
-      const keywords = config.keywords || [];
-      const domainParts = domains?.length 
+      console.log(`Filtered mode - domains: ${domains.length}, keywords: ${keywords.length}`);
+      const domainParts = domains.length 
         ? domains.map((d: string) => `(@${d})`).join(" OR ")
         : "";
       const domainQuery = domainParts 
         ? `(from:(${domainParts}) OR to:(${domainParts}))` 
         : "";
-      const keywordQuery = keywords?.length 
+      const keywordQuery = keywords.length 
         ? `(${keywords.join(" OR ")})` 
         : "";
       query = [domainQuery, keywordQuery].filter(Boolean).join(" ");
+      console.log(`Gmail query for filtered mode: ${query || '(no query - fetching all)'}`);
     }
 
     if (afterDate) {
