@@ -443,6 +443,7 @@ export type Database = {
           sender: string
           subject: string
           thread_analysis: Json | null
+          user_id: string | null
         }
         Insert: {
           ai_analysis?: Json | null
@@ -461,6 +462,7 @@ export type Database = {
           sender: string
           subject: string
           thread_analysis?: Json | null
+          user_id?: string | null
         }
         Update: {
           ai_analysis?: Json | null
@@ -479,6 +481,7 @@ export type Database = {
           sender?: string
           subject?: string
           thread_analysis?: Json | null
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -780,6 +783,7 @@ export type Database = {
       }
       thread_analyses: {
         Row: {
+          analysis_json: Json | null
           analyzed_at: string
           chronological_summary: string | null
           citations: Json | null
@@ -787,13 +791,19 @@ export type Database = {
           created_at: string
           detected_issues: Json | null
           email_ids: string[]
+          emails_count: number | null
           id: string
+          input_hash: string | null
+          model: string | null
           participants: Json | null
+          prompt_version: string | null
           severity: string | null
           thread_id: string
           timeline: Json | null
+          user_id: string | null
         }
         Insert: {
+          analysis_json?: Json | null
           analyzed_at?: string
           chronological_summary?: string | null
           citations?: Json | null
@@ -801,13 +811,19 @@ export type Database = {
           created_at?: string
           detected_issues?: Json | null
           email_ids: string[]
+          emails_count?: number | null
           id?: string
+          input_hash?: string | null
+          model?: string | null
           participants?: Json | null
+          prompt_version?: string | null
           severity?: string | null
           thread_id: string
           timeline?: Json | null
+          user_id?: string | null
         }
         Update: {
+          analysis_json?: Json | null
           analyzed_at?: string
           chronological_summary?: string | null
           citations?: Json | null
@@ -815,11 +831,16 @@ export type Database = {
           created_at?: string
           detected_issues?: Json | null
           email_ids?: string[]
+          emails_count?: number | null
           id?: string
+          input_hash?: string | null
+          model?: string | null
           participants?: Json | null
+          prompt_version?: string | null
           severity?: string | null
           thread_id?: string
           timeline?: Json | null
+          user_id?: string | null
         }
         Relationships: []
       }

@@ -1,9 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// --------------------
+// CORS
+// --------------------
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 interface EmailMessage {
@@ -16,6 +20,7 @@ interface EmailMessage {
   gmail_thread_id?: string;
   is_sent?: boolean;
   email_type?: string;
+  user_id?: string;
 }
 
 interface LegalReference {
@@ -87,6 +92,11 @@ interface AdvancedAnalysis {
   confidence: "High" | "Medium" | "Low";
   all_legal_references: LegalReference[];
 }
+
+// --------------------
+// PROMPT VERSION
+// --------------------
+const PROMPT_VERSION = "MASTER_ANALYSIS_PROMPT_v2";
 
 // ===============================================================
 // PROMPT MAÎTRE EXHAUSTIF - BASES LÉGALES SUISSES COMPLÈTES
@@ -744,172 +754,351 @@ Retourne UNIQUEMENT un JSON valide:
   "all_legal_references": [{"article": "...", "law": "...", "description": "...", "source_url": "..."}]
 }`;
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+// --------------------
+// Helpers
+// --------------------
+function jsonError(status: number, message: string) {
+  return new Response(
+    JSON.stringify({ success: false, error: message }),
+    { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+// Balanced braces extraction: récupère le 1er objet JSON complet dans un texte
+function extractFirstJSONObject(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (c === "\\") {
+        escape = true;
+      } else if (c === '"') {
+        inString = false;
+      }
+      continue;
+    } else {
+      if (c === '"') {
+        inString = true;
+        continue;
+      }
+      if (c === "{") depth++;
+      if (c === "}") depth--;
+      if (depth === 0) {
+        return text.slice(start, i + 1);
+      }
+    }
+  }
+  return null;
+}
+
+// Validation minimale pour éviter de stocker du n'importe quoi
+function validateAnalysisShape(a: unknown): a is AdvancedAnalysis {
+  if (!a || typeof a !== "object") return false;
+  const obj = a as Record<string, unknown>;
+  return (
+    typeof obj.problem_score === "number" &&
+    typeof obj.summary === "string" &&
+    Array.isArray(obj.key_issues) &&
+    Array.isArray(obj.recommendations) &&
+    typeof obj.confidence === "string" &&
+    obj.collaboration_analysis !== undefined &&
+    obj.consent_violations !== undefined &&
+    obj.deadline_violations !== undefined
+  );
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  const bytes = new Uint8Array(digest);
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Construit un contexte en respectant une enveloppe max
+function buildConversationContext(
+  emails: EmailMessage[],
+  maxCharsTotal: number,
+  maxCharsPerEmail: number
+): { context: string; used: number; truncatedCount: number } {
+  let total = 0;
+  let truncatedCount = 0;
+
+  const chunks: string[] = [];
+
+  for (let index = 0; index < emails.length; index++) {
+    const email = emails[index];
+
+    const date = new Date(email.received_at).toLocaleDateString("fr-CH", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const direction = email.is_sent ? "ENVOYÉ" : "REÇU";
+    const emailType = email.email_type || (email.is_sent ? "sent" : "received");
+    const typeLabel =
+      ({
+        received: "Email reçu",
+        sent: "Email envoyé",
+        replied: "Réponse envoyée",
+        forwarded: "Email transféré",
+      } as Record<string, string>)[emailType] || "Email";
+
+    const rawBody = email.body ?? "";
+    const truncated = rawBody.length > maxCharsPerEmail;
+    const body = rawBody.slice(0, maxCharsPerEmail) + (truncated ? "\n[TRONQUÉ]" : "");
+    if (truncated) truncatedCount++;
+
+    const block = `=== EMAIL ${index + 1} [${direction}] [ID: ${email.id}] ===
+Type: ${typeLabel}
+Date: ${date}
+De: ${email.sender}
+${email.recipient ? `À: ${email.recipient}\n` : ""}Sujet: ${email.subject}
+---
+${body}
+`;
+
+    if (total + block.length > maxCharsTotal) break;
+    chunks.push(block);
+    total += block.length;
   }
 
-  try {
-    const { emailId, threadId, analyzeThread = true } = await req.json();
-    
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  return { context: chunks.join("\n\n"), used: total, truncatedCount };
+}
 
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY not configured");
+// --------------------
+// Main
+// --------------------
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method !== "POST") return jsonError(405, "Méthode non autorisée");
+
+  try {
+    // -------- Input validation
+    let payload: Record<string, unknown>;
+    try {
+      payload = await req.json();
+    } catch {
+      return jsonError(400, "Body JSON invalide");
     }
 
-    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+    const emailId: string | undefined = payload?.emailId as string | undefined;
+    const threadId: string | undefined = payload?.threadId as string | undefined;
+    const analyzeThread: boolean = payload?.analyzeThread !== false;
 
-    // Fetch the email(s) to analyze
+    if (!emailId && !threadId) {
+      return jsonError(400, "emailId ou threadId requis");
+    }
+
+    // -------- Env
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!LOVABLE_API_KEY) return jsonError(500, "LOVABLE_API_KEY non configurée");
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_ANON_KEY) {
+      return jsonError(500, "SUPABASE_URL / SUPABASE_ANON_KEY / SERVICE_ROLE_KEY manquants");
+    }
+
+    // -------- Auth (user JWT)
+    const authHeader = req.headers.get("Authorization") || "";
+    const jwt = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    if (!jwt) return jsonError(401, "Authorization Bearer token requis");
+
+    const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: `Bearer ${jwt}` } },
+    });
+
+    const { data: userData, error: userErr } = await supabaseAuth.auth.getUser();
+    if (userErr || !userData?.user) return jsonError(401, "Token invalide");
+    const userId = userData.user.id;
+
+    // -------- Service role client for DB operations
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // -------- Fetch emails (avec ownership check - accepte aussi user_id null pour rétrocompatibilité)
+    const MAX_EMAILS = 30;
+    const MAX_CHARS_TOTAL = 60_000;
+    const MAX_CHARS_PER_EMAIL = 6_000;
+
     let emails: EmailMessage[] = [];
-    
+
     if (threadId && analyzeThread) {
       const { data, error } = await supabase
         .from("emails")
-        .select("id, subject, sender, recipient, body, received_at, gmail_thread_id, is_sent, email_type")
+        .select("id, subject, sender, recipient, body, received_at, gmail_thread_id, is_sent, email_type, user_id")
         .eq("gmail_thread_id", threadId)
-        .order("received_at", { ascending: true });
-      
+        .or(`user_id.eq.${userId},user_id.is.null`)
+        .order("received_at", { ascending: true })
+        .limit(MAX_EMAILS);
+
       if (error) throw error;
       emails = data || [];
     } else if (emailId) {
       const { data, error } = await supabase
         .from("emails")
-        .select("id, subject, sender, recipient, body, received_at, gmail_thread_id, is_sent, email_type")
+        .select("id, subject, sender, recipient, body, received_at, gmail_thread_id, is_sent, email_type, user_id")
         .eq("id", emailId)
+        .or(`user_id.eq.${userId},user_id.is.null`)
         .single();
-      
+
       if (error) throw error;
       if (data) emails = [data];
     }
 
-    if (emails.length === 0) {
-      throw new Error("No emails found to analyze");
-    }
+    if (!emails.length) return jsonError(404, "Aucun email trouvé (ou non autorisé)");
 
-    console.log(`Analyzing ${emails.length} email(s) with exhaustive Swiss legal bases`);
+    const { context: conversationContext, truncatedCount } = buildConversationContext(
+      emails,
+      MAX_CHARS_TOTAL,
+      MAX_CHARS_PER_EMAIL
+    );
 
-    // Build conversation context
-    const conversationContext = emails.map((email, index) => {
-      const date = new Date(email.received_at).toLocaleDateString("fr-CH", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit"
-      });
-      const direction = email.is_sent ? "ENVOYÉ" : "REÇU";
-      const emailType = email.email_type || (email.is_sent ? "sent" : "received");
-      const typeLabel = {
-        received: "Email reçu",
-        sent: "Email envoyé",
-        replied: "Réponse envoyée",
-        forwarded: "Email transféré"
-      }[emailType] || "Email";
-      
-      return `=== EMAIL ${index + 1} [${direction}] [ID: ${email.id}] ===
-Type: ${typeLabel}
-Date: ${date}
-De: ${email.sender}
-${email.recipient ? `À: ${email.recipient}` : ""}
-Sujet: ${email.subject}
----
-${email.body.substring(0, 6000)}
-`;
-    }).join("\n\n");
+    const sentCount = emails.filter((e) => e.is_sent).length;
+    const receivedCount = emails.filter((e) => !e.is_sent).length;
 
-    const sentCount = emails.filter(e => e.is_sent).length;
-    const receivedCount = emails.filter(e => !e.is_sent).length;
+    const inputHash = await sha256Hex(conversationContext);
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    console.log(`Analyzing ${emails.length} email(s) for user ${userId}, inputHash: ${inputHash.slice(0, 16)}...`);
+
+    // -------- AI call
+    const model = "google/gemini-2.5-flash";
+
+    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model,
+        temperature: 0.1,
         messages: [
           { role: "system", content: MASTER_ANALYSIS_PROMPT },
-          { role: "user", content: `Analyse cette correspondance (${receivedCount} email(s) reçu(s), ${sentCount} email(s) envoyé(s)):\n\n${conversationContext}` }
+          {
+            role: "user",
+            content:
+              `Analyse cette correspondance (${receivedCount} email(s) reçu(s), ${sentCount} email(s) envoyé(s)). ` +
+              `Note: ${truncatedCount} email(s) ont un corps tronqué.\n\n${conversationContext}`,
+          },
         ],
       }),
     });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Trop de requêtes, veuillez réessayer dans quelques instants." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Crédits IA épuisés." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const errorText = await response.text();
-      console.error("AI Gateway error:", response.status, errorText);
-      throw new Error(`AI Gateway error: ${response.status}`);
+    if (!aiResp.ok) {
+      if (aiResp.status === 429) return jsonError(429, "Trop de requêtes, réessayez plus tard.");
+      if (aiResp.status === 402) return jsonError(402, "Crédits IA épuisés.");
+      const errTxt = await aiResp.text();
+      console.error("AI Gateway error:", aiResp.status, errTxt);
+      return jsonError(502, `AI Gateway error (${aiResp.status})`);
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
+    const aiData = await aiResp.json();
+    const content: string = aiData?.choices?.[0]?.message?.content || "";
+    if (!content) return jsonError(422, "Réponse IA vide");
 
-    // Parse JSON from response
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.error("Could not parse AI response:", content);
-      throw new Error("Could not parse AI response as JSON");
+    // -------- Robust JSON extraction + validation
+    const jsonStr = extractFirstJSONObject(content);
+    if (!jsonStr) {
+      console.error("No JSON object found in AI output:", content.slice(0, 500));
+      return jsonError(422, "Sortie IA non parsable en JSON");
     }
 
-    const analysis: AdvancedAnalysis = JSON.parse(jsonMatch[0]);
-
-    // Store analysis in database
-    const primaryEmailId = emailId || emails[0]?.id;
-    if (primaryEmailId) {
-      const { error: updateError } = await supabase
-        .from("emails")
-        .update({
-          thread_analysis: analysis,
-          processed: true
-        })
-        .eq("id", primaryEmailId);
-      
-      if (updateError) {
-        console.error("Error updating email with analysis:", updateError);
+    let analysis: AdvancedAnalysis;
+    try {
+      const parsed = JSON.parse(jsonStr);
+      if (!validateAnalysisShape(parsed)) {
+        console.error("Invalid analysis shape:", JSON.stringify(parsed).slice(0, 500));
+        return jsonError(422, "JSON IA invalide (schéma inattendu)");
       }
+      analysis = parsed;
+    } catch (e) {
+      console.error("JSON parse error:", e);
+      return jsonError(422, "JSON IA invalide (parse error)");
+    }
+
+    // -------- Store thread analysis (normalisé)
+    const effectiveThreadId = threadId || emails[0]?.gmail_thread_id || null;
+
+    // 1) Insert thread analysis record
+    const { data: threadRow, error: threadErr } = await supabase
+      .from("thread_analyses")
+      .insert({
+        user_id: userId,
+        thread_id: effectiveThreadId,
+        email_ids: emails.map((e) => e.id),
+        model,
+        prompt_version: PROMPT_VERSION,
+        input_hash: inputHash,
+        emails_count: emails.length,
+        analysis_json: analysis,
+        severity: analysis.problem_score >= 70 ? "critical" : analysis.problem_score >= 40 ? "high" : "low",
+        confidence_score: analysis.confidence === "High" ? 90 : analysis.confidence === "Medium" ? 60 : 30,
+        chronological_summary: analysis.summary,
+        detected_issues: analysis.key_issues,
+        citations: analysis.all_legal_references,
+      })
+      .select("id")
+      .single();
+
+    if (threadErr) {
+      console.error("thread_analyses insert error:", threadErr);
+      return jsonError(500, "Erreur stockage thread_analyses");
+    }
+
+    const threadAnalysisId = threadRow.id;
+
+    // 2) Update emails as processed + store analysis in thread_analysis column
+    const emailIds = emails.map((e) => e.id);
+    const { error: updErr } = await supabase
+      .from("emails")
+      .update({
+        processed: true,
+        thread_analysis: analysis,
+      })
+      .in("id", emailIds);
+
+    if (updErr) {
+      console.error("emails update error:", updErr);
+      // Ne bloque pas le retour: l'analyse est stockée quand même
     }
 
     console.log("Analysis complete:", {
+      thread_analysis_id: threadAnalysisId,
       problemScore: analysis.problem_score,
       confidence: analysis.confidence,
       legalReferencesCount: analysis.all_legal_references?.length || 0,
-      keyIssues: analysis.key_issues?.length || 0
     });
 
-    return new Response(JSON.stringify({
-      success: true,
-      emailsAnalyzed: emails.length,
-      sentCount,
-      receivedCount,
-      analysis
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-
+    return new Response(
+      JSON.stringify({
+        success: true,
+        emailsAnalyzed: emails.length,
+        sentCount,
+        receivedCount,
+        model,
+        prompt_version: PROMPT_VERSION,
+        input_hash: inputHash,
+        thread_analysis_id: threadAnalysisId,
+        analysis,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   } catch (error) {
     console.error("Advanced email analysis error:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
-    return new Response(JSON.stringify({ 
-      error: message,
-      success: false
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonError(500, message);
   }
 });
