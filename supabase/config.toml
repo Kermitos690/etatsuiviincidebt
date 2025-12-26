@@ -55,7 +55,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.download-all-attachments]
-verify_jwt = true
+verify_jwt = false
 
 [functions.extract-email-facts]
 verify_jwt = true
