@@ -1,39 +1,53 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  corsHeaders,
+  corsResponse,
+  successResponse,
+  errorResponse,
+  notFoundResponse,
+  createServiceClient,
+  parseJsonBody,
+  getQueryParam,
+  isValidUUID,
+  log,
+  ErrorCodes,
+} from "../_shared/core.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+// ============= Types =============
+interface SyncStatusResponse {
+  id?: string;
+  status: string;
+  total_emails?: number;
+  processed_emails?: number;
+  new_emails?: number;
+  started_at?: string;
+  completed_at?: string;
+  error_message?: string;
+  stats?: Record<string, unknown>;
+  progress?: number;
+}
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
+// ============= Main Handler =============
 serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return corsResponse();
   }
 
   try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const supabase = createServiceClient();
 
     // Get syncId from query params or body
-    let syncId: string | null = null;
-    
-    const url = new URL(req.url);
-    syncId = url.searchParams.get("syncId");
-    
-    if (!syncId) {
-      try {
-        const body = await req.json();
-        syncId = body.syncId;
-      } catch {
-        // No body
-      }
-    }
+    let syncId = getQueryParam(req, "syncId");
 
     if (!syncId) {
-      // Return the most recent sync status
+      const { data: body } = await parseJsonBody<{ syncId?: string }>(req);
+      syncId = body?.syncId || null;
+    }
+
+    // If no syncId, return most recent sync status
+    if (!syncId) {
+      log("debug", "Fetching latest sync status");
+      
       const { data, error } = await supabase
         .from("sync_status")
         .select("*")
@@ -41,14 +55,24 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle();
 
-      if (error) throw error;
+      if (error) {
+        log("error", "Error fetching latest sync", { error: error.message });
+        throw error;
+      }
 
-      return new Response(JSON.stringify(data || { status: "none" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      const response: SyncStatusResponse = data || { status: "none" };
+      return successResponse(response);
+    }
+
+    // Validate UUID format
+    if (!isValidUUID(syncId)) {
+      log("warn", "Invalid syncId format", { syncId });
+      return notFoundResponse("Invalid sync ID format");
     }
 
     // Get specific sync status
+    log("debug", "Fetching sync status", { syncId });
+    
     const { data, error } = await supabase
       .from("sync_status")
       .select("*")
@@ -56,33 +80,36 @@ serve(async (req) => {
       .single();
 
     if (error) {
-      console.error("Error fetching sync status:", error);
-      return new Response(JSON.stringify({ 
-        error: "Sync status not found",
-        status: "error"
-      }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      log("warn", "Sync status not found", { syncId, error: error.message });
+      return notFoundResponse("Sync status not found");
     }
 
-    const progress = data.total_emails > 0 
-      ? Math.round((data.processed_emails / data.total_emails) * 100) 
+    // Calculate progress percentage
+    const progress = data.total_emails > 0
+      ? Math.round((data.processed_emails / data.total_emails) * 100)
       : 0;
 
-    return new Response(JSON.stringify({
+    const response: SyncStatusResponse = {
       ...data,
-      progress
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      progress,
+    };
+
+    log("info", "Sync status retrieved", { 
+      syncId, 
+      status: data.status, 
+      progress 
     });
 
+    return successResponse(response);
+
   } catch (error) {
-    console.error("Sync status error:", error);
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return new Response(JSON.stringify({ error: message, status: "error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    log("error", "Sync status error", {
+      error: error instanceof Error ? error.message : "Unknown error",
     });
+    return errorResponse(
+      error instanceof Error ? error.message : "Unknown error",
+      ErrorCodes.INTERNAL_ERROR,
+      500
+    );
   }
 });
