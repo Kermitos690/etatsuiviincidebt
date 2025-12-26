@@ -25,13 +25,15 @@ import {
   Filter,
   Search,
   HelpCircle,
-  FileDown
+  FileDown,
+  Camera
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { generateTutorialPDF } from "@/utils/generateTutorialPDF";
 import { useRef, useState } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { ScreenshotCapture } from "@/components/tutorial/ScreenshotCapture";
 
 // Import tutorial images
 import gmailConfigImg from "@/assets/tutorial/gmail-config.png";
@@ -243,6 +245,9 @@ export default function Tutorial() {
             {isExporting ? "Génération en cours..." : "Télécharger en PDF"}
           </Button>
         </div>
+
+        {/* Screenshot Capture Tool */}
+        <ScreenshotCapture />
 
         {/* Quick Overview */}
         <Card className="glass-card border-primary/30 bg-primary/5">
