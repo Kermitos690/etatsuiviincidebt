@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { AppLayout } from '@/components/layout';
@@ -50,6 +50,7 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import { EmailLink } from '@/components/email';
+import { EmailPreview } from '@/components/analysis/EmailPreview';
 
 interface AnalysisStep {
   name: string;
@@ -115,6 +116,12 @@ export default function AnalysisPipeline() {
   const [selectedThread, setSelectedThread] = useState<ThreadAnalysis | null>(null);
   const [selectedCorroboration, setSelectedCorroboration] = useState<Corroboration | null>(null);
   const [useFilters, setUseFilters] = useState(true);
+  const [previewCount, setPreviewCount] = useState<number | null>(null);
+
+  // Callback for email preview
+  const handlePreviewReady = useCallback((count: number) => {
+    setPreviewCount(count);
+  }, []);
 
   // Fetch Gmail config for filters
   const { data: gmailConfig } = useQuery({
@@ -558,11 +565,24 @@ export default function AnalysisPipeline() {
 
           {/* Pipeline Tab */}
           <TabsContent value="pipeline" className="space-y-4">
+            {/* Email Preview Section */}
+            <EmailPreview
+              domains={gmailConfig?.domains || []}
+              keywords={gmailConfig?.keywords || []}
+              useFilters={useFilters}
+              onPreviewReady={handlePreviewReady}
+            />
+
             <Card className="glass-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Brain className="h-5 w-5" />
                   Pipeline d'Analyse en 3 Passes
+                  {previewCount !== null && (
+                    <Badge variant="secondary" className="ml-2">
+                      {previewCount} emails ciblés
+                    </Badge>
+                  )}
                 </CardTitle>
                 <CardDescription>
                   Analyse ultra-factuelle avec citations obligatoires
