@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { useState } from 'react';
+import React, { forwardRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -60,24 +60,27 @@ const moreNavSections = [
   }
 ];
 
-export function MobileBottomNav() {
+export const MobileBottomNav = forwardRef<HTMLElement, Record<string, never>>((_, ref) => {
   const location = useLocation();
   const [open, setOpen] = useState(false);
 
-  const isMoreActive = moreNavSections.some(section => 
-    section.items.some(item => 
-      location.pathname === item.to || 
+  const isMoreActive = moreNavSections.some(section =>
+    section.items.some(item =>
+      location.pathname === item.to ||
       (item.to !== '/' && location.pathname.startsWith(item.to))
     )
   );
 
   return (
-    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-glass backdrop-blur-glass border-t border-glass safe-area-bottom">
+    <nav
+      ref={ref}
+      className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-glass backdrop-blur-glass border-t border-glass safe-area-bottom"
+    >
       <div className="flex items-center justify-around h-16 px-2">
         {primaryNavItems.map((item) => {
-          const isActive = location.pathname === item.to || 
+          const isActive = location.pathname === item.to ||
             (item.to !== '/' && location.pathname.startsWith(item.to));
-          
+
           return (
             <NavLink
               key={item.to}
@@ -85,8 +88,8 @@ export function MobileBottomNav() {
               className={cn(
                 "flex flex-col items-center justify-center gap-1 py-2 px-3 rounded-xl transition-all duration-300",
                 "min-w-[60px]",
-                isActive 
-                  ? "text-primary" 
+                isActive
+                  ? "text-primary"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -119,8 +122,8 @@ export function MobileBottomNav() {
               className={cn(
                 "flex flex-col items-center justify-center gap-1 py-2 px-3 rounded-xl transition-all duration-300",
                 "min-w-[60px]",
-                isMoreActive 
-                  ? "text-primary" 
+                isMoreActive
+                  ? "text-primary"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -141,14 +144,14 @@ export function MobileBottomNav() {
               </span>
             </button>
           </SheetTrigger>
-          <SheetContent 
-            side="bottom" 
+          <SheetContent
+            side="bottom"
             className="bg-glass backdrop-blur-glass border-t border-glass rounded-t-3xl max-h-[80vh]"
           >
             <div className="py-4">
               <div className="w-12 h-1 bg-muted-foreground/30 rounded-full mx-auto mb-6" />
               <h3 className="text-lg font-semibold text-center mb-4 gradient-text">Navigation</h3>
-              
+
               <ScrollArea className="h-[60vh] pr-4">
                 <div className="space-y-6">
                   {moreNavSections.map((section, sectionIdx) => (
@@ -167,8 +170,8 @@ export function MobileBottomNav() {
                               className={cn(
                                 "flex items-center justify-center py-3 px-4 rounded-xl transition-all duration-300",
                                 "text-sm font-medium",
-                                isActive 
-                                  ? "bg-primary text-primary-foreground shadow-glow" 
+                                isActive
+                                  ? "bg-primary text-primary-foreground shadow-glow"
                                   : "bg-muted/30 text-foreground hover:bg-muted/50"
                               )}
                             >
@@ -190,4 +193,7 @@ export function MobileBottomNav() {
       </div>
     </nav>
   );
-}
+});
+
+MobileBottomNav.displayName = 'MobileBottomNav';
+

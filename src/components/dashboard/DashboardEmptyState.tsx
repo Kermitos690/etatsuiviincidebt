@@ -1,8 +1,17 @@
+import React, { forwardRef } from 'react';
 import { AlertTriangle, Sparkles } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
-export function DashboardEmptyState() {
+export const DashboardEmptyState = forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => {
   return (
-    <div className="glass-card p-8 md:p-16 text-center animate-scale-in">
+    <div
+      ref={ref}
+      className={cn('glass-card p-8 md:p-16 text-center animate-scale-in', className)}
+      {...props}
+    >
       <div className="relative inline-block mb-6">
         <div className="w-24 h-24 rounded-3xl bg-gradient-primary/10 flex items-center justify-center animate-float">
           <AlertTriangle className="h-12 w-12 text-primary" />
@@ -19,4 +28,7 @@ export function DashboardEmptyState() {
       </p>
     </div>
   );
-}
+});
+
+DashboardEmptyState.displayName = 'DashboardEmptyState';
+
