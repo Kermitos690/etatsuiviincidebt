@@ -20,9 +20,12 @@ interface Email {
   id: string;
   subject: string;
   sender: string;
+  recipient?: string;
   body: string;
   received_at: string;
   processed: boolean;
+  is_sent?: boolean;
+  email_type?: 'received' | 'sent' | 'replied' | 'forwarded';
   ai_analysis: {
     isIncident: boolean;
     confidence: number;
@@ -93,9 +96,48 @@ export default function EmailsInbox() {
   const [autoProcessEnabled, setAutoProcessEnabled] = useState(true);
   const [processingEmail, setProcessingEmail] = useState<string | null>(null);
   const [advancedAnalyzing, setAdvancedAnalyzing] = useState(false);
+  const [filterType, setFilterType] = useState<string>('all');
   const navigate = useNavigate();
 
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/receive-email`;
+
+  // Email type badge config
+  const emailTypeBadges: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
+    received: { 
+      label: 'Reçu', 
+      className: 'bg-gradient-to-r from-emerald-500 to-green-600 text-white',
+      icon: <Mail className="h-3 w-3 mr-1" />
+    },
+    sent: { 
+      label: 'Envoyé', 
+      className: 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white',
+      icon: <Send className="h-3 w-3 mr-1" />
+    },
+    replied: { 
+      label: 'Répondu', 
+      className: 'bg-gradient-to-r from-purple-500 to-violet-600 text-white',
+      icon: <MessageSquare className="h-3 w-3 mr-1" />
+    },
+    forwarded: { 
+      label: 'Transféré', 
+      className: 'bg-gradient-to-r from-orange-500 to-amber-600 text-white',
+      icon: <ArrowRight className="h-3 w-3 mr-1" />
+    },
+  };
+
+  // Filter emails by type
+  const filteredEmails = filterType === 'all' 
+    ? emails 
+    : emails.filter(e => e.email_type === filterType);
+
+  // Stats for each type
+  const emailStats = {
+    all: emails.length,
+    received: emails.filter(e => e.email_type === 'received' || !e.email_type).length,
+    sent: emails.filter(e => e.email_type === 'sent').length,
+    replied: emails.filter(e => e.email_type === 'replied').length,
+    forwarded: emails.filter(e => e.email_type === 'forwarded').length,
+  };
 
   const fetchEmails = async () => {
     setLoading(true);
@@ -434,23 +476,72 @@ export default function EmailsInbox() {
         <div className="grid lg:grid-cols-2 gap-6">
           {/* Email List */}
           <div className="space-y-4">
-            <h3 className="font-semibold text-lg">Emails reçus ({emails.length})</h3>
+            {/* Filter by type */}
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h3 className="font-semibold text-lg">Emails ({filteredEmails.length})</h3>
+              <div className="flex gap-1 flex-wrap">
+                <Button 
+                  variant={filterType === 'all' ? 'default' : 'ghost'} 
+                  size="sm"
+                  onClick={() => setFilterType('all')}
+                  className="text-xs"
+                >
+                  Tous ({emailStats.all})
+                </Button>
+                <Button 
+                  variant={filterType === 'received' ? 'default' : 'ghost'} 
+                  size="sm"
+                  onClick={() => setFilterType('received')}
+                  className="text-xs"
+                >
+                  <Mail className="h-3 w-3 mr-1" />
+                  Reçus ({emailStats.received})
+                </Button>
+                <Button 
+                  variant={filterType === 'sent' ? 'default' : 'ghost'} 
+                  size="sm"
+                  onClick={() => setFilterType('sent')}
+                  className="text-xs"
+                >
+                  <Send className="h-3 w-3 mr-1" />
+                  Envoyés ({emailStats.sent})
+                </Button>
+                <Button 
+                  variant={filterType === 'replied' ? 'default' : 'ghost'} 
+                  size="sm"
+                  onClick={() => setFilterType('replied')}
+                  className="text-xs"
+                >
+                  <MessageSquare className="h-3 w-3 mr-1" />
+                  Répondus ({emailStats.replied})
+                </Button>
+                <Button 
+                  variant={filterType === 'forwarded' ? 'default' : 'ghost'} 
+                  size="sm"
+                  onClick={() => setFilterType('forwarded')}
+                  className="text-xs"
+                >
+                  <ArrowRight className="h-3 w-3 mr-1" />
+                  Transférés ({emailStats.forwarded})
+                </Button>
+              </div>
+            </div>
             
             {loading ? (
               <div className="glass-card p-8 text-center animate-pulse">
                 <RefreshCw className="h-8 w-8 mx-auto text-primary animate-spin" />
                 <p className="text-muted-foreground mt-4">Chargement...</p>
               </div>
-            ) : emails.length === 0 ? (
+            ) : filteredEmails.length === 0 ? (
               <div className="glass-card p-8 text-center">
                 <div className="w-16 h-16 rounded-2xl bg-gradient-primary/10 flex items-center justify-center mx-auto mb-4 animate-float">
                   <Mail className="h-8 w-8 text-primary" />
                 </div>
-                <p className="text-muted-foreground">Aucun email reçu</p>
+                <p className="text-muted-foreground">Aucun email {filterType !== 'all' ? `de type "${filterType}"` : ''}</p>
                 <p className="text-xs text-muted-foreground mt-2">Configurez le webhook ou Gmail pour commencer</p>
               </div>
             ) : (
-              emails.map((email, index) => (
+              filteredEmails.map((email, index) => (
                 <div
                   key={email.id}
                   onClick={() => setSelectedEmail(email)}
@@ -463,6 +554,20 @@ export default function EmailsInbox() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        {/* Email type badge */}
+                        {email.email_type && emailTypeBadges[email.email_type] && (
+                          <Badge className={cn("text-xs", emailTypeBadges[email.email_type].className)}>
+                            {emailTypeBadges[email.email_type].icon}
+                            {emailTypeBadges[email.email_type].label}
+                          </Badge>
+                        )}
+                        {/* Default to received if no type */}
+                        {!email.email_type && (
+                          <Badge className="bg-gradient-to-r from-emerald-500 to-green-600 text-white text-xs">
+                            <Mail className="h-3 w-3 mr-1" />
+                            Reçu
+                          </Badge>
+                        )}
                         {email.incident_id ? (
                           <Badge className="bg-gradient-to-r from-emerald-400 to-emerald-600 text-white text-xs">
                             <Check className="h-3 w-3 mr-1" />
@@ -494,7 +599,9 @@ export default function EmailsInbox() {
                         )}
                       </div>
                       <h4 className="font-medium truncate">{email.subject}</h4>
-                      <p className="text-sm text-muted-foreground truncate">{email.sender}</p>
+                      <p className="text-sm text-muted-foreground truncate">
+                        {email.is_sent ? `À : ${email.recipient || 'Inconnu'}` : `De : ${email.sender}`}
+                      </p>
                       <p className="text-xs text-muted-foreground mt-1">{formatDate(email.received_at)}</p>
                     </div>
                     <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
@@ -511,8 +618,22 @@ export default function EmailsInbox() {
             {selectedEmail ? (
               <div className="space-y-4 animate-scale-in">
                 <div className="glass-card p-6">
+                  {/* Email type badge in detail */}
+                  {selectedEmail.email_type && emailTypeBadges[selectedEmail.email_type] && (
+                    <div className="mb-3">
+                      <Badge className={cn("text-sm", emailTypeBadges[selectedEmail.email_type].className)}>
+                        {emailTypeBadges[selectedEmail.email_type].icon}
+                        {emailTypeBadges[selectedEmail.email_type].label}
+                      </Badge>
+                    </div>
+                  )}
                   <h4 className="font-semibold mb-2">{selectedEmail.subject}</h4>
-                  <p className="text-sm text-muted-foreground mb-4">De : {selectedEmail.sender}</p>
+                  <div className="flex flex-col gap-1 mb-4">
+                    <p className="text-sm text-muted-foreground">De : {selectedEmail.sender}</p>
+                    {selectedEmail.recipient && (
+                      <p className="text-sm text-muted-foreground">À : {selectedEmail.recipient}</p>
+                    )}
+                  </div>
                   <div className="bg-secondary/30 rounded-xl p-4 max-h-48 overflow-y-auto">
                     <p className="text-sm whitespace-pre-wrap">{selectedEmail.body}</p>
                   </div>
