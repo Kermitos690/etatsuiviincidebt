@@ -40,28 +40,84 @@ export function useAuth() {
     profileLoading: false,
   });
 
+  // Ensure profile exists for user
+  const ensureProfileExists = useCallback(async (user: User): Promise<UserProfile | null> => {
+    // First try to fetch existing profile
+    const { data: existingProfile, error: fetchError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (existingProfile) {
+      return existingProfile as UserProfile;
+    }
+
+    // Profile doesn't exist, create it
+    console.log('Profile not found, creating one for user:', user.id);
+    
+    const { data: newProfile, error: insertError } = await supabase
+      .from('profiles')
+      .insert({
+        id: user.id,
+        email: user.email || '',
+        display_name: user.user_metadata?.display_name || user.email?.split('@')[0] || 'User',
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('Error creating profile:', insertError);
+      return null;
+    }
+
+    return newProfile as UserProfile;
+  }, []);
+
+  // Ensure user role exists
+  const ensureUserRoleExists = useCallback(async (userId: string): Promise<void> => {
+    const { data: existingRole } = await supabase
+      .from('user_roles')
+      .select('id')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (!existingRole) {
+      console.log('User role not found, creating default role for user:', userId);
+      await supabase
+        .from('user_roles')
+        .insert({ user_id: userId, role: 'user' });
+    }
+  }, []);
+
   // Fetch user profile
-  const fetchProfile = useCallback(async (userId: string) => {
+  const fetchProfile = useCallback(async (userId: string, user?: User) => {
     setState(prev => ({ ...prev, profileLoading: true }));
     
     try {
+      // First try to get existing profile
       const { data: profile, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
-      if (error) {
-        console.error('Error fetching profile:', error);
-        return null;
+      if (profile) {
+        return profile as UserProfile;
       }
 
-      return profile as UserProfile;
+      // Profile not found - try to create it if we have user object
+      if (user) {
+        return await ensureProfileExists(user);
+      }
+
+      console.error('Profile not found and no user object to create one');
+      return null;
     } catch (error) {
       console.error('Error fetching profile:', error);
       return null;
     }
-  }, []);
+  }, [ensureProfileExists]);
 
   // Fetch user roles
   const fetchRoles = useCallback(async (userId: string): Promise<AppRole[]> => {
@@ -109,8 +165,11 @@ export function useAuth() {
         // Fetch profile and roles after auth state change
         if (session?.user) {
           setTimeout(async () => {
+            // Ensure role exists first
+            await ensureUserRoleExists(session.user.id);
+            
             const [profile, roles] = await Promise.all([
-              fetchProfile(session.user.id),
+              fetchProfile(session.user.id, session.user),
               fetchRoles(session.user.id),
             ]);
 
@@ -136,7 +195,7 @@ export function useAuth() {
     );
 
     // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setState(prev => ({
         ...prev,
         session,
@@ -145,22 +204,25 @@ export function useAuth() {
       }));
 
       if (session?.user) {
-        Promise.all([
-          fetchProfile(session.user.id),
+        // Ensure role exists first
+        await ensureUserRoleExists(session.user.id);
+        
+        const [profile, roles] = await Promise.all([
+          fetchProfile(session.user.id, session.user),
           fetchRoles(session.user.id),
-        ]).then(([profile, roles]) => {
-          setState(prev => ({
-            ...prev,
-            profile,
-            roles,
-            profileLoading: false,
-          }));
-        });
+        ]);
+        
+        setState(prev => ({
+          ...prev,
+          profile,
+          roles,
+          profileLoading: false,
+        }));
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [fetchProfile, fetchRoles, updateLastActive]);
+  }, [fetchProfile, fetchRoles, updateLastActive, ensureUserRoleExists]);
 
   // ============= Auth Methods =============
   const signIn = async (email: string, password: string) => {
