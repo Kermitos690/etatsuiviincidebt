@@ -1,5 +1,8 @@
 project_id = "csysnvkvnoghhyqaxdkz"
 
+[functions]
+# Shared folder is not a function, exclude it from deployment
+
 [functions.analyze-incident]
 verify_jwt = true
 
