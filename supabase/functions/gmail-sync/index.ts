@@ -15,6 +15,22 @@ const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+// All Gmail labels to sync
+const ALL_GMAIL_LABELS = [
+  'INBOX',
+  'SENT',
+  'SPAM',
+  'TRASH',
+  'DRAFT',
+  'IMPORTANT',
+  'STARRED',
+  'CATEGORY_PERSONAL',
+  'CATEGORY_SOCIAL',
+  'CATEGORY_PROMOTIONS',
+  'CATEGORY_UPDATES',
+  'CATEGORY_FORUMS',
+];
+
 async function refreshAccessToken(supabase: any, config: any): Promise<string | null> {
   if (!config.refresh_token) {
     console.log("No refresh token available");
@@ -52,6 +68,29 @@ async function refreshAccessToken(supabase: any, config: any): Promise<string | 
   return tokenData.access_token;
 }
 
+// Fetch all custom labels from Gmail
+async function fetchCustomLabels(accessToken: string): Promise<string[]> {
+  try {
+    const response = await fetch(
+      'https://gmail.googleapis.com/gmail/v1/users/me/labels',
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    
+    if (!response.ok) return [];
+    
+    const data = await response.json();
+    const customLabels = (data.labels || [])
+      .filter((label: any) => label.type === 'user')
+      .map((label: any) => label.id);
+    
+    console.log(`Found ${customLabels.length} custom labels`);
+    return customLabels;
+  } catch (error) {
+    console.error('Error fetching custom labels:', error);
+    return [];
+  }
+}
+
 function extractEmailAddress(fullAddress: string): string {
   const match = fullAddress.match(/<([^>]+)>/);
   return match ? match[1].toLowerCase() : fullAddress.toLowerCase();
@@ -78,6 +117,19 @@ function determineEmailType(
   } else {
     return { is_sent: false, email_type: "received" };
   }
+}
+
+// Determine primary Gmail label for storage
+function getPrimaryLabel(labels: string[]): string {
+  // Priority order for label storage
+  const priorityLabels = ['SPAM', 'TRASH', 'DRAFT', 'SENT', 'INBOX'];
+  for (const label of priorityLabels) {
+    if (labels.includes(label)) return label;
+  }
+  // If none of the priority labels, check for custom label
+  const customLabel = labels.find(l => !ALL_GMAIL_LABELS.includes(l) && !l.startsWith('CATEGORY_'));
+  if (customLabel) return customLabel;
+  return labels[0] || 'UNKNOWN';
 }
 
 // Check for attachments in message parts
@@ -173,7 +225,7 @@ async function processEmailsInBackground(
 ) {
   console.log(`[Background] Starting processing of ${allMessages.length} emails for sync ${syncId}`);
   
-  const stats = { received: 0, sent: 0, replied: 0, forwarded: 0, attachments: 0 };
+  const stats = { received: 0, sent: 0, replied: 0, forwarded: 0, attachments: 0, spam: 0, trash: 0, drafts: 0, custom_folders: 0 };
   let processedCount = 0;
   let newEmailsCount = 0;
   let attachmentsCount = 0;
@@ -209,24 +261,48 @@ async function processEmailsInBackground(
           const labels = msgData.labelIds || [];
 
           const { is_sent, email_type } = determineEmailType(labels, subject, sender, config.user_email);
+          const gmail_label = getPrimaryLabel(labels);
 
           // Find attachments
           const attachments = msgData.payload?.parts ? findAttachments(msgData.payload.parts) : [];
 
-          // Extract body
+          // Extract body with improved parsing
           let body = "";
           if (msgData.payload?.body?.data) {
             body = atob(msgData.payload.body.data.replace(/-/g, "+").replace(/_/g, "/"));
           } else if (msgData.payload?.parts) {
-            const textPart = msgData.payload.parts.find((p: any) => p.mimeType === "text/plain");
-            if (textPart?.body?.data) {
-              body = atob(textPart.body.data.replace(/-/g, "+").replace(/_/g, "/"));
-            } else {
-              const htmlPart = msgData.payload.parts.find((p: any) => p.mimeType === "text/html");
-              if (htmlPart?.body?.data) {
-                body = atob(htmlPart.body.data.replace(/-/g, "+").replace(/_/g, "/"));
-                body = body.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+            // Try to find text/plain first
+            const findTextPart = (parts: any[]): string => {
+              for (const part of parts) {
+                if (part.mimeType === "text/plain" && part.body?.data) {
+                  return atob(part.body.data.replace(/-/g, "+").replace(/_/g, "/"));
+                }
+                if (part.parts) {
+                  const nested = findTextPart(part.parts);
+                  if (nested) return nested;
+                }
               }
+              return "";
+            };
+            
+            body = findTextPart(msgData.payload.parts);
+            
+            // Fallback to HTML if no text/plain
+            if (!body) {
+              const findHtmlPart = (parts: any[]): string => {
+                for (const part of parts) {
+                  if (part.mimeType === "text/html" && part.body?.data) {
+                    const html = atob(part.body.data.replace(/-/g, "+").replace(/_/g, "/"));
+                    return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+                  }
+                  if (part.parts) {
+                    const nested = findHtmlPart(part.parts);
+                    if (nested) return nested;
+                  }
+                }
+                return "";
+              };
+              body = findHtmlPart(msgData.payload.parts);
             }
           }
 
@@ -239,7 +315,7 @@ async function processEmailsInBackground(
 
           const isNew = !existingEmail;
 
-          // Upsert email
+          // Upsert email with gmail_label
           const { data: savedEmail, error: insertError } = await supabase
             .from("emails")
             .upsert({
@@ -252,6 +328,7 @@ async function processEmailsInBackground(
               gmail_thread_id: msgData.threadId,
               is_sent,
               email_type,
+              gmail_label,
             }, { onConflict: "gmail_message_id" })
             .select("id")
             .single();
@@ -275,7 +352,7 @@ async function processEmailsInBackground(
             console.log(`Downloaded ${downloadedAttachments} attachments for email ${msg.id}`);
           }
 
-          return { success: true, email_type, isNew, attachmentsCount: downloadedAttachments };
+          return { success: true, email_type, isNew, attachmentsCount: downloadedAttachments, gmail_label };
         } catch (err) {
           console.error(`Error processing message ${msg.id}:`, err);
           return { success: false };
@@ -290,10 +367,17 @@ async function processEmailsInBackground(
           if (result.isNew) newEmailsCount++;
           if (result.attachmentsCount) attachmentsCount += result.attachmentsCount;
           
+          // Track email types
           if (result.email_type === "received") stats.received++;
           else if (result.email_type === "sent") stats.sent++;
           else if (result.email_type === "replied") stats.replied++;
           else if (result.email_type === "forwarded") stats.forwarded++;
+          
+          // Track Gmail labels
+          if (result.gmail_label === 'SPAM') stats.spam++;
+          else if (result.gmail_label === 'TRASH') stats.trash++;
+          else if (result.gmail_label === 'DRAFT') stats.drafts++;
+          else if (!ALL_GMAIL_LABELS.includes(result.gmail_label)) stats.custom_folders++;
         }
       }
       
@@ -318,15 +402,15 @@ async function processEmailsInBackground(
       await new Promise(resolve => setTimeout(resolve, 50));
     }
 
-    // Mark sync as completed, then start analysis
+    // Mark sync as completed
     await supabase
       .from("sync_status")
       .update({
-        status: "analyzing",
+        status: "completed",
         completed_at: new Date().toISOString(),
         processed_emails: processedCount,
         new_emails: newEmailsCount,
-        stats: { ...stats, sync_completed: true, analysis_started: true }
+        stats: { ...stats, sync_completed: true }
       })
       .eq("id", syncId);
 
@@ -338,76 +422,6 @@ async function processEmailsInBackground(
 
     console.log(`[Background] Sync completed! ${processedCount} emails processed, ${newEmailsCount} new`);
     console.log(`[Background] Stats:`, stats);
-
-    // Trigger AI analysis for new emails
-    if (newEmailsCount > 0) {
-      console.log(`[Background] Starting AI analysis for ${newEmailsCount} new emails...`);
-      
-      try {
-        const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-        const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-        
-        const analysisResponse = await fetch(`${SUPABASE_URL}/functions/v1/batch-analyze-emails`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            syncId,
-            batchSize: Math.min(newEmailsCount, 20),
-            autoCreateIncidents: true,
-            confidenceThreshold: 75
-          }),
-        });
-
-        if (analysisResponse.ok) {
-          const analysisResult = await analysisResponse.json();
-          console.log(`[Background] AI Analysis complete:`, analysisResult);
-          
-          await supabase
-            .from("sync_status")
-            .update({
-              status: "completed",
-              stats: { 
-                ...stats, 
-                sync_completed: true,
-                analysis_completed: true,
-                emails_analyzed: analysisResult.analyzed || 0,
-                incidents_created: analysisResult.incidentsCreated || 0
-              }
-            })
-            .eq("id", syncId);
-        } else {
-          console.error("[Background] AI Analysis failed:", await analysisResponse.text());
-          await supabase
-            .from("sync_status")
-            .update({
-              status: "completed",
-              stats: { ...stats, sync_completed: true, analysis_error: true }
-            })
-            .eq("id", syncId);
-        }
-      } catch (analysisError) {
-        console.error("[Background] AI Analysis error:", analysisError);
-        await supabase
-          .from("sync_status")
-          .update({
-            status: "completed",
-            stats: { ...stats, sync_completed: true, analysis_error: true }
-          })
-          .eq("id", syncId);
-      }
-    } else {
-      // No new emails to analyze
-      await supabase
-        .from("sync_status")
-        .update({
-          status: "completed",
-          stats: { ...stats, sync_completed: true, analysis_completed: true, emails_analyzed: 0 }
-        })
-        .eq("id", syncId);
-    }
 
   } catch (error) {
     console.error("[Background] Fatal error:", error);
@@ -471,47 +485,71 @@ serve(async (req) => {
       }
     }
 
-    // Parse request body for optional overrides
-    let domains = config.domains || [];
-    let keywords = config.keywords || [];
+    // Parse request body for options
+    let syncMode = 'all'; // 'all', 'filtered', 'label'
+    let specificLabel = null;
     let afterDate = null;
 
     try {
       const body = await req.json();
-      if (body.domains) domains = body.domains;
-      if (body.keywords) keywords = body.keywords;
+      if (body.syncMode) syncMode = body.syncMode;
+      if (body.label) specificLabel = body.label;
       if (body.afterDate) afterDate = body.afterDate;
     } catch {
-      // No body or invalid JSON
+      // No body or invalid JSON - use defaults
     }
 
-    // Build Gmail search query
-    const domainParts = domains?.length 
-      ? domains.map((d: string) => `(@${d})`).join(" OR ")
-      : "";
-    const domainQuery = domainParts 
-      ? `(from:(${domainParts}) OR to:(${domainParts}))` 
-      : "";
-    const keywordQuery = keywords?.length 
-      ? `(${keywords.join(" OR ")})` 
-      : "";
-    const dateQuery = afterDate ? `after:${afterDate}` : "";
-    
-    const queryParts = [domainQuery, keywordQuery, dateQuery].filter(Boolean);
-    const query = queryParts.join(" ");
+    // Fetch custom labels if doing full sync
+    let customLabels: string[] = [];
+    if (syncMode === 'all') {
+      customLabels = await fetchCustomLabels(accessToken);
+    }
 
-    console.log("Gmail search query:", query);
+    // Build Gmail search query based on sync mode
+    let query = '';
+    if (syncMode === 'all') {
+      // Sync ALL emails from ALL folders including spam, trash, and custom labels
+      const allLabelsToSearch = [...ALL_GMAIL_LABELS, ...customLabels];
+      query = allLabelsToSearch.map(l => `label:${l}`).join(' OR ');
+      // Also include unlabeled emails
+      query = `(${query}) OR -label:*`;
+      console.log('Full sync mode - fetching ALL emails from ALL folders');
+    } else if (syncMode === 'label' && specificLabel) {
+      query = `label:${specificLabel}`;
+      console.log(`Label sync mode - fetching emails from ${specificLabel}`);
+    } else {
+      // Filtered mode - use config domains/keywords
+      const domains = config.domains || [];
+      const keywords = config.keywords || [];
+      const domainParts = domains?.length 
+        ? domains.map((d: string) => `(@${d})`).join(" OR ")
+        : "";
+      const domainQuery = domainParts 
+        ? `(from:(${domainParts}) OR to:(${domainParts}))` 
+        : "";
+      const keywordQuery = keywords?.length 
+        ? `(${keywords.join(" OR ")})` 
+        : "";
+      query = [domainQuery, keywordQuery].filter(Boolean).join(" ");
+    }
+
+    if (afterDate) {
+      query += ` after:${afterDate}`;
+    }
+
+    console.log("Gmail search query:", query || "(all emails)");
 
     // Fetch ALL message IDs with pagination
     let allMessages: any[] = [];
     let pageToken: string | null = null;
     let pageCount = 0;
-    const maxPages = 100;
+    const maxPages = 200; // Increased for full sync
 
     while (pageCount < maxPages) {
-      const apiUrl: string = pageToken 
-        ? `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&q=${encodeURIComponent(query)}&pageToken=${pageToken}`
-        : `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&q=${encodeURIComponent(query)}`;
+      const baseUrl = 'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100';
+      const apiUrl = query 
+        ? `${baseUrl}&q=${encodeURIComponent(query)}${pageToken ? `&pageToken=${pageToken}` : ''}`
+        : `${baseUrl}${pageToken ? `&pageToken=${pageToken}` : ''}`;
 
       console.log(`Fetching page ${pageCount + 1}...`);
       
@@ -550,7 +588,7 @@ serve(async (req) => {
     }
 
     if (allMessages.length === 0) {
-      console.log("No messages found matching criteria");
+      console.log("No messages found");
       
       await supabase
         .from("gmail_config")
@@ -560,7 +598,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ 
         status: "completed",
         emailsProcessed: 0, 
-        stats: { received: 0, sent: 0, replied: 0, forwarded: 0 }
+        stats: { received: 0, sent: 0, replied: 0, forwarded: 0, spam: 0, trash: 0 }
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -576,7 +614,7 @@ serve(async (req) => {
         total_emails: allMessages.length,
         processed_emails: 0,
         new_emails: 0,
-        stats: { received: 0, sent: 0, replied: 0, forwarded: 0 }
+        stats: { received: 0, sent: 0, replied: 0, forwarded: 0, spam: 0, trash: 0, drafts: 0, custom_folders: 0, sync_mode: syncMode }
       })
       .select()
       .single();
@@ -596,7 +634,9 @@ serve(async (req) => {
       status: "processing",
       syncId: syncStatus.id,
       totalEmails: allMessages.length,
-      message: `Traitement de ${allMessages.length} emails en arrière-plan...`
+      syncMode,
+      customLabelsFound: customLabels.length,
+      message: `Synchronisation exhaustive de ${allMessages.length} emails en arrière-plan (incluant spam, corbeille, dossiers personnalisés)...`
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

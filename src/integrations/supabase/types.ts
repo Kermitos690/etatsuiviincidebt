@@ -14,6 +14,93 @@ export type Database = {
   }
   public: {
     Tables: {
+      actor_trust_scores: {
+        Row: {
+          actor_email: string | null
+          actor_institution: string | null
+          actor_name: string
+          actor_role: string | null
+          contradictions_count: number | null
+          created_at: string
+          evidence: Json | null
+          helpful_actions_count: number | null
+          hidden_communications_count: number | null
+          id: string
+          notes: string | null
+          promises_broken_count: number | null
+          trust_score: number | null
+          updated_at: string
+        }
+        Insert: {
+          actor_email?: string | null
+          actor_institution?: string | null
+          actor_name: string
+          actor_role?: string | null
+          contradictions_count?: number | null
+          created_at?: string
+          evidence?: Json | null
+          helpful_actions_count?: number | null
+          hidden_communications_count?: number | null
+          id?: string
+          notes?: string | null
+          promises_broken_count?: number | null
+          trust_score?: number | null
+          updated_at?: string
+        }
+        Update: {
+          actor_email?: string | null
+          actor_institution?: string | null
+          actor_name?: string
+          actor_role?: string | null
+          contradictions_count?: number | null
+          created_at?: string
+          evidence?: Json | null
+          helpful_actions_count?: number | null
+          hidden_communications_count?: number | null
+          id?: string
+          notes?: string | null
+          promises_broken_count?: number | null
+          trust_score?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ai_training_feedback: {
+        Row: {
+          created_at: string
+          entity_id: string
+          entity_type: string
+          feedback_type: string
+          id: string
+          notes: string | null
+          original_detection: Json | null
+          used_for_training: boolean | null
+          user_correction: Json | null
+        }
+        Insert: {
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          feedback_type: string
+          id?: string
+          notes?: string | null
+          original_detection?: Json | null
+          used_for_training?: boolean | null
+          user_correction?: Json | null
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          feedback_type?: string
+          id?: string
+          notes?: string | null
+          original_detection?: Json | null
+          used_for_training?: boolean | null
+          user_correction?: Json | null
+        }
+        Relationships: []
+      }
       audit_alerts: {
         Row: {
           alert_type: string
@@ -70,6 +157,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      betrayal_detections: {
+        Row: {
+          actor_name: string
+          betrayal_type: string
+          citations: Json
+          confidence: string
+          counter_evidence: Json | null
+          created_at: string
+          evidence: Json
+          id: string
+          severity: string
+          thread_id: string
+          verified: boolean | null
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          actor_name: string
+          betrayal_type: string
+          citations: Json
+          confidence: string
+          counter_evidence?: Json | null
+          created_at?: string
+          evidence: Json
+          id?: string
+          severity: string
+          thread_id: string
+          verified?: boolean | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          actor_name?: string
+          betrayal_type?: string
+          citations?: Json
+          confidence?: string
+          counter_evidence?: Json | null
+          created_at?: string
+          evidence?: Json
+          id?: string
+          severity?: string
+          thread_id?: string
+          verified?: boolean | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: []
       }
       corroborations: {
         Row: {
@@ -296,6 +431,7 @@ export type Database = {
           body: string
           created_at: string
           email_type: string | null
+          gmail_label: string | null
           gmail_message_id: string | null
           gmail_thread_id: string | null
           id: string
@@ -313,6 +449,7 @@ export type Database = {
           body: string
           created_at?: string
           email_type?: string | null
+          gmail_label?: string | null
           gmail_message_id?: string | null
           gmail_thread_id?: string | null
           id?: string
@@ -330,6 +467,7 @@ export type Database = {
           body?: string
           created_at?: string
           email_type?: string | null
+          gmail_label?: string | null
           gmail_message_id?: string | null
           gmail_thread_id?: string | null
           id?: string
