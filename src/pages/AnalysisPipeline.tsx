@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { 
   Brain, 
@@ -28,7 +30,8 @@ import {
   ThumbsUp,
   ThumbsDown,
   Users,
-  ExternalLink
+  ExternalLink,
+  Filter
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -111,6 +114,22 @@ export default function AnalysisPipeline() {
   const [isRunning, setIsRunning] = useState(false);
   const [selectedThread, setSelectedThread] = useState<ThreadAnalysis | null>(null);
   const [selectedCorroboration, setSelectedCorroboration] = useState<Corroboration | null>(null);
+  const [useFilters, setUseFilters] = useState(true);
+
+  // Fetch Gmail config for filters
+  const { data: gmailConfig } = useQuery({
+    queryKey: ['gmail-config'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('gmail_config')
+        .select('domains, keywords')
+        .limit(1)
+        .maybeSingle();
+      
+      if (error) throw error;
+      return data;
+    }
+  });
 
   // Fetch stats
   const { data: stats, refetch: refetchStats } = useQuery({
@@ -181,6 +200,15 @@ export default function AnalysisPipeline() {
     }
   });
 
+  // Get filter body for Edge Functions
+  const getFilterBody = () => {
+    if (!useFilters) return {};
+    const domains = gmailConfig?.domains || [];
+    const keywords = gmailConfig?.keywords || [];
+    if (domains.length === 0 && keywords.length === 0) return {};
+    return { domains, keywords };
+  };
+
   // Update step status
   const updateStep = (index: number, updates: Partial<AnalysisStep>) => {
     setAnalysisSteps(prev => prev.map((step, i) => 
@@ -191,6 +219,12 @@ export default function AnalysisPipeline() {
   // Run full analysis pipeline
   const runFullAnalysis = async () => {
     setIsRunning(true);
+    const filterBody = getFilterBody();
+    const hasFilters = Object.keys(filterBody).length > 0;
+    
+    if (hasFilters) {
+      toast.info(`Analyse avec filtres: ${filterBody.domains?.join(', ') || 'tous domaines'} | ${filterBody.keywords?.join(', ') || 'tous mots-clés'}`);
+    }
     
     try {
       // Step 1: Resync emails
@@ -223,49 +257,49 @@ export default function AnalysisPipeline() {
         count: attachRes.data?.downloaded || 0
       });
 
-      // Step 3: Extract facts (Pass 1)
+      // Step 3: Extract facts (Pass 1) - with filters
       updateStep(2, { status: 'running', progress: 10 });
       toast.info('Étape 3/5: Extraction des faits (Pass 1)...');
       
       const factsRes = await supabase.functions.invoke('extract-email-facts', {
-        body: { batchSize: 50 }
+        body: { batchSize: 50, ...filterBody }
       });
       
       updateStep(2, { 
         status: 'completed', 
         progress: 100, 
-        details: `${factsRes.data?.processed || 0} emails traités`,
-        count: factsRes.data?.processed || 0
+        details: `${factsRes.data?.results?.processed || 0} emails traités`,
+        count: factsRes.data?.results?.processed || 0
       });
 
-      // Step 4: Analyze threads (Pass 2)
+      // Step 4: Analyze threads (Pass 2) - with filters
       updateStep(3, { status: 'running', progress: 10 });
       toast.info('Étape 4/5: Analyse des threads (Pass 2)...');
       
       const threadRes = await supabase.functions.invoke('analyze-thread-complete', {
-        body: { batchSize: 10 }
+        body: { batchSize: 10, ...filterBody }
       });
       
       updateStep(3, { 
         status: 'completed', 
         progress: 100, 
-        details: `${threadRes.data?.analyzed || 0} threads analysés`,
-        count: threadRes.data?.analyzed || 0
+        details: `${threadRes.data?.results?.analyzed || 0} threads analysés`,
+        count: threadRes.data?.results?.analyzed || 0
       });
 
-      // Step 5: Cross-reference (Pass 3)
+      // Step 5: Cross-reference (Pass 3) - with filters
       updateStep(4, { status: 'running', progress: 10 });
       toast.info('Étape 5/5: Corroboration croisée (Pass 3)...');
       
       const corrobRes = await supabase.functions.invoke('cross-reference-analysis', {
-        body: {}
+        body: { ...filterBody }
       });
       
       updateStep(4, { 
         status: 'completed', 
         progress: 100, 
-        details: `${corrobRes.data?.corroborations || 0} corroborations créées`,
-        count: corrobRes.data?.corroborations || 0
+        details: `${corrobRes.data?.results?.corroborations || 0} corroborations créées`,
+        count: corrobRes.data?.results?.corroborations || 0
       });
 
       toast.success('Analyse complète terminée !');
@@ -352,6 +386,34 @@ export default function AnalysisPipeline() {
             <p className="text-muted-foreground mt-1">
               Système d'analyse en 3 passes avec citations obligatoires et corroboration
             </p>
+          </div>
+
+          {/* Filter toggle and info */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3 p-3 rounded-lg glass-card">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="use-filters"
+                  checked={useFilters}
+                  onCheckedChange={setUseFilters}
+                />
+                <Label htmlFor="use-filters" className="text-sm">
+                  Utiliser les filtres Gmail
+                </Label>
+              </div>
+            </div>
+            {useFilters && gmailConfig && (gmailConfig.domains?.length > 0 || gmailConfig.keywords?.length > 0) && (
+              <div className="text-xs text-muted-foreground px-2">
+                <span className="text-primary">Domaines:</span> {gmailConfig.domains?.join(', ') || 'aucun'} |{' '}
+                <span className="text-primary">Mots-clés:</span> {gmailConfig.keywords?.join(', ') || 'aucun'}
+              </div>
+            )}
+            {useFilters && (!gmailConfig || (gmailConfig.domains?.length === 0 && gmailConfig.keywords?.length === 0)) && (
+              <div className="text-xs text-yellow-500 px-2">
+                Aucun filtre configuré - tous les emails seront analysés
+              </div>
+            )}
           </div>
 
           <div className="flex gap-2">

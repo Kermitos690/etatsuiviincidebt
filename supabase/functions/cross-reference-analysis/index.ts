@@ -282,7 +282,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { createIncidents = true, batchSize = 20, trackRecurrence = true } = await req.json().catch(() => ({}));
+    const { createIncidents = true, batchSize = 20, trackRecurrence = true, domains, keywords } = await req.json().catch(() => ({}));
 
     // Get thread analyses that haven't been corroborated yet
     const { data: existingCorroborations } = await supabase
@@ -302,9 +302,48 @@ serve(async (req) => {
 
     if (taError) throw taError;
 
-    const newThreadAnalyses = (threadAnalyses || []).filter(
+    let newThreadAnalyses = (threadAnalyses || []).filter(
       ta => !corroboratedThreadIds.has(ta.id)
     );
+
+    // If domains/keywords are specified, filter thread analyses based on their emails
+    if ((domains && domains.length > 0) || (keywords && keywords.length > 0)) {
+      const emailIdsToCheck = [...new Set(newThreadAnalyses.flatMap(ta => ta.email_ids || []))];
+      
+      if (emailIdsToCheck.length > 0) {
+        const { data: emails } = await supabase
+          .from('emails')
+          .select('id, sender, recipient, subject, body')
+          .in('id', emailIdsToCheck);
+        
+        // Filter emails by domains/keywords
+        const matchingEmailIds = new Set((emails || []).filter(email => {
+          let matchesDomain = true;
+          let matchesKeyword = true;
+          
+          if (domains && domains.length > 0) {
+            const sender = email.sender?.toLowerCase() || '';
+            const recipient = email.recipient?.toLowerCase() || '';
+            matchesDomain = domains.some((d: string) => sender.includes(d.toLowerCase()) || recipient.includes(d.toLowerCase()));
+          }
+          
+          if (keywords && keywords.length > 0) {
+            const subject = email.subject?.toLowerCase() || '';
+            const body = email.body?.toLowerCase() || '';
+            matchesKeyword = keywords.some((k: string) => subject.includes(k.toLowerCase()) || body.includes(k.toLowerCase()));
+          }
+          
+          return matchesDomain && matchesKeyword;
+        }).map(e => e.id));
+        
+        // Keep only thread analyses that have matching emails
+        newThreadAnalyses = newThreadAnalyses.filter(ta => 
+          (ta.email_ids || []).some((id: string) => matchingEmailIds.has(id))
+        );
+        
+        console.log(`After domain/keyword filter: ${newThreadAnalyses.length} thread analyses`);
+      }
+    }
 
     if (newThreadAnalyses.length === 0) {
       return new Response(JSON.stringify({
