@@ -24,6 +24,7 @@ import {
   Inbox,
   Activity,
   Cog,
+  User,
   LucideIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -181,7 +182,7 @@ function NavCategorySection({
 function NavContent({ onItemClick }: { onItemClick?: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { signOut, user } = useAuth();
+  const { signOut, user, profile, roles } = useAuth();
   
   // Auto-open categories with active items
   const getInitialOpenState = () => {
@@ -230,21 +231,41 @@ function NavContent({ onItemClick }: { onItemClick?: () => void }) {
         ))}
       </div>
       
-      {/* User info and logout */}
-      <div className="pt-2 border-t border-glass/50">
-        {user && (
-          <p className="px-4 py-2 text-xs text-muted-foreground truncate">
-            {user.email}
-          </p>
-        )}
+      {/* User info and actions */}
+      <div className="pt-2 border-t border-glass/50 space-y-1">
+        {/* Profile link */}
+        <NavLink
+          to="/profile"
+          onClick={onItemClick}
+          className={cn(
+            "group flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200",
+            location.pathname === '/profile'
+              ? "bg-primary/10 text-primary"
+              : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground"
+          )}
+        >
+          <div className="p-1.5 rounded-lg bg-sidebar-accent/50 group-hover:bg-primary/10 transition-all duration-300">
+            <User className="h-4 w-4 flex-shrink-0" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">
+              {profile?.display_name || user?.email?.split('@')[0] || 'Profil'}
+            </p>
+            <p className="text-xs text-muted-foreground truncate">
+              {roles.length > 0 ? roles.map(r => r === 'admin' ? 'Admin' : r === 'auditor' ? 'Auditeur' : 'Utilisateur').join(', ') : 'Utilisateur'}
+            </p>
+          </div>
+        </NavLink>
+
+        {/* Logout button */}
         <button
           onClick={handleSignOut}
-          className="w-full group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+          className="w-full group flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-300 hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
         >
           <div className="p-1.5 rounded-lg bg-sidebar-accent/50 group-hover:bg-destructive/20 transition-all duration-300">
             <LogOut className="h-4 w-4 flex-shrink-0" />
           </div>
-          <span className="font-medium">Déconnexion</span>
+          <span className="font-medium text-sm">Déconnexion</span>
         </button>
       </div>
     </nav>
