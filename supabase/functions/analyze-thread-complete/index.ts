@@ -8,66 +8,189 @@ const corsHeaders = {
 
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
-// Ultra-strict prompt for factual analysis
-const ANALYSIS_SYSTEM_PROMPT = `Tu es un auditeur juridique ultra-rigoureux spécialisé dans l'analyse de correspondances institutionnelles.
+// PROMPT MAÎTRE ULTRA-STRICT pour l'analyse factuelle
+const MASTER_ANALYSIS_PROMPT = `Tu es un auditeur juridique ULTRA-RIGOUREUX spécialisé dans les dossiers de protection de l'adulte en Suisse.
 
-RÈGLES ABSOLUES - À RESPECTER IMPÉRATIVEMENT:
+🔒 RÈGLES ABSOLUES - VIOLATION = ÉCHEC DE L'ANALYSE 🔒
 
-1. **CITATION OBLIGATOIRE**: Chaque affirmation DOIT être accompagnée d'une citation EXACTE du texte source.
-   Format: "FAIT: [citation exacte entre guillemets] → ANALYSE: [ton interprétation]"
+1. **CITATION OU SILENCE**
+   - Chaque affirmation DOIT être accompagnée d'une citation EXACTE
+   - Format OBLIGATOIRE: "FAIT: [citation exacte entre guillemets]" → ANALYSE: [interprétation]
+   - ⛔ INTERDIT: Affirmer QUOI QUE CE SOIT sans citation source
+   - Si tu n'as pas de citation → tu NE DIS RIEN sur ce sujet
 
-2. **ZÉRO SUPPOSITION**: Tu ne peux affirmer QUE ce qui est EXPLICITEMENT écrit.
-   - ❌ INTERDIT: "Il semble que...", "On peut supposer...", "Cela suggère..."
-   - ✅ AUTORISÉ: "Le texte indique explicitement: '[citation]'"
+2. **ZÉRO SUPPOSITION**
+   - ❌ INTERDIT: "Il semble que...", "On peut supposer...", "Cela suggère...", "Probablement..."
+   - ❌ INTERDIT: "Il est possible que...", "On pourrait penser..."
+   - ✅ AUTORISÉ: "Le texte indique EXPLICITEMENT: '[citation]'"
+   - ✅ AUTORISÉ: "Aucune information disponible sur ce point"
 
-3. **PERSONNES MENTIONNÉES**: Si tu mentionnes une personne, tu DOIS citer OÙ elle apparaît.
+3. **PERSONNES = CITATIONS OBLIGATOIRES**
    - ❌ INTERDIT: "Dr. Martin a refusé le traitement"
-   - ✅ AUTORISÉ: "Dans l'email du 15/01, il est écrit: 'Dr. Martin nous informe que...'"
+   - ✅ AUTORISÉ: "Dans l'email du 15/01, il est écrit: 'Dr. Martin nous informe que le traitement ne sera pas administré.'"
 
-4. **CHRONOLOGIE VÉRIFIABLE**: Chaque événement doit être lié à une date/email source.
+4. **CHRONOLOGIE VÉRIFIABLE**
+   - Chaque événement = date + source email
+   - Format: [DATE] - [ÉVÉNEMENT] - Source: Email du [JJ/MM/AAAA] de [EXPÉDITEUR]
 
-5. **NIVEAU DE CONFIANCE**: Pour chaque problème détecté, indique:
-   - "CERTAIN" = Citation directe explicite
-   - "PROBABLE" = Déduction logique de plusieurs citations
-   - "POSSIBLE" = Interprétation, À VÉRIFIER
+5. **NIVEAUX DE CERTITUDE (obligatoire pour chaque problème)**
+   - "CERTAIN" = Citation directe explicite prouvant le fait
+   - "PROBABLE" = Déduction logique de 2+ citations convergentes
+   - "POSSIBLE" = Interprétation d'une seule citation - À VÉRIFIER
 
-6. **PAS D'INVENTION**: Si une information n'est pas dans les emails, tu NE L'INVENTES PAS.
+6. **BASES LÉGALES SUISSES UNIQUEMENT**
+   Référence aux articles pertinents:
+   
+   PROTECTION DE L'ADULTE (CC 360-456):
+   - Art. 388 CC: But des mesures (assistance, représentation, protection)
+   - Art. 390 CC: Conditions de la curatelle
+   - Art. 398 CC: Diligence du curateur
+   - Art. 404 CC: Collaboration avec la personne concernée
+   - Art. 406 CC: Information et rapport
+   - Art. 413 CC: Révocation du curateur
+   - Art. 415 CC: Surveillance de l'autorité
+   - Art. 417 CC: Conflits d'intérêts
+   - Art. 419-420 CC: Responsabilité
+   - Art. 450 CC: Recours
+   
+   PROCÉDURE ADMINISTRATIVE (PA):
+   - Art. 26 PA: Droit de consulter les pièces
+   - Art. 29 PA: Droit d'être entendu
+   - Art. 35 PA: Motivation des décisions
+   - Art. 46a PA: Déni de justice / retard
+   
+   CONSTITUTION (Cst.):
+   - Art. 7 Cst.: Dignité humaine
+   - Art. 8 Cst.: Égalité
+   - Art. 9 Cst.: Protection contre l'arbitraire
+   - Art. 10 Cst.: Liberté personnelle
+   - Art. 29 Cst.: Garanties de procédure
+   
+   PROTECTION DES DONNÉES (LPD):
+   - Art. 6 LPD: Principes de traitement
+   - Art. 25 LPD: Droit d'accès
 
-FORMAT DE RÉPONSE (JSON strict):
+7. **DÉTECTION DES INCOHÉRENCES**
+   Pour CHAQUE personne mentionnée:
+   - Compare ses affirmations dans les différents emails
+   - Signale TOUTE contradiction avec: [CONTRADICTION DÉTECTÉE]
+   - Format: "Email 1 dit: '[citation1]' MAIS Email 2 dit: '[citation2]'"
+
+8. **DÉTECTION DES TRAHISONS**
+   Recherche activement:
+   - CC/BCC suspects (communications cachées)
+   - Références à des conversations non documentées
+   - Promesses non tenues (avec dates)
+   - Actions contre les intérêts du pupille
+
+FORMAT JSON STRICT:
 {
-  "summary": "Résumé factuel du thread (max 200 mots)",
+  "analysis_metadata": {
+    "date": "YYYY-MM-DD",
+    "emails_analyzed": 0,
+    "confidence_overall": "CERTAIN/PROBABLE/MIXTE"
+  },
+  "summary": "Résumé ULTRA-FACTUEL (max 300 mots) - UNIQUEMENT des faits cités",
   "participants": [
     {
-      "name": "Nom tel qu'il apparaît",
-      "role": "Rôle si mentionné",
-      "first_mention": "Citation où la personne apparaît pour la première fois"
+      "name": "Nom EXACT tel qu'il apparaît",
+      "role": "Rôle si EXPLICITEMENT mentionné, sinon 'Non spécifié'",
+      "institution": "Institution si mentionnée",
+      "first_mention": {
+        "citation": "Citation exacte de la première apparition",
+        "source": "Email du JJ/MM/AAAA de Expéditeur"
+      },
+      "consistency_score": 100,
+      "contradictions_detected": []
     }
   ],
   "timeline": [
     {
-      "date": "Date au format YYYY-MM-DD",
-      "event": "Description de l'événement",
-      "source": "Email ID ou 'Email du JJ/MM/AAAA de [expéditeur]'",
-      "citation": "Citation exacte qui prouve cet événement"
+      "date": "YYYY-MM-DD",
+      "event": "Description factuelle de l'événement",
+      "source": "Email du JJ/MM/AAAA de Expéditeur",
+      "citation": "Citation EXACTE prouvant cet événement",
+      "actors_involved": ["Liste des personnes impliquées"]
     }
   ],
   "issues": [
     {
-      "type": "Type de problème (délai, refus, non-réponse, etc.)",
-      "description": "Description factuelle",
+      "type": "délai/refus/non-réponse/violation_droits/conflit_intérêt/abus/autre",
+      "description": "Description FACTUELLE du problème",
       "severity": "critique/élevée/moyenne/faible",
       "confidence": "CERTAIN/PROBABLE/POSSIBLE",
       "citations": [
         {
-          "text": "Citation exacte",
-          "source": "Référence de l'email"
+          "text": "Citation EXACTE",
+          "source": "Email du JJ/MM/AAAA de Expéditeur",
+          "email_id": "ID si disponible"
         }
       ],
-      "legal_implications": "Référence légale si applicable"
+      "legal_violations": [
+        {
+          "article": "Art. XXX CC/PA/Cst./LPD",
+          "description": "Description de la violation",
+          "evidence": "Citation prouvant la violation"
+        }
+      ],
+      "actors_responsible": ["Noms des personnes/institutions responsables"],
+      "recommended_action": "Action recommandée"
     }
   ],
-  "unanswered_questions": ["Questions restées sans réponse dans le thread"],
-  "recommendations": ["Actions recommandées basées sur les faits"]
+  "contradictions": [
+    {
+      "actor": "Nom de la personne",
+      "statement_1": {
+        "content": "Première affirmation",
+        "source": "Email du JJ/MM/AAAA",
+        "date": "YYYY-MM-DD"
+      },
+      "statement_2": {
+        "content": "Affirmation contradictoire",
+        "source": "Email du JJ/MM/AAAA",
+        "date": "YYYY-MM-DD"
+      },
+      "analysis": "Nature de la contradiction",
+      "severity": "critique/élevée/moyenne"
+    }
+  ],
+  "hidden_communications": [
+    {
+      "type": "cc_suspect/référence_conversation/exclusion",
+      "description": "Description du comportement",
+      "evidence": "Citation prouvant ce comportement",
+      "source": "Email du JJ/MM/AAAA",
+      "actors_involved": ["Noms"]
+    }
+  ],
+  "promises_tracking": [
+    {
+      "promise": "Ce qui a été promis",
+      "promised_by": "Nom de la personne",
+      "promise_date": "YYYY-MM-DD",
+      "promise_source": "Email du JJ/MM/AAAA",
+      "promise_citation": "Citation exacte de la promesse",
+      "status": "tenue/brisée/en_attente",
+      "resolution_evidence": "Citation prouvant si la promesse a été tenue ou non"
+    }
+  ],
+  "unanswered_questions": [
+    {
+      "question": "Question restée sans réponse",
+      "asked_by": "Qui a posé la question",
+      "asked_date": "YYYY-MM-DD",
+      "asked_source": "Email du JJ/MM/AAAA",
+      "days_without_response": 0
+    }
+  ],
+  "recommendations": [
+    {
+      "priority": "critique/haute/moyenne/faible",
+      "action": "Action recommandée",
+      "legal_basis": "Base légale justifiant cette action",
+      "evidence": "Citations justifiant cette recommandation"
+    }
+  ]
 }`;
 
 interface Email {
@@ -80,22 +203,19 @@ interface Email {
 }
 
 interface ThreadAnalysis {
+  analysis_metadata: any;
   summary: string;
-  participants: { name: string; role: string; first_mention: string }[];
-  timeline: { date: string; event: string; source: string; citation: string }[];
-  issues: {
-    type: string;
-    description: string;
-    severity: string;
-    confidence: string;
-    citations: { text: string; source: string }[];
-    legal_implications: string;
-  }[];
-  unanswered_questions: string[];
-  recommendations: string[];
+  participants: any[];
+  timeline: any[];
+  issues: any[];
+  contradictions: any[];
+  hidden_communications: any[];
+  promises_tracking: any[];
+  unanswered_questions: any[];
+  recommendations: any[];
 }
 
-async function analyzeThreadWithAI(emails: Email[]): Promise<ThreadAnalysis | null> {
+async function analyzeThreadWithMasterPrompt(emails: Email[]): Promise<ThreadAnalysis | null> {
   if (!LOVABLE_API_KEY) {
     console.error('LOVABLE_API_KEY not configured');
     return null;
@@ -106,12 +226,13 @@ async function analyzeThreadWithAI(emails: Email[]): Promise<ThreadAnalysis | nu
     new Date(a.received_at).getTime() - new Date(b.received_at).getTime()
   );
 
-  // Build the thread content
+  // Build comprehensive thread content
   const threadContent = sortedEmails.map((email, index) => {
-    const date = new Date(email.received_at).toLocaleDateString('fr-FR');
+    const date = new Date(email.received_at).toLocaleDateString('fr-CH');
+    const fullDate = new Date(email.received_at).toISOString().split('T')[0];
     return `
-=== EMAIL ${index + 1} ===
-Date: ${date}
+=== EMAIL ${index + 1} [ID: ${email.id}] ===
+Date: ${date} (${fullDate})
 De: ${email.sender}
 À: ${email.recipient || 'Non spécifié'}
 Objet: ${email.subject}
@@ -120,13 +241,20 @@ ${email.body}
 ===`;
   }).join('\n\n');
 
-  const userPrompt = `Analyse ce thread email complet de manière ULTRA-FACTUELLE.
-Rappel: CHAQUE affirmation doit avoir une citation EXACTE. Aucune supposition.
+  const userPrompt = `Analyse ce thread email avec une RIGUEUR ABSOLUE.
 
-THREAD À ANALYSER:
+RAPPELS CRITIQUES:
+1. CHAQUE affirmation = citation EXACTE obligatoire
+2. ZÉRO supposition - uniquement ce qui est EXPLICITE
+3. Compare les affirmations de chaque personne entre les emails
+4. Détecte les promesses et vérifie si elles ont été tenues
+5. Identifie les questions restées sans réponse
+
+THREAD À ANALYSER (${sortedEmails.length} emails):
 ${threadContent}
 
-Réponds UNIQUEMENT en JSON valide selon le format spécifié.`;
+Réponds UNIQUEMENT en JSON valide selon le format spécifié.
+CHAQUE problème identifié DOIT avoir au moins une citation exacte.`;
 
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -138,10 +266,10 @@ Réponds UNIQUEMENT en JSON valide selon le format spécifié.`;
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [
-          { role: 'system', content: ANALYSIS_SYSTEM_PROMPT },
+          { role: 'system', content: MASTER_ANALYSIS_PROMPT },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.1, // Low temperature for factual accuracy
+        temperature: 0.1,
       }),
     });
 
@@ -159,10 +287,9 @@ Réponds UNIQUEMENT en JSON valide selon le format spécifié.`;
       return null;
     }
 
-    // Parse JSON from response
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      console.error('No JSON found in response:', content);
+      console.error('No JSON found in response:', content.substring(0, 500));
       return null;
     }
 
@@ -185,7 +312,7 @@ serve(async (req) => {
 
     const { threadId, batchSize = 10 } = await req.json().catch(() => ({}));
 
-    console.log('Starting complete thread analysis (Pass 2)...');
+    console.log('Starting complete thread analysis with MASTER prompt (Pass 2)...');
 
     let threadsToAnalyze: string[] = [];
 
@@ -199,7 +326,7 @@ serve(async (req) => {
       
       const analyzedThreads = new Set(existingAnalyses?.map(a => a.thread_id) || []);
 
-      // Get unique thread IDs from emails
+      // Get unique thread IDs from emails with content
       const { data: emails } = await supabase
         .from('emails')
         .select('gmail_thread_id')
@@ -211,11 +338,13 @@ serve(async (req) => {
       threadsToAnalyze = uniqueThreads.filter(t => !analyzedThreads.has(t!)).slice(0, batchSize) as string[];
     }
 
-    console.log(`Analyzing ${threadsToAnalyze.length} threads`);
+    console.log(`Analyzing ${threadsToAnalyze.length} threads with MASTER prompt`);
 
     const results = {
       analyzed: 0,
       issuesFound: 0,
+      contradictionsFound: 0,
+      promisesTracked: 0,
       errors: [] as string[],
     };
 
@@ -237,7 +366,7 @@ serve(async (req) => {
 
         console.log(`Analyzing thread ${currentThreadId} with ${threadEmails.length} emails`);
 
-        const analysis = await analyzeThreadWithAI(threadEmails);
+        const analysis = await analyzeThreadWithMasterPrompt(threadEmails);
 
         if (!analysis) {
           results.errors.push(`Failed to analyze thread ${currentThreadId}`);
@@ -252,16 +381,17 @@ serve(async (req) => {
           'faible': 1,
         };
 
-        const maxSeverity = analysis.issues.reduce((max, issue) => {
+        const maxSeverity = (analysis.issues || []).reduce((max: string, issue: any) => {
           const score = severityScores[issue.severity] || 0;
           return score > (severityScores[max] || 0) ? issue.severity : max;
         }, 'faible');
 
-        const avgConfidence = analysis.issues.length > 0
-          ? analysis.issues.filter(i => i.confidence === 'CERTAIN').length / analysis.issues.length
+        const certainIssues = (analysis.issues || []).filter((i: any) => i.confidence === 'CERTAIN').length;
+        const avgConfidence = analysis.issues?.length > 0
+          ? certainIssues / analysis.issues.length
           : 0;
 
-        // Store the analysis
+        // Store the analysis with enhanced data
         const { error: insertError } = await supabase
           .from('thread_analyses')
           .insert({
@@ -273,7 +403,7 @@ serve(async (req) => {
             timeline: analysis.timeline,
             severity: maxSeverity,
             confidence_score: avgConfidence,
-            citations: analysis.issues.flatMap(i => i.citations),
+            citations: (analysis.issues || []).flatMap((i: any) => i.citations || []),
           });
 
         if (insertError) {
@@ -283,9 +413,11 @@ serve(async (req) => {
         }
 
         results.analyzed++;
-        results.issuesFound += analysis.issues.length;
+        results.issuesFound += (analysis.issues || []).length;
+        results.contradictionsFound += (analysis.contradictions || []).length;
+        results.promisesTracked += (analysis.promises_tracking || []).length;
 
-        console.log(`Thread ${currentThreadId} analyzed: ${analysis.issues.length} issues found`);
+        console.log(`Thread ${currentThreadId} analyzed: ${analysis.issues?.length || 0} issues, ${analysis.contradictions?.length || 0} contradictions`);
 
         // Rate limiting
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -295,7 +427,7 @@ serve(async (req) => {
       }
     }
 
-    console.log('Thread analysis completed:', results);
+    console.log('Thread analysis with MASTER prompt completed:', results);
 
     return new Response(JSON.stringify({
       success: true,
