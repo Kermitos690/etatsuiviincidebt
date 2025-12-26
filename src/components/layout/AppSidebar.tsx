@@ -19,7 +19,12 @@ import {
   GraduationCap,
   HelpCircle,
   Layers,
-  Server
+  Server,
+  ChevronDown,
+  Inbox,
+  Activity,
+  Cog,
+  LucideIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -27,33 +32,178 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 
-const navItems = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/emails', icon: Mail, label: 'Boîte de réception' },
-  { to: '/emails-analyzed', icon: BarChart3, label: 'Emails Analysés' },
-  { to: '/attachments', icon: Paperclip, label: 'Pièces Jointes' },
-  { to: '/analysis-pipeline', icon: Sparkles, label: 'Analyse 3 Passes' },
-  { to: '/violations', icon: Scale, label: 'Violations' },
-  { to: '/journal', icon: BookOpen, label: 'Journal' },
-  { to: '/incidents', icon: AlertTriangle, label: 'Incidents' },
-  { to: '/incidents-timeline', icon: Scale, label: 'Timeline Incidents' },
-  { to: '/nouveau', icon: Plus, label: 'Nouvel incident' },
-  { to: '/ia-auditeur', icon: Brain, label: 'IA Auditeur' },
-  { to: '/ia-training', icon: GraduationCap, label: 'Entraînement IA' },
-  { to: '/swipe-training', icon: Layers, label: 'Swipe Training' },
-  { to: '/gmail-config', icon: Mail, label: 'Config Gmail' },
-  { to: '/sheets-config', icon: Table, label: 'Config Sheets' },
-  { to: '/exports', icon: FileText, label: 'Exports PDF' },
-  { to: '/system-admin', icon: Server, label: 'Système' },
-  { to: '/admin', icon: Settings, label: 'Administration' },
-  { to: '/tutorial', icon: HelpCircle, label: 'Tutoriel' },
+// ============= Types =============
+interface NavItem {
+  to: string;
+  icon: LucideIcon;
+  label: string;
+}
+
+interface NavCategory {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  items: NavItem[];
+}
+
+// ============= Navigation Structure =============
+const navCategories: NavCategory[] = [
+  {
+    id: 'dashboard',
+    label: 'Vue Générale',
+    icon: LayoutDashboard,
+    items: [
+      { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/violations', icon: Scale, label: 'Violations' },
+    ]
+  },
+  {
+    id: 'emails',
+    label: 'Emails & Analyse',
+    icon: Mail,
+    items: [
+      { to: '/emails', icon: Inbox, label: 'Boîte de réception' },
+      { to: '/emails-analyzed', icon: BarChart3, label: 'Emails Analysés' },
+      { to: '/attachments', icon: Paperclip, label: 'Pièces Jointes' },
+      { to: '/analysis-pipeline', icon: Activity, label: 'Analyse 3 Passes' },
+    ]
+  },
+  {
+    id: 'incidents',
+    label: 'Incidents',
+    icon: AlertTriangle,
+    items: [
+      { to: '/journal', icon: BookOpen, label: 'Journal' },
+      { to: '/incidents', icon: AlertTriangle, label: 'Liste Incidents' },
+      { to: '/incidents-timeline', icon: Scale, label: 'Timeline' },
+      { to: '/nouveau', icon: Plus, label: 'Nouvel Incident' },
+    ]
+  },
+  {
+    id: 'ia',
+    label: 'Intelligence IA',
+    icon: Brain,
+    items: [
+      { to: '/ia-auditeur', icon: Brain, label: 'IA Auditeur' },
+      { to: '/ia-training', icon: GraduationCap, label: 'Entraînement IA' },
+      { to: '/swipe-training', icon: Layers, label: 'Swipe Training' },
+    ]
+  },
+  {
+    id: 'config',
+    label: 'Configuration',
+    icon: Cog,
+    items: [
+      { to: '/gmail-config', icon: Mail, label: 'Config Gmail' },
+      { to: '/sheets-config', icon: Table, label: 'Config Sheets' },
+      { to: '/exports', icon: FileText, label: 'Exports PDF' },
+      { to: '/system-admin', icon: Server, label: 'Système' },
+      { to: '/admin', icon: Settings, label: 'Administration' },
+      { to: '/tutorial', icon: HelpCircle, label: 'Tutoriel' },
+    ]
+  },
 ];
+
+// ============= Components =============
+function NavCategorySection({ 
+  category, 
+  isOpen, 
+  onToggle,
+  onItemClick 
+}: { 
+  category: NavCategory;
+  isOpen: boolean;
+  onToggle: () => void;
+  onItemClick?: () => void;
+}) {
+  const location = useLocation();
+  const hasActiveItem = category.items.some(item => 
+    location.pathname === item.to || 
+    (item.to !== '/' && location.pathname.startsWith(item.to))
+  );
+
+  return (
+    <Collapsible open={isOpen} onOpenChange={onToggle}>
+      <CollapsibleTrigger asChild>
+        <button
+          className={cn(
+            "w-full flex items-center justify-between px-4 py-2.5 rounded-xl transition-all duration-200",
+            "text-sm font-medium",
+            hasActiveItem 
+              ? "bg-primary/10 text-primary" 
+              : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground"
+          )}
+        >
+          <div className="flex items-center gap-3">
+            <category.icon className="h-4 w-4" />
+            <span>{category.label}</span>
+          </div>
+          <ChevronDown className={cn(
+            "h-4 w-4 transition-transform duration-200",
+            isOpen && "rotate-180"
+          )} />
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pl-4 mt-1 space-y-0.5">
+        {category.items.map((item) => {
+          const isActive = location.pathname === item.to || 
+            (item.to !== '/' && location.pathname.startsWith(item.to));
+          
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={onItemClick}
+              className={cn(
+                "group flex items-center gap-3 px-4 py-2 rounded-lg transition-all duration-200",
+                "hover:bg-sidebar-accent/60",
+                isActive 
+                  ? "bg-gradient-primary text-primary-foreground shadow-sm font-medium" 
+                  : "text-sidebar-foreground/80"
+              )}
+            >
+              <item.icon className="h-4 w-4 flex-shrink-0" />
+              <span className="text-sm">{item.label}</span>
+            </NavLink>
+          );
+        })}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
 
 function NavContent({ onItemClick }: { onItemClick?: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
+  
+  // Auto-open categories with active items
+  const getInitialOpenState = () => {
+    const openState: Record<string, boolean> = {};
+    navCategories.forEach(cat => {
+      openState[cat.id] = cat.items.some(item => 
+        location.pathname === item.to || 
+        (item.to !== '/' && location.pathname.startsWith(item.to))
+      );
+    });
+    // Always open first category if none is active
+    if (!Object.values(openState).some(v => v)) {
+      openState['dashboard'] = true;
+    }
+    return openState;
+  };
+
+  const [openCategories, setOpenCategories] = useState<Record<string, boolean>>(getInitialOpenState);
+
+  const toggleCategory = (id: string) => {
+    setOpenCategories(prev => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const handleSignOut = async () => {
     const { error } = await signOut();
@@ -67,45 +217,17 @@ function NavContent({ onItemClick }: { onItemClick?: () => void }) {
   };
 
   return (
-    <nav className="flex-1 p-3 space-y-1.5 flex flex-col overflow-y-auto">
-      <div className="flex-1 space-y-1.5">
-        {navItems.map((item, index) => {
-          const isActive = location.pathname === item.to || 
-            (item.to !== '/' && location.pathname.startsWith(item.to));
-          
-          return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              onClick={onItemClick}
-              className={cn(
-                "group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300",
-                "hover:bg-sidebar-accent/80 hover:scale-[1.02] hover:shadow-glow-sm",
-                "animate-slide-up",
-                isActive 
-                  ? "bg-gradient-primary text-primary-foreground shadow-glow font-medium" 
-                  : "text-sidebar-foreground"
-              )}
-              style={{ animationDelay: `${index * 50}ms` }}
-            >
-              <div className={cn(
-                "relative p-1.5 rounded-lg transition-all duration-300",
-                isActive 
-                  ? "bg-white/20" 
-                  : "bg-sidebar-accent/50 group-hover:bg-primary/10"
-              )}>
-                <item.icon className="h-4 w-4 flex-shrink-0" />
-                {isActive && (
-                  <div className="absolute inset-0 rounded-lg animate-pulse-glow" />
-                )}
-              </div>
-              <span className="font-medium">{item.label}</span>
-              {isActive && (
-                <Sparkles className="h-3 w-3 ml-auto opacity-60 animate-float" />
-              )}
-            </NavLink>
-          );
-        })}
+    <nav className="flex-1 p-3 space-y-2 flex flex-col overflow-y-auto">
+      <div className="flex-1 space-y-1">
+        {navCategories.map((category) => (
+          <NavCategorySection
+            key={category.id}
+            category={category}
+            isOpen={openCategories[category.id] || false}
+            onToggle={() => toggleCategory(category.id)}
+            onItemClick={onItemClick}
+          />
+        ))}
       </div>
       
       {/* User info and logout */}
