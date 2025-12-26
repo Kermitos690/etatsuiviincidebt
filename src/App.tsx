@@ -19,6 +19,7 @@ import GmailConfig from "./pages/GmailConfig";
 import SheetsConfig from "./pages/SheetsConfig";
 import AuditDashboard from "./pages/AuditDashboard";
 import EmailsAnalyzed from "./pages/EmailsAnalyzed";
+import ViolationsDashboard from "./pages/ViolationsDashboard";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -49,7 +50,9 @@ const App = () => (
             <Route path="/gmail-config" element={<AuthGuard><GmailConfig /></AuthGuard>} />
             <Route path="/sheets-config" element={<AuthGuard><SheetsConfig /></AuthGuard>} />
             <Route path="/emails-analyzed" element={<AuthGuard><EmailsAnalyzed /></AuthGuard>} />
+            <Route path="/violations" element={<AuthGuard><ViolationsDashboard /></AuthGuard>} />
             <Route path="/audit" element={<AuthGuard><AuditDashboard /></AuthGuard>} />
+            <Route path="*" element={<NotFound />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
