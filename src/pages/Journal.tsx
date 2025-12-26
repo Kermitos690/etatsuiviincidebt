@@ -465,13 +465,13 @@ export default function Journal() {
                 {/* Institution */}
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-muted-foreground">Institution</label>
-                  <Select value={filterInstitution} onValueChange={setFilterInstitution}>
+                  <Select value={filterInstitution || "all"} onValueChange={(val) => setFilterInstitution(val === "all" ? "" : val)}>
                     <SelectTrigger className="h-10">
                       <SelectValue placeholder="Toutes" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Toutes</SelectItem>
-                      {uniqueInstitutions.map((inst) => (
+                      <SelectItem value="all">Toutes</SelectItem>
+                      {uniqueInstitutions.filter(inst => inst).map((inst) => (
                         <SelectItem key={inst} value={inst}>{inst}</SelectItem>
                       ))}
                     </SelectContent>
@@ -481,13 +481,13 @@ export default function Journal() {
                 {/* Statut */}
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-muted-foreground">Statut</label>
-                  <Select value={filterStatut} onValueChange={setFilterStatut}>
+                  <Select value={filterStatut || "all"} onValueChange={(val) => setFilterStatut(val === "all" ? "" : val)}>
                     <SelectTrigger className="h-10">
                       <SelectValue placeholder="Tous" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Tous</SelectItem>
-                      {uniqueStatuts.map((statut) => (
+                      <SelectItem value="all">Tous</SelectItem>
+                      {uniqueStatuts.filter(statut => statut).map((statut) => (
                         <SelectItem key={statut} value={statut}>{statut}</SelectItem>
                       ))}
                     </SelectContent>
@@ -497,13 +497,13 @@ export default function Journal() {
                 {/* Gravité */}
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-muted-foreground">Gravité</label>
-                  <Select value={filterGravite} onValueChange={setFilterGravite}>
+                  <Select value={filterGravite || "all"} onValueChange={(val) => setFilterGravite(val === "all" ? "" : val)}>
                     <SelectTrigger className="h-10">
                       <SelectValue placeholder="Toutes" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Toutes</SelectItem>
-                      {uniqueGravites.map((gravite) => (
+                      <SelectItem value="all">Toutes</SelectItem>
+                      {uniqueGravites.filter(gravite => gravite).map((gravite) => (
                         <SelectItem key={gravite} value={gravite}>{gravite}</SelectItem>
                       ))}
                     </SelectContent>
