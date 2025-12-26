@@ -1,9 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { verifyAuth, unauthorizedResponse, badRequestResponse, corsHeaders } from "../_shared/auth.ts";
 
 // Sanitize and truncate strings
 const sanitizeString = (str: string | undefined, maxLength: number): string => {
@@ -22,12 +18,21 @@ serve(async (req) => {
   }
 
   try {
+    // AUTHENTICATION CHECK
+    const { user, error: authError } = await verifyAuth(req);
+    if (authError || !user) {
+      console.error("Authentication failed:", authError);
+      return unauthorizedResponse(authError || "Unauthorized");
+    }
+
     const body = await req.json();
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     
     if (!LOVABLE_API_KEY) {
       throw new Error('LOVABLE_API_KEY not configured');
     }
+
+    console.log(`Analyze incident request by user ${user.email || user.id}`);
 
     // Handle different request types
     if (body.type === 'generate-response') {
@@ -39,10 +44,7 @@ serve(async (req) => {
       
       // Validate sender email format if provided
       if (emailSender && !isValidEmail(emailSender)) {
-        return new Response(
-          JSON.stringify({ error: 'Invalid email sender format' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return badRequestResponse('Invalid email sender format');
       }
       
       const systemPrompt = `Tu es un assistant juridique professionnel. Génère une réponse email appropriée et professionnelle.
@@ -81,6 +83,18 @@ RÈGLES:
       });
 
       if (!response.ok) {
+        if (response.status === 429) {
+          return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), {
+            status: 429,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        if (response.status === 402) {
+          return new Response(JSON.stringify({ error: "AI credits exhausted." }), {
+            status: 402,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
         const errorText = await response.text();
         console.error('AI Gateway error:', response.status, errorText);
         throw new Error(`AI Gateway error: ${response.status}`);
@@ -98,10 +112,7 @@ RÈGLES:
     const text = sanitizeString(body.text, 20000);
     
     if (!text) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required field: text' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return badRequestResponse('Missing required field: text');
     }
 
     const systemPrompt = `Tu es un auditeur juridique factuel. Analyse le texte fourni et extrait UNIQUEMENT les informations présentes.
@@ -138,6 +149,18 @@ Retourne un JSON avec:
     });
 
     if (!response.ok) {
+      if (response.status === 429) {
+        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), {
+          status: 429,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      if (response.status === 402) {
+        return new Response(JSON.stringify({ error: "AI credits exhausted." }), {
+          status: 402,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
       const errorText = await response.text();
       console.error('AI Gateway error:', response.status, errorText);
       throw new Error(`AI Gateway error: ${response.status}`);

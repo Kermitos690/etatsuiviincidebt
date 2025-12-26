@@ -1,9 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { verifyAuth, unauthorizedResponse, corsHeaders } from "../_shared/auth.ts";
 
 // HTML escape function to prevent XSS
 const escapeHtml = (str: string): string => {
@@ -37,6 +33,13 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
+    // AUTHENTICATION CHECK
+    const { user, error: authError } = await verifyAuth(req);
+    if (authError || !user) {
+      console.error("Authentication failed:", authError);
+      return unauthorizedResponse(authError || "Unauthorized");
+    }
+
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     if (!RESEND_API_KEY) {
       throw new Error("RESEND_API_KEY not configured");
@@ -89,7 +92,7 @@ const handler = async (req: Request): Promise<Response> => {
     // Validate score is a number between 0-100
     const score = typeof incidentScore === 'number' ? Math.min(100, Math.max(0, incidentScore)) : 0;
 
-    console.log("Sending critical alert to:", alertEmail);
+    console.log(`Critical alert sent by ${user.email || user.id} to:`, alertEmail);
     console.log("Incident:", incidentTitle.substring(0, 50));
 
     // Escape all user inputs for HTML
