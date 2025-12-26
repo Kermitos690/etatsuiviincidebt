@@ -212,15 +212,15 @@ async function processEmailsInBackground(
       await new Promise(resolve => setTimeout(resolve, 50));
     }
 
-    // Mark as completed
+    // Mark sync as completed, then start analysis
     await supabase
       .from("sync_status")
       .update({
-        status: "completed",
+        status: "analyzing",
         completed_at: new Date().toISOString(),
         processed_emails: processedCount,
         new_emails: newEmailsCount,
-        stats
+        stats: { ...stats, sync_completed: true, analysis_started: true }
       })
       .eq("id", syncId);
 
@@ -230,8 +230,78 @@ async function processEmailsInBackground(
       .update({ last_sync: new Date().toISOString() })
       .eq("id", config.id);
 
-    console.log(`[Background] Completed! ${processedCount} emails processed, ${newEmailsCount} new`);
+    console.log(`[Background] Sync completed! ${processedCount} emails processed, ${newEmailsCount} new`);
     console.log(`[Background] Stats:`, stats);
+
+    // Trigger AI analysis for new emails
+    if (newEmailsCount > 0) {
+      console.log(`[Background] Starting AI analysis for ${newEmailsCount} new emails...`);
+      
+      try {
+        const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+        const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        
+        const analysisResponse = await fetch(`${SUPABASE_URL}/functions/v1/batch-analyze-emails`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            syncId,
+            batchSize: Math.min(newEmailsCount, 20),
+            autoCreateIncidents: true,
+            confidenceThreshold: 75
+          }),
+        });
+
+        if (analysisResponse.ok) {
+          const analysisResult = await analysisResponse.json();
+          console.log(`[Background] AI Analysis complete:`, analysisResult);
+          
+          await supabase
+            .from("sync_status")
+            .update({
+              status: "completed",
+              stats: { 
+                ...stats, 
+                sync_completed: true,
+                analysis_completed: true,
+                emails_analyzed: analysisResult.analyzed || 0,
+                incidents_created: analysisResult.incidentsCreated || 0
+              }
+            })
+            .eq("id", syncId);
+        } else {
+          console.error("[Background] AI Analysis failed:", await analysisResponse.text());
+          await supabase
+            .from("sync_status")
+            .update({
+              status: "completed",
+              stats: { ...stats, sync_completed: true, analysis_error: true }
+            })
+            .eq("id", syncId);
+        }
+      } catch (analysisError) {
+        console.error("[Background] AI Analysis error:", analysisError);
+        await supabase
+          .from("sync_status")
+          .update({
+            status: "completed",
+            stats: { ...stats, sync_completed: true, analysis_error: true }
+          })
+          .eq("id", syncId);
+      }
+    } else {
+      // No new emails to analyze
+      await supabase
+        .from("sync_status")
+        .update({
+          status: "completed",
+          stats: { ...stats, sync_completed: true, analysis_completed: true, emails_analyzed: 0 }
+        })
+        .eq("id", syncId);
+    }
 
   } catch (error) {
     console.error("[Background] Fatal error:", error);

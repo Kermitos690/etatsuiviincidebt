@@ -38,3 +38,6 @@ verify_jwt = false
 
 [functions.sync-status]
 verify_jwt = false
+
+[functions.batch-analyze-emails]
+verify_jwt = false
