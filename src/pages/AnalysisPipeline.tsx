@@ -27,7 +27,8 @@ import {
   Eye,
   ThumbsUp,
   ThumbsDown,
-  Users
+  Users,
+  ExternalLink
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -45,6 +46,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
+import { EmailLink } from '@/components/email';
 
 interface AnalysisStep {
   name: string;
@@ -663,6 +665,26 @@ export default function AnalysisPipeline() {
                               <p className="text-sm line-clamp-2">
                                 {thread.chronological_summary || 'Pas de résumé'}
                               </p>
+                              {/* Email links */}
+                              {thread.email_ids && thread.email_ids.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-2" onClick={(e) => e.stopPropagation()}>
+                                  {thread.email_ids.slice(0, 3).map((emailId, idx) => (
+                                    <EmailLink
+                                      key={emailId}
+                                      emailId={emailId}
+                                      label={`Email ${idx + 1}`}
+                                      variant="outline"
+                                      size="sm"
+                                      className="text-xs"
+                                    />
+                                  ))}
+                                  {thread.email_ids.length > 3 && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      +{thread.email_ids.length - 3}
+                                    </Badge>
+                                  )}
+                                </div>
+                              )}
                             </div>
                             <Button variant="ghost" size="icon">
                               <Eye className="h-4 w-4" />
