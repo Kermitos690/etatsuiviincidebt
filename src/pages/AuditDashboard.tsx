@@ -19,7 +19,9 @@ import {
   Target,
   TrendingUp,
   XCircle,
-  Zap
+  Zap,
+  Mail,
+  ExternalLink
 } from 'lucide-react';
 import { AppLayout, PageHeader } from '@/components/layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -34,6 +36,7 @@ import { toast } from 'sonner';
 import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
+import { EmailLink } from '@/components/email';
 
 interface MonthlyReport {
   id: string;
@@ -60,6 +63,8 @@ interface AuditAlert {
   legal_reference: any;
   is_resolved: boolean;
   created_at: string;
+  related_email_id?: string | null;
+  related_incident_id?: string | null;
 }
 
 interface Recurrence {
@@ -98,7 +103,7 @@ export default function AuditDashboard() {
     try {
       const [reportsRes, alertsRes, recurrencesRes, incidentsRes, emailsRes] = await Promise.all([
         supabase.from('monthly_reports').select('*').order('month_year', { ascending: false }),
-        supabase.from('audit_alerts').select('*').order('created_at', { ascending: false }).limit(50),
+        supabase.from('audit_alerts').select('*, related_email_id, related_incident_id').order('created_at', { ascending: false }).limit(50),
         supabase.from('recurrence_tracking').select('*').order('occurrence_count', { ascending: false }),
         supabase.from('incidents').select('*').order('date_incident', { ascending: false }),
         supabase.from('emails').select('id, subject, sender, received_at, thread_analysis, email_type').order('received_at', { ascending: false })
@@ -626,12 +631,24 @@ export default function AuditDashboard() {
                             </div>
                             <h4 className="font-semibold">{alert.title}</h4>
                             <p className="text-sm text-muted-foreground mt-1">{alert.description}</p>
-                            {alert.legal_reference && (
-                              <Badge variant="outline" className="mt-2 text-xs">
-                                <Scale className="h-3 w-3 mr-1" />
-                                {alert.legal_reference.article}
-                              </Badge>
-                            )}
+                            <div className="flex items-center gap-2 mt-2 flex-wrap">
+                              {alert.legal_reference && (
+                                <Badge variant="outline" className="text-xs">
+                                  <Scale className="h-3 w-3 mr-1" />
+                                  {alert.legal_reference.article}
+                                </Badge>
+                              )}
+                              {alert.related_email_id && (
+                                <EmailLink
+                                  emailId={alert.related_email_id}
+                                  label="Voir email"
+                                  variant="outline"
+                                  size="sm"
+                                  showIcon
+                                  className="text-xs"
+                                />
+                              )}
+                            </div>
                           </div>
                           <Button 
                             size="sm" 

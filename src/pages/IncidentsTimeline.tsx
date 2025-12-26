@@ -26,8 +26,10 @@ import {
   Shield,
   Quote,
   Paperclip,
-  Filter
+  Filter,
+  ExternalLink
 } from "lucide-react";
+import { EmailLink } from "@/components/email";
 
 type Incident = {
   id: string;
@@ -560,6 +562,19 @@ export default function IncidentsTimeline() {
 
                   <TabsContent value="citations" className="mt-4">
                     <div className="space-y-4">
+                      {selectedIncident?.email_source_id && (
+                        <div className="flex items-center gap-2 p-3 bg-primary/10 rounded-lg border border-primary/20">
+                          <Mail className="h-4 w-4 text-primary" />
+                          <span className="text-sm font-medium">Email source:</span>
+                          <EmailLink 
+                            emailId={selectedIncident.email_source_id} 
+                            label="Voir l'email complet"
+                            variant="link"
+                            showIcon
+                            tooltip="Ouvrir l'email source de cet incident"
+                          />
+                        </div>
+                      )}
                       {emailCitations.length === 0 ? (
                         <p className="text-muted-foreground text-center py-8">
                           Aucune citation email disponible
@@ -568,9 +583,18 @@ export default function IncidentsTimeline() {
                         emailCitations.map((email: any) => (
                           <Card key={email.id}>
                             <CardContent className="p-4">
-                              <div className="flex items-center gap-2 mb-2">
-                                <Mail className="h-4 w-4 text-muted-foreground" />
-                                <span className="font-medium">{email.subject}</span>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <Mail className="h-4 w-4 text-muted-foreground" />
+                                  <span className="font-medium">{email.subject}</span>
+                                </div>
+                                <EmailLink 
+                                  emailId={email.id} 
+                                  label="Ouvrir"
+                                  variant="outline"
+                                  size="sm"
+                                  showIcon
+                                />
                               </div>
                               <p className="text-sm text-muted-foreground mb-2">
                                 De: {email.sender} • {format(parseISO(email.received_at), 'dd/MM/yyyy HH:mm')}
