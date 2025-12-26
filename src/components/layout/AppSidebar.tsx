@@ -14,7 +14,8 @@ import {
   Table,
   LogOut,
   BarChart3,
-  Scale
+  Scale,
+  Paperclip
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -27,6 +28,7 @@ const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/emails', icon: Mail, label: 'Boîte de réception' },
   { to: '/emails-analyzed', icon: BarChart3, label: 'Emails Analysés' },
+  { to: '/attachments', icon: Paperclip, label: 'Pièces Jointes' },
   { to: '/violations', icon: Scale, label: 'Violations' },
   { to: '/journal', icon: BookOpen, label: 'Journal' },
   { to: '/incidents', icon: AlertTriangle, label: 'Incidents' },
