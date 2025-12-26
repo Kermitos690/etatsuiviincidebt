@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useIncidentStore } from "@/stores/incidentStore";
 import { EmailLink } from "@/components/email";
+import { QuickActions, RealtimeAlerts, ActorTrustPanel, CorroborationPanel } from "@/components/control";
 import { 
   LayoutDashboard, 
   AlertTriangle, 
@@ -23,7 +24,9 @@ import {
   XCircle,
   AlertCircle,
   RefreshCw,
-  ExternalLink
+  ExternalLink,
+  Zap,
+  Brain
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -220,14 +223,22 @@ export default function ControlCenter() {
 
         {/* Main Content Tabs */}
         <Tabs defaultValue="overview" className="space-y-4">
-          <TabsList>
+        <TabsList>
             <TabsTrigger value="overview" className="flex items-center gap-2">
               <LayoutDashboard className="h-4 w-4" />
               Vue d'ensemble
             </TabsTrigger>
+            <TabsTrigger value="actions" className="flex items-center gap-2">
+              <Zap className="h-4 w-4" />
+              Actions
+            </TabsTrigger>
             <TabsTrigger value="alerts" className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4" />
               Alertes ({unresolvedAlerts})
+            </TabsTrigger>
+            <TabsTrigger value="analysis" className="flex items-center gap-2">
+              <Brain className="h-4 w-4" />
+              Analyse IA
             </TabsTrigger>
             <TabsTrigger value="violations" className="flex items-center gap-2">
               <Scale className="h-4 w-4" />
@@ -438,12 +449,30 @@ export default function ControlCenter() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          <TabsContent value="actions" className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <QuickActions 
+                emailsCount={totalEmails}
+                unprocessedCount={unprocessedEmails}
+                threadsCount={threadAnalyses?.length || 0}
+              />
+              <RealtimeAlerts />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="analysis" className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <ActorTrustPanel />
+              <CorroborationPanel />
+            </div>
+          </TabsContent>
         </Tabs>
 
-        {/* Quick Actions */}
+        {/* Quick Navigation */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Actions rapides</CardTitle>
+            <CardTitle className="text-lg">Navigation rapide</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
@@ -469,6 +498,12 @@ export default function ControlCenter() {
                 <Link to="/ia-training">
                   <Users className="h-4 w-4 mr-2" />
                   Entraînement IA
+                </Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link to="/swipe-training">
+                  <Brain className="h-4 w-4 mr-2" />
+                  Swipe Training
                 </Link>
               </Button>
             </div>
