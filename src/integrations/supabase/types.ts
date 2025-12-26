@@ -19,12 +19,15 @@ export type Database = {
           ai_analysis: Json | null
           body: string
           created_at: string
+          email_type: string | null
           gmail_message_id: string | null
           gmail_thread_id: string | null
           id: string
           incident_id: string | null
+          is_sent: boolean | null
           processed: boolean
           received_at: string
+          recipient: string | null
           sender: string
           subject: string
           thread_analysis: Json | null
@@ -33,12 +36,15 @@ export type Database = {
           ai_analysis?: Json | null
           body: string
           created_at?: string
+          email_type?: string | null
           gmail_message_id?: string | null
           gmail_thread_id?: string | null
           id?: string
           incident_id?: string | null
+          is_sent?: boolean | null
           processed?: boolean
           received_at?: string
+          recipient?: string | null
           sender: string
           subject: string
           thread_analysis?: Json | null
@@ -47,12 +53,15 @@ export type Database = {
           ai_analysis?: Json | null
           body?: string
           created_at?: string
+          email_type?: string | null
           gmail_message_id?: string | null
           gmail_thread_id?: string | null
           id?: string
           incident_id?: string | null
+          is_sent?: boolean | null
           processed?: boolean
           received_at?: string
+          recipient?: string | null
           sender?: string
           subject?: string
           thread_analysis?: Json | null
