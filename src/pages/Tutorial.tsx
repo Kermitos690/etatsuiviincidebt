@@ -23,8 +23,15 @@ import {
   Eye,
   PlusCircle,
   Filter,
-  Search
+  Search,
+  HelpCircle,
+  FileDown
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
+import { useRef, useState } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 // Import tutorial images
@@ -143,10 +150,119 @@ const WorkflowStep = ({ number, title, description, isLast = false }: { number: 
   </div>
 );
 
+// FAQ Data
+const faqItems = [
+  {
+    question: "Comment connecter mon compte Gmail ?",
+    answer: "Accédez à 'Configuration Gmail' dans le menu, cliquez sur 'Connecter Gmail' et suivez le processus d'authentification Google. Vous devrez autoriser l'accès à votre compte pour que le système puisse synchroniser vos emails."
+  },
+  {
+    question: "Les emails sont-ils modifiés ou supprimés de ma boîte Gmail ?",
+    answer: "Non, le système ne fait que lire et copier vos emails. Vos emails originaux dans Gmail restent intacts et ne sont jamais modifiés ni supprimés."
+  },
+  {
+    question: "Combien de temps prend l'analyse d'un email ?",
+    answer: "L'analyse d'un email prend généralement quelques secondes. Pour un batch de plusieurs emails, comptez environ 1-2 minutes pour 50 emails. Le temps peut varier selon la longueur et la complexité des emails."
+  },
+  {
+    question: "Comment l'IA détecte-t-elle les violations ?",
+    answer: "L'IA analyse le contenu des emails en cherchant des patterns spécifiques : délais non respectés, promesses non tenues, contradictions entre messages, tons menaçants, refus injustifiés, etc. Elle s'appuie sur un référentiel juridique belge."
+  },
+  {
+    question: "Puis-je créer un incident manuellement ?",
+    answer: "Oui, vous pouvez créer un incident manuellement via le bouton 'Nouvel Incident' dans la section Incidents. Vous pouvez aussi créer un incident directement depuis un email analysé."
+  },
+  {
+    question: "Comment exporter un rapport pour le juge de paix ?",
+    answer: "Accédez à la section 'Exports', sélectionnez les incidents à inclure, choisissez le format PDF et cliquez sur 'Générer'. Le rapport inclura automatiquement les preuves, chronologies et références légales."
+  },
+  {
+    question: "Les pièces jointes sont-elles analysées ?",
+    answer: "Oui, les pièces jointes PDF et images sont automatiquement téléchargées et analysées par OCR pour en extraire le texte. Les informations extraites sont liées à l'email source."
+  },
+  {
+    question: "Comment fonctionne la corroboration croisée ?",
+    answer: "Le système compare les informations entre différents emails et sources pour identifier les confirmations et contradictions. Par exemple, si une institution promet une action dans un email mais fait le contraire dans un autre, c'est détecté."
+  },
+  {
+    question: "Mes données sont-elles sécurisées ?",
+    answer: "Oui, toutes les données sont chiffrées et stockées de manière sécurisée. L'accès est protégé par authentification et les politiques RLS (Row Level Security) garantissent que seul vous pouvez voir vos données."
+  },
+  {
+    question: "Comment améliorer la précision de l'IA ?",
+    answer: "Utilisez la section 'Entrainement IA' pour valider ou corriger les détections. Chaque correction aide l'IA à s'améliorer. Plus vous validez de détections, plus l'IA devient précise pour vos cas spécifiques."
+  },
+  {
+    question: "Que signifie le score d'un incident ?",
+    answer: "Le score reflète l'impact et la gravité de l'incident. Il prend en compte : la gravité de la violation, la récurrence, le nombre de preuves, l'institution impliquée et l'urgence. Un score élevé indique un incident prioritaire."
+  },
+  {
+    question: "Comment filtrer les emails par institution ?",
+    answer: "Dans la section 'Emails Analysés' ou 'Boîte de réception', utilisez les filtres en haut de page pour sélectionner une institution spécifique. Vous pouvez aussi combiner plusieurs filtres."
+  }
+];
+
 export default function Tutorial() {
+  const tutorialRef = useRef<HTMLDivElement>(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportPDF = async () => {
+    if (!tutorialRef.current) return;
+    
+    setIsExporting(true);
+    toast.info("Génération du PDF en cours...");
+
+    try {
+      const element = tutorialRef.current;
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#0a0a0f'
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+      
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+      const imgX = (pdfWidth - imgWidth * ratio) / 2;
+      
+      let heightLeft = imgHeight * ratio;
+      let position = 0;
+      
+      // First page
+      pdf.addImage(imgData, 'PNG', imgX, position, imgWidth * ratio, imgHeight * ratio);
+      heightLeft -= pdfHeight;
+      
+      // Add more pages if needed
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight * ratio;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', imgX, position, imgWidth * ratio, imgHeight * ratio);
+        heightLeft -= pdfHeight;
+      }
+      
+      pdf.save('tutoriel-vigilance-juridique.pdf');
+      toast.success("PDF téléchargé avec succès !");
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      toast.error("Erreur lors de la génération du PDF");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <AppLayout>
-      <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-8">
+      <div ref={tutorialRef} className="p-4 md:p-8 max-w-6xl mx-auto space-y-8">
         {/* Header */}
         <div className="text-center space-y-4">
           <Badge variant="outline" className="border-primary/50 text-primary">
@@ -158,6 +274,14 @@ export default function Tutorial() {
           <p className="text-muted-foreground max-w-2xl mx-auto">
             Guide exhaustif pour maîtriser toutes les fonctionnalités du système de surveillance et d'analyse des incidents juridiques.
           </p>
+          <Button 
+            onClick={handleExportPDF} 
+            disabled={isExporting}
+            className="mt-4"
+          >
+            <FileDown className="w-4 h-4 mr-2" />
+            {isExporting ? "Génération en cours..." : "Télécharger en PDF"}
+          </Button>
         </div>
 
         {/* Quick Overview */}
@@ -646,6 +770,33 @@ export default function Tutorial() {
                 </ul>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* FAQ Section */}
+        <Card className="glass-card border-border/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <HelpCircle className="w-5 h-5 text-primary" />
+              Questions fréquemment posées (FAQ)
+            </CardTitle>
+            <CardDescription>
+              Réponses aux questions les plus courantes sur l'utilisation du système
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Accordion type="single" collapsible className="space-y-2">
+              {faqItems.map((item, index) => (
+                <AccordionItem key={index} value={`faq-${index}`} className="border border-border/30 rounded-lg px-4">
+                  <AccordionTrigger className="text-left hover:no-underline">
+                    <span className="font-medium text-foreground">{item.question}</span>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <p className="text-muted-foreground pb-2">{item.answer}</p>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
           </CardContent>
         </Card>
 
