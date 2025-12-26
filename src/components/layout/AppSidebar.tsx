@@ -15,7 +15,8 @@ import {
   LogOut,
   BarChart3,
   Scale,
-  Paperclip
+  Paperclip,
+  GraduationCap
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -36,6 +37,7 @@ const navItems = [
   { to: '/incidents-timeline', icon: Scale, label: 'Timeline Incidents' },
   { to: '/nouveau', icon: Plus, label: 'Nouvel incident' },
   { to: '/ia-auditeur', icon: Brain, label: 'IA Auditeur' },
+  { to: '/ia-training', icon: GraduationCap, label: 'Entraînement IA' },
   { to: '/gmail-config', icon: Mail, label: 'Config Gmail' },
   { to: '/sheets-config', icon: Table, label: 'Config Sheets' },
   { to: '/exports', icon: FileText, label: 'Exports PDF' },
