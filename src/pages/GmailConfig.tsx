@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,6 +31,7 @@ interface GmailConfig {
 }
 
 export default function GmailConfig() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [config, setConfig] = useState<GmailConfig>({
     connected: false,
     syncEnabled: false,
@@ -41,6 +43,19 @@ export default function GmailConfig() {
   const [newDomain, setNewDomain] = useState('');
   const [newKeyword, setNewKeyword] = useState('');
   const [syncFromDate, setSyncFromDate] = useState<Date | undefined>(new Date('2025-12-18'));
+
+  // Handle OAuth callback from mobile redirect
+  useEffect(() => {
+    const connected = searchParams.get('connected');
+    const email = searchParams.get('email');
+    
+    if (connected === 'true' && email) {
+      setConfig(prev => ({ ...prev, connected: true, email: decodeURIComponent(email) }));
+      toast.success('Connexion Gmail réussie');
+      // Clean up URL params
+      setSearchParams({});
+    }
+  }, [searchParams, setSearchParams]);
 
   // Load config from database on mount
   useEffect(() => {
@@ -77,26 +92,35 @@ export default function GmailConfig() {
       if (error) throw error;
       
       if (data?.url) {
-        const width = 600, height = 700;
-        const left = window.screenX + (window.outerWidth - width) / 2;
-        const top = window.screenY + (window.outerHeight - height) / 2;
+        // Detect mobile devices
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
         
-        const popup = window.open(data.url, 'Gmail Authorization', 
-          `width=${width},height=${height},left=${left},top=${top}`);
+        if (isMobile) {
+          // On mobile, use direct redirect (popups are often blocked)
+          window.location.href = data.url;
+        } else {
+          // On desktop, use popup
+          const width = 600, height = 700;
+          const left = window.screenX + (window.outerWidth - width) / 2;
+          const top = window.screenY + (window.outerHeight - height) / 2;
+          
+          const popup = window.open(data.url, 'Gmail Authorization', 
+            `width=${width},height=${height},left=${left},top=${top}`);
 
-        const handleMessage = async (event: MessageEvent) => {
-          if (event.data.type === 'gmail-oauth-callback') {
-            popup?.close();
-            window.removeEventListener('message', handleMessage);
-            if (event.data.success) {
-              setConfig(prev => ({ ...prev, connected: true, email: event.data.email }));
-              toast.success('Connexion Gmail réussie');
-            } else {
-              toast.error('Échec de la connexion Gmail');
+          const handleMessage = async (event: MessageEvent) => {
+            if (event.data.type === 'gmail-oauth-callback') {
+              popup?.close();
+              window.removeEventListener('message', handleMessage);
+              if (event.data.success) {
+                setConfig(prev => ({ ...prev, connected: true, email: event.data.email }));
+                toast.success('Connexion Gmail réussie');
+              } else {
+                toast.error('Échec de la connexion Gmail');
+              }
             }
-          }
-        };
-        window.addEventListener('message', handleMessage);
+          };
+          window.addEventListener('message', handleMessage);
+        }
       }
     } catch (error) {
       console.error('Gmail auth error:', error);
@@ -174,23 +198,23 @@ export default function GmailConfig() {
               <CardDescription>Authentifiez-vous avec votre compte Gmail</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-4 rounded-xl bg-muted/50">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-xl bg-muted/50">
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-full ${config.connected ? 'bg-green-100 dark:bg-green-900/30' : 'bg-muted'}`}>
+                  <div className={`p-2 rounded-full flex-shrink-0 ${config.connected ? 'bg-green-100 dark:bg-green-900/30' : 'bg-muted'}`}>
                     {config.connected ? <Check className="h-5 w-5 text-green-600" /> : <X className="h-5 w-5 text-muted-foreground" />}
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="font-medium">{config.connected ? 'Connecté' : 'Non connecté'}</p>
-                    {config.email && <p className="text-sm text-muted-foreground">{config.email}</p>}
+                    {config.email && <p className="text-sm text-muted-foreground truncate">{config.email}</p>}
                   </div>
                 </div>
-                <Button onClick={handleGoogleAuth} disabled={loading} variant={config.connected ? 'outline' : 'default'}>
+                <Button onClick={handleGoogleAuth} disabled={loading} variant={config.connected ? 'outline' : 'default'} className="w-full sm:w-auto flex-shrink-0">
                   {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <ExternalLink className="h-4 w-4 mr-2" />}
                   {config.connected ? 'Reconnecter' : 'Connecter Gmail'}
                 </Button>
               </div>
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300">
-                <Shield className="h-4 w-4 flex-shrink-0" />
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300">
+                <Shield className="h-4 w-4 flex-shrink-0 mt-0.5" />
                 <p className="text-sm">Accès en lecture seule. Les tokens sont stockés de manière sécurisée.</p>
               </div>
             </CardContent>
@@ -222,9 +246,9 @@ export default function GmailConfig() {
                     </Badge>
                   ))}
                 </div>
-                <div className="flex gap-2">
-                  <Input placeholder="exemple.ch" value={newDomain} onChange={(e) => setNewDomain(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addDomain()} className="max-w-xs" />
-                  <Button onClick={addDomain} size="icon" variant="outline"><Plus className="h-4 w-4" /></Button>
+                <div className="flex gap-2 w-full">
+                  <Input placeholder="exemple.ch" value={newDomain} onChange={(e) => setNewDomain(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addDomain()} className="flex-1 sm:max-w-xs" />
+                  <Button onClick={addDomain} size="icon" variant="outline" className="flex-shrink-0"><Plus className="h-4 w-4" /></Button>
                 </div>
               </div>
               <Separator />
@@ -238,9 +262,9 @@ export default function GmailConfig() {
                     </Badge>
                   ))}
                 </div>
-                <div className="flex gap-2">
-                  <Input placeholder="mot-clé" value={newKeyword} onChange={(e) => setNewKeyword(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addKeyword()} className="max-w-xs" />
-                  <Button onClick={addKeyword} size="icon" variant="outline"><Plus className="h-4 w-4" /></Button>
+                <div className="flex gap-2 w-full">
+                  <Input placeholder="mot-clé" value={newKeyword} onChange={(e) => setNewKeyword(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addKeyword()} className="flex-1 sm:max-w-xs" />
+                  <Button onClick={addKeyword} size="icon" variant="outline" className="flex-shrink-0"><Plus className="h-4 w-4" /></Button>
                 </div>
               </div>
             </CardContent>
@@ -284,7 +308,7 @@ export default function GmailConfig() {
                 </p>
               </div>
               <Separator />
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
                   <p className="font-medium">Dernière synchronisation</p>
                   <p className="text-sm text-muted-foreground flex items-center gap-1">
@@ -292,9 +316,9 @@ export default function GmailConfig() {
                     {config.lastSync ? new Date(config.lastSync).toLocaleString('fr-CH') : 'Jamais'}
                   </p>
                 </div>
-                <Button onClick={handleSync} disabled={syncing || !config.connected} className="glow-button">
+                <Button onClick={handleSync} disabled={syncing || !config.connected} className="glow-button w-full sm:w-auto">
                   {syncing ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                  Synchroniser maintenant
+                  Synchroniser
                 </Button>
               </div>
             </CardContent>
