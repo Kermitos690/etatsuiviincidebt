@@ -29,6 +29,7 @@ const navItems = [
   { to: '/emails', icon: Mail, label: 'Boîte de réception' },
   { to: '/emails-analyzed', icon: BarChart3, label: 'Emails Analysés' },
   { to: '/attachments', icon: Paperclip, label: 'Pièces Jointes' },
+  { to: '/analysis-pipeline', icon: Sparkles, label: 'Analyse 3 Passes' },
   { to: '/violations', icon: Scale, label: 'Violations' },
   { to: '/journal', icon: BookOpen, label: 'Journal' },
   { to: '/incidents', icon: AlertTriangle, label: 'Incidents' },
