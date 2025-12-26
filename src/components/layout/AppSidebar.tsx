@@ -18,7 +18,8 @@ import {
   Paperclip,
   GraduationCap,
   HelpCircle,
-  Layers
+  Layers,
+  Server
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -44,6 +45,7 @@ const navItems = [
   { to: '/gmail-config', icon: Mail, label: 'Config Gmail' },
   { to: '/sheets-config', icon: Table, label: 'Config Sheets' },
   { to: '/exports', icon: FileText, label: 'Exports PDF' },
+  { to: '/system-admin', icon: Server, label: 'Système' },
   { to: '/admin', icon: Settings, label: 'Administration' },
   { to: '/tutorial', icon: HelpCircle, label: 'Tutoriel' },
 ];
