@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Mail, Sparkles, Check, X, RefreshCw, AlertTriangle, ArrowRight, Clock, Brain, Send, 
   MessageSquare, Settings, Zap, Play, Scale, ChevronDown, ChevronRight, Layers, 
@@ -24,6 +24,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/hooks/useAuth';
 
 interface Email {
   id: string;
@@ -143,6 +144,7 @@ interface EmailThread {
 }
 
 export default function EmailsInbox() {
+  const { session, user } = useAuth();
   const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedThread, setSelectedThread] = useState<EmailThread | null>(null);
@@ -278,15 +280,27 @@ export default function EmailsInbox() {
     )
   }), [emails, threads]);
 
-  const fetchEmails = async () => {
+  const fetchEmails = useCallback(async () => {
+    if (!user) {
+      console.log('No user session, skipping email fetch');
+      setLoading(false);
+      return;
+    }
+    
     setLoading(true);
     try {
+      console.log('Fetching emails for user:', user.id);
       const { data, error } = await supabase
         .from('emails')
         .select('*')
         .order('received_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
+      
+      console.log('Emails fetched:', data?.length || 0);
       setEmails((data || []) as unknown as Email[]);
     } catch (error) {
       console.error('Error fetching emails:', error);
@@ -294,10 +308,12 @@ export default function EmailsInbox() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
-    fetchEmails();
+    if (user) {
+      fetchEmails();
+    }
 
     const channel = supabase
       .channel('emails-changes')
@@ -309,7 +325,7 @@ export default function EmailsInbox() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [user, fetchEmails]);
 
   // Fetch attachments when email is selected
   const fetchAttachments = async (emailId: string) => {
