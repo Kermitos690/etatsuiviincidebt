@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Mail, Sparkles, Check, X, RefreshCw, AlertTriangle, ArrowRight, Clock, Brain, Send, MessageSquare, Settings, Zap, Play } from 'lucide-react';
+import { Mail, Sparkles, Check, X, RefreshCw, AlertTriangle, ArrowRight, Clock, Brain, Send, MessageSquare, Settings, Zap, Play, Scale, FileWarning, Repeat, AlertCircle, Ban } from 'lucide-react';
 import { AppLayout, PageHeader } from '@/components/layout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -33,9 +35,49 @@ interface Email {
     summary: string;
     suggestedResponse?: string;
   } | null;
+  thread_analysis: AdvancedAnalysis | null;
   incident_id: string | null;
   gmail_thread_id?: string;
   created_at: string;
+}
+
+interface AdvancedAnalysis {
+  deadline_violations: {
+    detected: boolean;
+    details: string[];
+    missed_deadlines: string[];
+    severity: "none" | "low" | "medium" | "high" | "critical";
+  };
+  unanswered_questions: {
+    detected: boolean;
+    questions: string[];
+    waiting_since: string[];
+  };
+  repetitions: {
+    detected: boolean;
+    repeated_requests: string[];
+    count: number;
+  };
+  contradictions: {
+    detected: boolean;
+    details: string[];
+    conflicting_statements: Array<{ statement1: string; statement2: string }>;
+  };
+  rule_violations: {
+    detected: boolean;
+    violations: string[];
+    rules_concerned: string[];
+    legal_references: string[];
+  };
+  circumvention: {
+    detected: boolean;
+    details: string[];
+    evasive_responses: string[];
+  };
+  problem_score: number;
+  summary: string;
+  recommendations: string[];
+  confidence: "High" | "Medium" | "Low";
 }
 
 export default function EmailsInbox() {
@@ -50,6 +92,7 @@ export default function EmailsInbox() {
   const [sendingResponse, setSendingResponse] = useState(false);
   const [autoProcessEnabled, setAutoProcessEnabled] = useState(true);
   const [processingEmail, setProcessingEmail] = useState<string | null>(null);
+  const [advancedAnalyzing, setAdvancedAnalyzing] = useState(false);
   const navigate = useNavigate();
 
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/receive-email`;
@@ -118,6 +161,41 @@ export default function EmailsInbox() {
       toast.error('Erreur lors de l\'analyse');
     } finally {
       setProcessingEmail(null);
+    }
+  };
+
+  const runAdvancedAnalysis = async (email: Email) => {
+    setAdvancedAnalyzing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('analyze-email-advanced', {
+        body: { 
+          emailId: email.id,
+          threadId: email.gmail_thread_id,
+          analyzeThread: !!email.gmail_thread_id
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast.success(`Analyse approfondie terminée (${data.emailsAnalyzed} email(s))`);
+        fetchEmails();
+        // Update selected email with new analysis
+        if (selectedEmail?.id === email.id) {
+          setSelectedEmail(prev => prev ? { ...prev, thread_analysis: data.analysis } : null);
+        }
+      }
+    } catch (error: any) {
+      console.error('Error in advanced analysis:', error);
+      if (error.message?.includes('429')) {
+        toast.error('Trop de requêtes, veuillez patienter');
+      } else if (error.message?.includes('402')) {
+        toast.error('Crédits IA épuisés');
+      } else {
+        toast.error('Erreur lors de l\'analyse approfondie');
+      }
+    } finally {
+      setAdvancedAnalyzing(false);
     }
   };
 
@@ -456,101 +534,322 @@ export default function EmailsInbox() {
                   </Button>
                 )}
 
-                {selectedEmail.ai_analysis ? (
-                  <div className="glass-card p-6">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 rounded-xl bg-gradient-secondary shadow-glow-sm">
-                        <Brain className="h-5 w-5 text-white" />
-                      </div>
-                      <div>
-                        <h4 className="font-semibold">Analyse IA</h4>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs text-muted-foreground">Confiance :</span>
-                          <span className={cn(
-                            "text-xs font-bold px-2 py-0.5 rounded-full bg-gradient-to-r text-white",
-                            getConfidenceColor(selectedEmail.ai_analysis.confidence)
-                          )}>
-                            {selectedEmail.ai_analysis.confidence}%
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+                {/* Analysis Tabs */}
+                <Tabs defaultValue="basic" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="basic">Analyse de base</TabsTrigger>
+                    <TabsTrigger value="advanced">Analyse approfondie</TabsTrigger>
+                  </TabsList>
 
-                    {selectedEmail.ai_analysis.isIncident ? (
-                      <>
-                        <div className="space-y-3 mb-4">
-                          <div>
-                            <p className="text-xs text-muted-foreground">Titre suggéré</p>
-                            <p className="font-medium">{selectedEmail.ai_analysis.suggestedTitle}</p>
+                  {/* Basic Analysis Tab */}
+                  <TabsContent value="basic" className="space-y-4">
+                    {selectedEmail.ai_analysis ? (
+                      <div className="glass-card p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="p-2 rounded-xl bg-gradient-secondary shadow-glow-sm">
+                            <Brain className="h-5 w-5 text-white" />
                           </div>
                           <div>
-                            <p className="text-xs text-muted-foreground">Résumé</p>
-                            <p className="text-sm">{selectedEmail.ai_analysis.summary}</p>
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <p className="text-xs text-muted-foreground">Institution</p>
-                              <p className="text-sm font-medium">{selectedEmail.ai_analysis.suggestedInstitution}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-muted-foreground">Gravité</p>
-                              <Badge className={cn(
-                                "text-white",
-                                selectedEmail.ai_analysis.suggestedGravity === 'Critique' && "bg-gradient-to-r from-red-500 to-rose-500",
-                                selectedEmail.ai_analysis.suggestedGravity === 'Grave' && "bg-gradient-to-r from-orange-500 to-amber-500",
-                                selectedEmail.ai_analysis.suggestedGravity === 'Modéré' && "bg-gradient-to-r from-amber-400 to-yellow-500",
-                                selectedEmail.ai_analysis.suggestedGravity === 'Mineur' && "bg-gradient-to-r from-emerald-400 to-emerald-600"
+                            <h4 className="font-semibold">Analyse IA</h4>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-xs text-muted-foreground">Confiance :</span>
+                              <span className={cn(
+                                "text-xs font-bold px-2 py-0.5 rounded-full bg-gradient-to-r text-white",
+                                getConfidenceColor(selectedEmail.ai_analysis.confidence)
                               )}>
-                                {selectedEmail.ai_analysis.suggestedGravity}
-                              </Badge>
+                                {selectedEmail.ai_analysis.confidence}%
+                              </span>
                             </div>
                           </div>
                         </div>
 
-                        {selectedEmail.incident_id ? (
-                          <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center">
-                            <Check className="h-6 w-6 text-emerald-500 mx-auto mb-2" />
-                            <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">Incident déjà créé</p>
-                          </div>
+                        {selectedEmail.ai_analysis.isIncident ? (
+                          <>
+                            <div className="space-y-3 mb-4">
+                              <div>
+                                <p className="text-xs text-muted-foreground">Titre suggéré</p>
+                                <p className="font-medium">{selectedEmail.ai_analysis.suggestedTitle}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-muted-foreground">Résumé</p>
+                                <p className="text-sm">{selectedEmail.ai_analysis.summary}</p>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Institution</p>
+                                  <p className="text-sm font-medium">{selectedEmail.ai_analysis.suggestedInstitution}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Gravité</p>
+                                  <Badge className={cn(
+                                    "text-white",
+                                    selectedEmail.ai_analysis.suggestedGravity === 'Critique' && "bg-gradient-to-r from-red-500 to-rose-500",
+                                    selectedEmail.ai_analysis.suggestedGravity === 'Grave' && "bg-gradient-to-r from-orange-500 to-amber-500",
+                                    selectedEmail.ai_analysis.suggestedGravity === 'Modéré' && "bg-gradient-to-r from-amber-400 to-yellow-500",
+                                    selectedEmail.ai_analysis.suggestedGravity === 'Mineur' && "bg-gradient-to-r from-emerald-400 to-emerald-600"
+                                  )}>
+                                    {selectedEmail.ai_analysis.suggestedGravity}
+                                  </Badge>
+                                </div>
+                              </div>
+                            </div>
+
+                            {selectedEmail.incident_id ? (
+                              <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center">
+                                <Check className="h-6 w-6 text-emerald-500 mx-auto mb-2" />
+                                <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">Incident déjà créé</p>
+                              </div>
+                            ) : (
+                              <div className="flex gap-2">
+                                <Button variant="glass" className="flex-1" onClick={() => generateAIResponse(selectedEmail)}>
+                                  <MessageSquare className="h-4 w-4 mr-2" />
+                                  Générer réponse
+                                </Button>
+                                <Button className="flex-1" onClick={() => createIncidentFromEmail(selectedEmail)}>
+                                  <Sparkles className="h-4 w-4 mr-2" />
+                                  Créer incident
+                                </Button>
+                              </div>
+                            )}
+                          </>
                         ) : (
-                          <div className="flex gap-2">
-                            <Button variant="glass" className="flex-1" onClick={() => generateAIResponse(selectedEmail)}>
+                          <div className="text-center py-4">
+                            <Check className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
+                            <p className="text-sm text-muted-foreground">L'IA n'a pas détecté d'incident dans cet email</p>
+                            <Button variant="glass" className="mt-4" onClick={() => generateAIResponse(selectedEmail)}>
                               <MessageSquare className="h-4 w-4 mr-2" />
-                              Générer réponse
-                            </Button>
-                            <Button className="flex-1" onClick={() => createIncidentFromEmail(selectedEmail)}>
-                              <Sparkles className="h-4 w-4 mr-2" />
-                              Créer incident
+                              Générer une réponse
                             </Button>
                           </div>
                         )}
-                      </>
-                    ) : (
-                      <div className="text-center py-4">
-                        <Check className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
-                        <p className="text-sm text-muted-foreground">L'IA n'a pas détecté d'incident dans cet email</p>
-                        <Button variant="glass" className="mt-4" onClick={() => generateAIResponse(selectedEmail)}>
-                          <MessageSquare className="h-4 w-4 mr-2" />
-                          Générer une réponse
+                      </div>
+                    ) : selectedEmail.processed ? (
+                      <div className="glass-card p-6 text-center">
+                        <X className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">Aucune analyse disponible</p>
+                        <Button variant="glass" className="mt-4" onClick={() => processEmailWithAI(selectedEmail)}>
+                          <Play className="h-4 w-4 mr-2" />
+                          Réanalyser
                         </Button>
                       </div>
+                    ) : (
+                      <div className="glass-card p-6 text-center">
+                        <Clock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">Analyse IA en attente</p>
+                      </div>
                     )}
-                  </div>
-                ) : selectedEmail.processed ? (
-                  <div className="glass-card p-6 text-center">
-                    <X className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">Aucune analyse disponible</p>
-                    <Button variant="glass" className="mt-4" onClick={() => processEmailWithAI(selectedEmail)}>
-                      <Play className="h-4 w-4 mr-2" />
-                      Réanalyser
+                  </TabsContent>
+
+                  {/* Advanced Analysis Tab */}
+                  <TabsContent value="advanced" className="space-y-4">
+                    {/* Launch Analysis Button */}
+                    <Button 
+                      onClick={() => runAdvancedAnalysis(selectedEmail)}
+                      disabled={advancedAnalyzing}
+                      className="w-full glow-button"
+                    >
+                      {advancedAnalyzing ? (
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Scale className="h-4 w-4 mr-2" />
+                      )}
+                      {advancedAnalyzing ? 'Analyse en cours...' : 'Lancer l\'analyse approfondie'}
                     </Button>
-                  </div>
-                ) : (
-                  <div className="glass-card p-6 text-center">
-                    <Clock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">Analyse IA en attente</p>
-                  </div>
-                )}
+
+                    {selectedEmail.thread_analysis ? (
+                      <div className="space-y-4">
+                        {/* Problem Score */}
+                        <div className="glass-card p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium">Score de problèmes</span>
+                            <span className={cn(
+                              "text-lg font-bold",
+                              selectedEmail.thread_analysis.problem_score >= 70 && "text-red-500",
+                              selectedEmail.thread_analysis.problem_score >= 40 && selectedEmail.thread_analysis.problem_score < 70 && "text-amber-500",
+                              selectedEmail.thread_analysis.problem_score < 40 && "text-emerald-500"
+                            )}>
+                              {selectedEmail.thread_analysis.problem_score}/100
+                            </span>
+                          </div>
+                          <Progress 
+                            value={selectedEmail.thread_analysis.problem_score} 
+                            className={cn(
+                              "h-2",
+                              selectedEmail.thread_analysis.problem_score >= 70 && "[&>div]:bg-red-500",
+                              selectedEmail.thread_analysis.problem_score >= 40 && selectedEmail.thread_analysis.problem_score < 70 && "[&>div]:bg-amber-500",
+                              selectedEmail.thread_analysis.problem_score < 40 && "[&>div]:bg-emerald-500"
+                            )}
+                          />
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Confiance: {selectedEmail.thread_analysis.confidence}
+                          </p>
+                        </div>
+
+                        {/* Summary */}
+                        <div className="glass-card p-4">
+                          <h5 className="font-semibold mb-2 flex items-center gap-2">
+                            <Brain className="h-4 w-4 text-primary" />
+                            Résumé
+                          </h5>
+                          <p className="text-sm text-muted-foreground">{selectedEmail.thread_analysis.summary}</p>
+                        </div>
+
+                        {/* Deadline Violations */}
+                        {selectedEmail.thread_analysis.deadline_violations.detected && (
+                          <div className="glass-card p-4 border-l-4 border-red-500">
+                            <h5 className="font-semibold mb-2 flex items-center gap-2 text-red-500">
+                              <Clock className="h-4 w-4" />
+                              Ruptures de délai
+                              <Badge variant="destructive" className="ml-auto">
+                                {selectedEmail.thread_analysis.deadline_violations.severity}
+                              </Badge>
+                            </h5>
+                            <ul className="text-sm space-y-1">
+                              {selectedEmail.thread_analysis.deadline_violations.details.map((detail, i) => (
+                                <li key={i} className="flex items-start gap-2">
+                                  <AlertTriangle className="h-3 w-3 mt-1 text-red-500 flex-shrink-0" />
+                                  {detail}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Unanswered Questions */}
+                        {selectedEmail.thread_analysis.unanswered_questions.detected && (
+                          <div className="glass-card p-4 border-l-4 border-amber-500">
+                            <h5 className="font-semibold mb-2 flex items-center gap-2 text-amber-500">
+                              <AlertCircle className="h-4 w-4" />
+                              Questions sans réponse
+                            </h5>
+                            <ul className="text-sm space-y-1">
+                              {selectedEmail.thread_analysis.unanswered_questions.questions.map((q, i) => (
+                                <li key={i} className="flex items-start gap-2">
+                                  <span className="text-amber-500">•</span>
+                                  {q}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Repetitions */}
+                        {selectedEmail.thread_analysis.repetitions.detected && (
+                          <div className="glass-card p-4 border-l-4 border-orange-500">
+                            <h5 className="font-semibold mb-2 flex items-center gap-2 text-orange-500">
+                              <Repeat className="h-4 w-4" />
+                              Demandes répétées ({selectedEmail.thread_analysis.repetitions.count}x)
+                            </h5>
+                            <ul className="text-sm space-y-1">
+                              {selectedEmail.thread_analysis.repetitions.repeated_requests.map((req, i) => (
+                                <li key={i} className="flex items-start gap-2">
+                                  <span className="text-orange-500">•</span>
+                                  {req}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Contradictions */}
+                        {selectedEmail.thread_analysis.contradictions.detected && (
+                          <div className="glass-card p-4 border-l-4 border-purple-500">
+                            <h5 className="font-semibold mb-2 flex items-center gap-2 text-purple-500">
+                              <FileWarning className="h-4 w-4" />
+                              Contradictions
+                            </h5>
+                            <div className="space-y-2">
+                              {selectedEmail.thread_analysis.contradictions.conflicting_statements.map((conflict, i) => (
+                                <div key={i} className="text-sm bg-secondary/30 rounded p-2">
+                                  <p className="text-muted-foreground mb-1">"{conflict.statement1}"</p>
+                                  <p className="text-purple-500 font-medium">↔ "{conflict.statement2}"</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Rule Violations */}
+                        {selectedEmail.thread_analysis.rule_violations.detected && (
+                          <div className="glass-card p-4 border-l-4 border-red-600">
+                            <h5 className="font-semibold mb-2 flex items-center gap-2 text-red-600">
+                              <Scale className="h-4 w-4" />
+                              Violations des règles
+                            </h5>
+                            <ul className="text-sm space-y-2">
+                              {selectedEmail.thread_analysis.rule_violations.violations.map((v, i) => (
+                                <li key={i}>{v}</li>
+                              ))}
+                            </ul>
+                            {selectedEmail.thread_analysis.rule_violations.legal_references.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                {selectedEmail.thread_analysis.rule_violations.legal_references.map((ref, i) => (
+                                  <Badge key={i} variant="outline" className="text-xs">{ref}</Badge>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Circumvention */}
+                        {selectedEmail.thread_analysis.circumvention.detected && (
+                          <div className="glass-card p-4 border-l-4 border-slate-500">
+                            <h5 className="font-semibold mb-2 flex items-center gap-2 text-slate-500">
+                              <Ban className="h-4 w-4" />
+                              Contournements détectés
+                            </h5>
+                            <ul className="text-sm space-y-1">
+                              {selectedEmail.thread_analysis.circumvention.details.map((detail, i) => (
+                                <li key={i} className="flex items-start gap-2">
+                                  <span className="text-slate-500">•</span>
+                                  {detail}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Recommendations */}
+                        {selectedEmail.thread_analysis.recommendations.length > 0 && (
+                          <div className="glass-card p-4 bg-gradient-to-br from-primary/5 to-accent/5">
+                            <h5 className="font-semibold mb-2 flex items-center gap-2">
+                              <Sparkles className="h-4 w-4 text-primary" />
+                              Recommandations
+                            </h5>
+                            <ul className="text-sm space-y-2">
+                              {selectedEmail.thread_analysis.recommendations.map((rec, i) => (
+                                <li key={i} className="flex items-start gap-2">
+                                  <ArrowRight className="h-3 w-3 mt-1 text-primary flex-shrink-0" />
+                                  {rec}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* No Issues Detected */}
+                        {!selectedEmail.thread_analysis.deadline_violations.detected &&
+                         !selectedEmail.thread_analysis.unanswered_questions.detected &&
+                         !selectedEmail.thread_analysis.repetitions.detected &&
+                         !selectedEmail.thread_analysis.contradictions.detected &&
+                         !selectedEmail.thread_analysis.rule_violations.detected &&
+                         !selectedEmail.thread_analysis.circumvention.detected && (
+                          <div className="glass-card p-6 text-center">
+                            <Check className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
+                            <p className="text-sm text-muted-foreground">Aucun problème majeur détecté</p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="glass-card p-6 text-center">
+                        <Scale className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">
+                          Lancez l'analyse approfondie pour détecter les ruptures de délai, répétitions, contradictions et violations des règles
+                        </p>
+                      </div>
+                    )}
+                  </TabsContent>
+                </Tabs>
               </div>
             ) : (
               <div className="glass-card p-8 text-center">
