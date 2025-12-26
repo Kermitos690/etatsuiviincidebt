@@ -1,10 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { corsHeaders, verifyAuth, unauthorizedResponse } from "../_shared/auth.ts";
 
 interface GmailMessage {
   id: string;
@@ -141,13 +137,20 @@ serve(async (req) => {
   }
 
   try {
+    // Verify user authentication
+    const { user, error: authError } = await verifyAuth(req);
+    if (authError || !user) {
+      console.error('Auth error:', authError);
+      return unauthorizedResponse(authError || 'Non autorisé');
+    }
+
+    console.log(`User ${user.email} executing resync-email-bodies`);
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { batchSize = 50, forceAll = false } = await req.json().catch(() => ({}));
-
-    console.log('Starting email body resync...');
 
     // Get Gmail config
     const { data: gmailConfig, error: configError } = await supabase
