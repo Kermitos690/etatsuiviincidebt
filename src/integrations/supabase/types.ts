@@ -739,6 +739,158 @@ export type Database = {
         }
         Relationships: []
       }
+      swipe_training_pairs: {
+        Row: {
+          actors_overlap: string[] | null
+          ai_confidence: number | null
+          ai_enrichment: Json | null
+          ai_prediction: string | null
+          context_summary: string | null
+          created_at: string | null
+          email_1_id: string | null
+          email_2_id: string | null
+          generated_at: string | null
+          id: string
+          is_processed: boolean | null
+          keywords_overlap: string[] | null
+          pair_type: string
+          priority_score: number | null
+        }
+        Insert: {
+          actors_overlap?: string[] | null
+          ai_confidence?: number | null
+          ai_enrichment?: Json | null
+          ai_prediction?: string | null
+          context_summary?: string | null
+          created_at?: string | null
+          email_1_id?: string | null
+          email_2_id?: string | null
+          generated_at?: string | null
+          id?: string
+          is_processed?: boolean | null
+          keywords_overlap?: string[] | null
+          pair_type: string
+          priority_score?: number | null
+        }
+        Update: {
+          actors_overlap?: string[] | null
+          ai_confidence?: number | null
+          ai_enrichment?: Json | null
+          ai_prediction?: string | null
+          context_summary?: string | null
+          created_at?: string | null
+          email_1_id?: string | null
+          email_2_id?: string | null
+          generated_at?: string | null
+          id?: string
+          is_processed?: boolean | null
+          keywords_overlap?: string[] | null
+          pair_type?: string
+          priority_score?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "swipe_training_pairs_email_1_id_fkey"
+            columns: ["email_1_id"]
+            isOneToOne: false
+            referencedRelation: "emails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "swipe_training_pairs_email_2_id_fkey"
+            columns: ["email_2_id"]
+            isOneToOne: false
+            referencedRelation: "emails"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      swipe_training_results: {
+        Row: {
+          ai_analysis: Json | null
+          created_at: string | null
+          id: string
+          manual_notes: string | null
+          pair_id: string | null
+          relationship_type: string | null
+          swipe_direction: string | null
+          time_spent_ms: number | null
+          user_decision: string
+          user_id: string | null
+        }
+        Insert: {
+          ai_analysis?: Json | null
+          created_at?: string | null
+          id?: string
+          manual_notes?: string | null
+          pair_id?: string | null
+          relationship_type?: string | null
+          swipe_direction?: string | null
+          time_spent_ms?: number | null
+          user_decision: string
+          user_id?: string | null
+        }
+        Update: {
+          ai_analysis?: Json | null
+          created_at?: string | null
+          id?: string
+          manual_notes?: string | null
+          pair_id?: string | null
+          relationship_type?: string | null
+          swipe_direction?: string | null
+          time_spent_ms?: number | null
+          user_decision?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "swipe_training_results_pair_id_fkey"
+            columns: ["pair_id"]
+            isOneToOne: false
+            referencedRelation: "swipe_training_pairs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      swipe_training_stats: {
+        Row: {
+          badges: Json | null
+          correct_predictions: number | null
+          created_at: string | null
+          current_streak: number | null
+          id: string
+          last_active_at: string | null
+          max_streak: number | null
+          total_swipes: number | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          badges?: Json | null
+          correct_predictions?: number | null
+          created_at?: string | null
+          current_streak?: number | null
+          id?: string
+          last_active_at?: string | null
+          max_streak?: number | null
+          total_swipes?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          badges?: Json | null
+          correct_predictions?: number | null
+          created_at?: string | null
+          current_streak?: number | null
+          id?: string
+          last_active_at?: string | null
+          max_streak?: number | null
+          total_swipes?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       sync_status: {
         Row: {
           completed_at: string | null
