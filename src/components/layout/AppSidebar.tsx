@@ -17,7 +17,8 @@ import {
   Scale,
   Paperclip,
   GraduationCap,
-  HelpCircle
+  HelpCircle,
+  Layers
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -39,6 +40,7 @@ const navItems = [
   { to: '/nouveau', icon: Plus, label: 'Nouvel incident' },
   { to: '/ia-auditeur', icon: Brain, label: 'IA Auditeur' },
   { to: '/ia-training', icon: GraduationCap, label: 'Entraînement IA' },
+  { to: '/swipe-training', icon: Layers, label: 'Swipe Training' },
   { to: '/gmail-config', icon: Mail, label: 'Config Gmail' },
   { to: '/sheets-config', icon: Table, label: 'Config Sheets' },
   { to: '/exports', icon: FileText, label: 'Exports PDF' },
