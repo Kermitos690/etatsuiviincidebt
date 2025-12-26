@@ -1,5 +1,5 @@
 // AI-related utilities for edge functions
-import { log, ErrorCodes, errorResponse, corsHeaders } from "./index.ts";
+import { log } from "./core.ts";
 
 // ============= Types =============
 export interface AIMessage {
