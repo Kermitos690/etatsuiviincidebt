@@ -374,10 +374,11 @@ async function processEmailsInBackground(
           else if (result.email_type === "forwarded") stats.forwarded++;
           
           // Track Gmail labels
-          if (result.gmail_label === 'SPAM') stats.spam++;
-          else if (result.gmail_label === 'TRASH') stats.trash++;
-          else if (result.gmail_label === 'DRAFT') stats.drafts++;
-          else if (!ALL_GMAIL_LABELS.includes(result.gmail_label)) stats.custom_folders++;
+          const label = result.gmail_label || '';
+          if (label === 'SPAM') stats.spam++;
+          else if (label === 'TRASH') stats.trash++;
+          else if (label === 'DRAFT') stats.drafts++;
+          else if (label && !ALL_GMAIL_LABELS.includes(label)) stats.custom_folders++;
         }
       }
       
