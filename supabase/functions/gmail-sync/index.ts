@@ -181,10 +181,14 @@ async function downloadAttachments(
       const sanitizedFilename = attachment.filename.replace(/[^a-zA-Z0-9.-]/g, "_");
       const storagePath = `${emailId}/${timestamp}_${sanitizedFilename}`;
 
+      // Normalize MIME type (image/jpg is not standard, should be image/jpeg)
+      let mimeType = attachment.mimeType;
+      if (mimeType === 'image/jpg') mimeType = 'image/jpeg';
+
       const { error: uploadError } = await supabase.storage
         .from("email-attachments")
         .upload(storagePath, binaryData, {
-          contentType: attachment.mimeType,
+          contentType: mimeType,
           upsert: true,
         });
 
@@ -315,7 +319,17 @@ async function processEmailsInBackground(
 
           const isNew = !existingEmail;
 
-          // Upsert email with gmail_label
+          // Upsert email with gmail_label - handle invalid dates
+          let receivedAt: string;
+          try {
+            const parsedDate = new Date(date);
+            receivedAt = isNaN(parsedDate.getTime()) 
+              ? new Date().toISOString() 
+              : parsedDate.toISOString();
+          } catch {
+            receivedAt = new Date().toISOString();
+          }
+
           const { data: savedEmail, error: insertError } = await supabase
             .from("emails")
             .upsert({
@@ -323,7 +337,7 @@ async function processEmailsInBackground(
               sender,
               recipient,
               body: body.substring(0, 10000),
-              received_at: new Date(date).toISOString(),
+              received_at: receivedAt,
               gmail_message_id: msg.id,
               gmail_thread_id: msgData.threadId,
               is_sent,
