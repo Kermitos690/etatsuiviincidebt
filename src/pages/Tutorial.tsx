@@ -27,13 +27,27 @@ import {
 } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
+// Import tutorial images
+import gmailConfigImg from "@/assets/tutorial/gmail-config.png";
+import emailSyncImg from "@/assets/tutorial/email-sync.png";
+import analysisPipelineImg from "@/assets/tutorial/analysis-pipeline.png";
+import emailsAnalyzedImg from "@/assets/tutorial/emails-analyzed.png";
+import incidentsImg from "@/assets/tutorial/incidents.png";
+import dashboardImg from "@/assets/tutorial/dashboard.png";
+import attachmentsImg from "@/assets/tutorial/attachments.png";
+import violationsImg from "@/assets/tutorial/violations.png";
+import exportsImg from "@/assets/tutorial/exports.png";
+import iaAuditorImg from "@/assets/tutorial/ia-auditor.png";
+import iaTrainingImg from "@/assets/tutorial/ia-training.png";
+
 const TutorialSection = ({ 
   icon: Icon, 
   title, 
   description, 
   steps,
   result,
-  tips
+  tips,
+  image
 }: { 
   icon: React.ElementType; 
   title: string; 
@@ -41,6 +55,7 @@ const TutorialSection = ({
   steps: string[];
   result: string;
   tips?: string[];
+  image?: string;
 }) => (
   <Card className="glass-card border-border/30">
     <CardHeader>
@@ -55,6 +70,17 @@ const TutorialSection = ({
       </div>
     </CardHeader>
     <CardContent className="space-y-4">
+      {/* Screenshot */}
+      {image && (
+        <div className="rounded-xl overflow-hidden border border-border/30 shadow-lg">
+          <img 
+            src={image} 
+            alt={`Capture d'écran - ${title}`}
+            className="w-full h-auto object-cover"
+          />
+        </div>
+      )}
+
       <div>
         <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
           <Workflow className="w-4 h-4 text-primary" />
@@ -235,6 +261,7 @@ export default function Tutorial() {
                   icon={Settings}
                   title="Configuration Gmail"
                   description="Connectez et configurez votre compte Gmail pour la synchronisation automatique"
+                  image={gmailConfigImg}
                   steps={[
                     "Accédez à 'Configuration Gmail' dans le menu latéral",
                     "Cliquez sur 'Connecter Gmail' pour lancer le processus OAuth",
@@ -266,6 +293,7 @@ export default function Tutorial() {
                   icon={RefreshCw}
                   title="Synchronisation des emails"
                   description="Récupérez tous vos emails depuis Gmail vers le système"
+                  image={emailSyncImg}
                   steps={[
                     "Accédez à 'Boîte de réception' dans le menu",
                     "Cliquez sur le bouton 'Synchroniser' en haut à droite",
@@ -296,6 +324,7 @@ export default function Tutorial() {
                   icon={Zap}
                   title="Pipeline d'analyse IA"
                   description="Centre de contrôle pour lancer et gérer toutes les analyses automatisées"
+                  image={analysisPipelineImg}
                   steps={[
                     "Accédez à 'Pipeline d'Analyse' dans le menu",
                     "Consultez les statistiques actuelles (emails analysés, threads, etc.)",
@@ -327,6 +356,7 @@ export default function Tutorial() {
                   icon={FileSearch}
                   title="Consultation des emails analysés"
                   description="Visualisez les résultats d'analyse de chaque email"
+                  image={emailsAnalyzedImg}
                   steps={[
                     "Accédez à 'Emails Analysés' dans le menu",
                     "Utilisez les filtres pour trouver des emails spécifiques",
@@ -358,6 +388,7 @@ export default function Tutorial() {
                   icon={AlertTriangle}
                   title="Gestion des incidents"
                   description="Créez, suivez et documentez les incidents juridiques"
+                  image={incidentsImg}
                   steps={[
                     "Accédez à 'Incidents' dans le menu pour voir la liste",
                     "Cliquez sur 'Nouvel incident' pour en créer un manuellement",
@@ -390,6 +421,7 @@ export default function Tutorial() {
                   icon={BarChart3}
                   title="Dashboard d'audit"
                   description="Vue d'ensemble des statistiques et alertes du système"
+                  image={dashboardImg}
                   steps={[
                     "Accédez au 'Dashboard' dans le menu",
                     "Consultez les KPIs : emails, incidents, violations",
@@ -421,6 +453,7 @@ export default function Tutorial() {
                   icon={Database}
                   title="Gestion des pièces jointes"
                   description="Téléchargez et analysez les documents joints aux emails"
+                  image={attachmentsImg}
                   steps={[
                     "Accédez à 'Pièces jointes' dans le menu",
                     "Consultez la liste de toutes les pièces jointes",
@@ -452,6 +485,7 @@ export default function Tutorial() {
                   icon={Shield}
                   title="Dashboard des violations"
                   description="Suivi des violations légales et récurrences détectées"
+                  image={violationsImg}
                   steps={[
                     "Accédez à 'Violations' dans le menu",
                     "Consultez les récurrences par type de violation",
@@ -482,6 +516,7 @@ export default function Tutorial() {
                   icon={Download}
                   title="Exports et rapports"
                   description="Générez des rapports PDF et exportez vos données"
+                  image={exportsImg}
                   steps={[
                     "Accédez à 'Exports' dans le menu",
                     "Sélectionnez le type de rapport à générer",
@@ -513,6 +548,7 @@ export default function Tutorial() {
                   icon={Brain}
                   title="IA Auditeur - Analyse quotidienne"
                   description="Système d'audit automatique avec analyse quotidienne des données"
+                  image={iaAuditorImg}
                   steps={[
                     "Accédez à 'IA Auditeur' dans le menu",
                     "Consultez les alertes générées automatiquement",
@@ -543,6 +579,7 @@ export default function Tutorial() {
                   icon={Users}
                   title="Entraînement de l'IA"
                   description="Améliorez les détections en fournissant des feedbacks"
+                  image={iaTrainingImg}
                   steps={[
                     "Accédez à 'Entraînement IA' dans le menu",
                     "Consultez les analyses nécessitant validation",
