@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, FileText, Eye, BookOpen, Sparkles, ArrowRight, Loader2, Download } from 'lucide-react';
+import { Search, FileText, Eye, BookOpen, Sparkles, ArrowRight, Loader2, Download, Filter, X, CalendarIcon } from 'lucide-react';
 import { AppLayout, PageHeader } from '@/components/layout';
 import { PriorityBadge, StatusBadge } from '@/components/common';
 import { useIncidentStore } from '@/stores/incidentStore';
@@ -16,24 +16,83 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import jsPDF from 'jspdf';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 
 export default function Journal() {
-  const { incidents, loadFromSupabase } = useIncidentStore();
+  const { incidents, loadFromSupabase, config } = useIncidentStore();
   const [search, setSearch] = useState('');
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  
+  // Advanced filters
+  const [dateStart, setDateStart] = useState<Date | undefined>(undefined);
+  const [dateEnd, setDateEnd] = useState<Date | undefined>(undefined);
+  const [filterInstitution, setFilterInstitution] = useState<string>('');
+  const [filterStatut, setFilterStatut] = useState<string>('');
+  const [filterGravite, setFilterGravite] = useState<string>('');
 
   useEffect(() => {
     loadFromSupabase();
   }, [loadFromSupabase]);
 
+  // Get unique values from incidents
+  const uniqueInstitutions = useMemo(() => {
+    const institutions = [...new Set(incidents.map(i => i.institution))];
+    return institutions.sort();
+  }, [incidents]);
+
+  const uniqueStatuts = useMemo(() => {
+    const statuts = [...new Set(incidents.map(i => i.statut))];
+    return statuts.sort();
+  }, [incidents]);
+
+  const uniqueGravites = useMemo(() => {
+    const gravites = [...new Set(incidents.map(i => i.gravite))];
+    return gravites.sort();
+  }, [incidents]);
+
+  // Count active filters
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (dateStart) count++;
+    if (dateEnd) count++;
+    if (filterInstitution) count++;
+    if (filterStatut) count++;
+    if (filterGravite) count++;
+    return count;
+  }, [dateStart, dateEnd, filterInstitution, filterStatut, filterGravite]);
+
+  const clearAllFilters = () => {
+    setDateStart(undefined);
+    setDateEnd(undefined);
+    setFilterInstitution('');
+    setFilterStatut('');
+    setFilterGravite('');
+    setSearch('');
+  };
+
   const sortedIncidents = useMemo(() => {
     let filtered = [...incidents];
     
+    // Text search
     if (search) {
       const s = search.toLowerCase();
       filtered = filtered.filter(i => 
@@ -43,12 +102,37 @@ export default function Journal() {
       );
     }
 
+    // Date filters
+    if (dateStart) {
+      const startStr = format(dateStart, 'yyyy-MM-dd');
+      filtered = filtered.filter(i => i.dateIncident >= startStr);
+    }
+    if (dateEnd) {
+      const endStr = format(dateEnd, 'yyyy-MM-dd');
+      filtered = filtered.filter(i => i.dateIncident <= endStr);
+    }
+
+    // Institution filter
+    if (filterInstitution) {
+      filtered = filtered.filter(i => i.institution === filterInstitution);
+    }
+
+    // Statut filter
+    if (filterStatut) {
+      filtered = filtered.filter(i => i.statut === filterStatut);
+    }
+
+    // Gravité filter
+    if (filterGravite) {
+      filtered = filtered.filter(i => i.gravite === filterGravite);
+    }
+
     return filtered.sort((a, b) => {
       const dateComp = b.dateIncident.localeCompare(a.dateIncident);
       if (dateComp !== 0) return dateComp;
       return b.numero - a.numero;
     });
-  }, [incidents, search]);
+  }, [incidents, search, dateStart, dateEnd, filterInstitution, filterStatut, filterGravite]);
 
   // Export Journal to PDF with rich visuals
   const exportJournalPDF = useCallback(async () => {
@@ -281,16 +365,194 @@ export default function Journal() {
           }
         />
 
-        {/* Search */}
-        <div className="glass-card p-4 mb-6 animate-scale-in">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-            <Input
-              placeholder="Rechercher dans les incidents..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-12 h-12 rounded-xl border-glass bg-secondary/30 focus:bg-background transition-all duration-300"
-            />
+        {/* Search & Filters */}
+        <div className="glass-card p-4 mb-6 animate-scale-in space-y-4">
+          <div className="flex flex-col md:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+              <Input
+                placeholder="Rechercher dans les incidents..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-12 h-12 rounded-xl border-glass bg-secondary/30 focus:bg-background transition-all duration-300"
+              />
+            </div>
+            <Button
+              variant={showFilters ? "default" : "outline"}
+              onClick={() => setShowFilters(!showFilters)}
+              className="h-12 px-4"
+            >
+              <Filter className="h-4 w-4 mr-2" />
+              Filtres
+              {activeFiltersCount > 0 && (
+                <Badge variant="secondary" className="ml-2 bg-primary text-primary-foreground">
+                  {activeFiltersCount}
+                </Badge>
+              )}
+            </Button>
+          </div>
+
+          {/* Advanced Filters Panel */}
+          {showFilters && (
+            <div className="border-t border-glass pt-4 animate-scale-in">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-medium text-muted-foreground">Filtres avancés</h3>
+                {activeFiltersCount > 0 && (
+                  <Button variant="ghost" size="sm" onClick={clearAllFilters}>
+                    <X className="h-4 w-4 mr-1" />
+                    Effacer tout
+                  </Button>
+                )}
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                {/* Date Start */}
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">Date début</label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal h-10",
+                          !dateStart && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {dateStart ? format(dateStart, "dd/MM/yyyy", { locale: fr }) : "Sélectionner"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={dateStart}
+                        onSelect={setDateStart}
+                        initialFocus
+                        className={cn("p-3 pointer-events-auto")}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Date End */}
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">Date fin</label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal h-10",
+                          !dateEnd && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {dateEnd ? format(dateEnd, "dd/MM/yyyy", { locale: fr }) : "Sélectionner"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={dateEnd}
+                        onSelect={setDateEnd}
+                        initialFocus
+                        className={cn("p-3 pointer-events-auto")}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Institution */}
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">Institution</label>
+                  <Select value={filterInstitution} onValueChange={setFilterInstitution}>
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Toutes" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Toutes</SelectItem>
+                      {uniqueInstitutions.map((inst) => (
+                        <SelectItem key={inst} value={inst}>{inst}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Statut */}
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">Statut</label>
+                  <Select value={filterStatut} onValueChange={setFilterStatut}>
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Tous" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Tous</SelectItem>
+                      {uniqueStatuts.map((statut) => (
+                        <SelectItem key={statut} value={statut}>{statut}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Gravité */}
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">Gravité</label>
+                  <Select value={filterGravite} onValueChange={setFilterGravite}>
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Toutes" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Toutes</SelectItem>
+                      {uniqueGravites.map((gravite) => (
+                        <SelectItem key={gravite} value={gravite}>{gravite}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Active filters badges */}
+              {activeFiltersCount > 0 && (
+                <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-glass">
+                  {dateStart && (
+                    <Badge variant="secondary" className="gap-1">
+                      Début: {format(dateStart, "dd/MM/yyyy", { locale: fr })}
+                      <X className="h-3 w-3 cursor-pointer" onClick={() => setDateStart(undefined)} />
+                    </Badge>
+                  )}
+                  {dateEnd && (
+                    <Badge variant="secondary" className="gap-1">
+                      Fin: {format(dateEnd, "dd/MM/yyyy", { locale: fr })}
+                      <X className="h-3 w-3 cursor-pointer" onClick={() => setDateEnd(undefined)} />
+                    </Badge>
+                  )}
+                  {filterInstitution && (
+                    <Badge variant="secondary" className="gap-1">
+                      {filterInstitution}
+                      <X className="h-3 w-3 cursor-pointer" onClick={() => setFilterInstitution('')} />
+                    </Badge>
+                  )}
+                  {filterStatut && (
+                    <Badge variant="secondary" className="gap-1">
+                      {filterStatut}
+                      <X className="h-3 w-3 cursor-pointer" onClick={() => setFilterStatut('')} />
+                    </Badge>
+                  )}
+                  {filterGravite && (
+                    <Badge variant="secondary" className="gap-1">
+                      {filterGravite}
+                      <X className="h-3 w-3 cursor-pointer" onClick={() => setFilterGravite('')} />
+                    </Badge>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Results count */}
+          <div className="text-sm text-muted-foreground">
+            {sortedIncidents.length} incident{sortedIncidents.length !== 1 ? 's' : ''} trouvé{sortedIncidents.length !== 1 ? 's' : ''}
+            {activeFiltersCount > 0 && ` (${activeFiltersCount} filtre${activeFiltersCount > 1 ? 's' : ''} actif${activeFiltersCount > 1 ? 's' : ''})`}
           </div>
         </div>
 
