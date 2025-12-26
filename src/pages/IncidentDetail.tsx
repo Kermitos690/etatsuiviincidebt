@@ -106,9 +106,11 @@ export default function IncidentDetail() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" disabled title="Fonctionnalité à venir">
-              <Pencil className="h-4 w-4 mr-2" />
-              Modifier
+            <Button variant="outline" size="sm" asChild>
+              <Link to={`/incidents/${incident.id}/edit`}>
+                <Pencil className="h-4 w-4 mr-2" />
+                Modifier
+              </Link>
             </Button>
             <Button variant="outline" size="sm">
               <FileText className="h-4 w-4 mr-2" />
