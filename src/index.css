@@ -139,6 +139,22 @@
   h1, h2, h3, h4, h5, h6 {
     @apply font-semibold tracking-tight;
   }
+
+  /* Accessibility: Focus visible for all interactive elements */
+  *:focus-visible {
+    @apply outline-2 outline-offset-2 outline-primary;
+    outline-style: solid;
+  }
+
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Safe area for mobile devices */
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
 
 @layer components {
@@ -429,4 +445,41 @@
   .shadow-glass { box-shadow: var(--shadow-glass); }
   .shadow-elevated { box-shadow: var(--shadow-elevated); }
   .shadow-glow { box-shadow: var(--shadow-glow); }
+
+  /* Page transitions */
+  .page-enter {
+    animation: fade-in 0.3s ease-out forwards;
+  }
+
+  .page-exit {
+    animation: fade-out 0.2s ease-in forwards;
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes fade-out {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(-8px); }
+  }
+
+  /* Interactive hover states */
+  .interactive {
+    @apply transition-all duration-200 ease-out;
+  }
+
+  .interactive:hover {
+    @apply -translate-y-0.5 shadow-lg;
+  }
+
+  .interactive:active {
+    @apply translate-y-0 shadow-md;
+  }
+
+  /* Button ripple effect placeholder */
+  .ripple-container {
+    @apply relative overflow-hidden;
+  }
 }

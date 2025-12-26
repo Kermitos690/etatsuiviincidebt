@@ -53,26 +53,27 @@ interface NavCategory {
   items: NavItem[];
 }
 
-// ============= Navigation Structure =============
+// ============= Navigation Structure (Simplified to 4 categories) =============
 const navCategories: NavCategory[] = [
   {
     id: 'dashboard',
-    label: 'Vue Générale',
+    label: 'Tableau de Bord',
     icon: LayoutDashboard,
     items: [
       { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/control-center', icon: Activity, label: 'Centre de Contrôle' },
       { to: '/violations', icon: Scale, label: 'Violations' },
     ]
   },
   {
     id: 'emails',
-    label: 'Emails & Analyse',
+    label: 'Messagerie',
     icon: Mail,
     items: [
       { to: '/emails', icon: Inbox, label: 'Boîte de réception' },
       { to: '/emails-analyzed', icon: BarChart3, label: 'Emails Analysés' },
       { to: '/attachments', icon: Paperclip, label: 'Pièces Jointes' },
-      { to: '/analysis-pipeline', icon: Activity, label: 'Analyse 3 Passes' },
+      { to: '/analysis-pipeline', icon: Brain, label: 'Analyse IA' },
     ]
   },
   {
@@ -81,32 +82,22 @@ const navCategories: NavCategory[] = [
     icon: AlertTriangle,
     items: [
       { to: '/journal', icon: BookOpen, label: 'Journal' },
-      { to: '/incidents', icon: AlertTriangle, label: 'Liste Incidents' },
-      { to: '/incidents-timeline', icon: Scale, label: 'Timeline' },
-      { to: '/nouveau', icon: Plus, label: 'Nouvel Incident' },
+      { to: '/incidents', icon: AlertTriangle, label: 'Liste' },
+      { to: '/incidents-timeline', icon: Activity, label: 'Timeline' },
+      { to: '/nouveau', icon: Plus, label: 'Nouveau' },
     ]
   },
   {
-    id: 'ia',
-    label: 'Intelligence IA',
-    icon: Brain,
-    items: [
-      { to: '/ia-auditeur', icon: Brain, label: 'IA Auditeur' },
-      { to: '/ia-training', icon: GraduationCap, label: 'Entraînement IA' },
-      { to: '/swipe-training', icon: Layers, label: 'Swipe Training' },
-    ]
-  },
-  {
-    id: 'config',
-    label: 'Configuration',
+    id: 'settings',
+    label: 'Paramètres',
     icon: Cog,
     items: [
-      { to: '/gmail-config', icon: Mail, label: 'Config Gmail' },
-      { to: '/sheets-config', icon: Table, label: 'Config Sheets' },
-      { to: '/exports', icon: FileText, label: 'Exports PDF' },
-      { to: '/system-admin', icon: Server, label: 'Système' },
-      { to: '/admin', icon: Settings, label: 'Administration' },
-      { to: '/tutorial', icon: HelpCircle, label: 'Tutoriel' },
+      { to: '/ia-auditeur', icon: Brain, label: 'IA Auditeur' },
+      { to: '/ia-training', icon: GraduationCap, label: 'Entraînement' },
+      { to: '/gmail-config', icon: Mail, label: 'Intégrations' },
+      { to: '/exports', icon: FileText, label: 'Exports' },
+      { to: '/admin', icon: Settings, label: 'Admin' },
+      { to: '/tutorial', icon: HelpCircle, label: 'Aide' },
     ]
   },
 ];

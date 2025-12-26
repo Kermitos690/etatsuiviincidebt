@@ -1,10 +1,11 @@
 import { useMemo, useEffect } from 'react';
-import { TrendingUp, Sparkles, FileText, Loader2 } from 'lucide-react';
+import { TrendingUp, Sparkles, FileText, Loader2, Mail, AlertTriangle, Brain, Activity } from 'lucide-react';
 import { AppLayout } from '@/components/layout';
 import { Button } from '@/components/ui/button';
 import { useIncidentStore } from '@/stores/incidentStore';
 import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { QuickActions, LoadingState } from '@/components/common';
 
 import {
   DashboardKPIs,
@@ -26,6 +27,14 @@ const GRAVITE_COLORS: Record<string, string> = {
 };
 
 const COLORS = ['hsl(211, 100%, 50%)', 'hsl(280, 100%, 65%)', 'hsl(142, 76%, 36%)', 'hsl(38, 92%, 50%)', 'hsl(330, 100%, 60%)'];
+
+// Quick Actions configuration
+const quickActions = [
+  { to: '/emails', icon: Mail, label: 'Emails', description: 'Consulter la boîte de réception' },
+  { to: '/incidents', icon: AlertTriangle, label: 'Incidents', description: 'Voir tous les incidents' },
+  { to: '/analysis-pipeline', icon: Brain, label: 'Analyse IA', description: 'Lancer une analyse' },
+  { to: '/control-center', icon: Activity, label: 'Contrôle', description: 'Centre de contrôle' },
+];
 
 export default function Dashboard() {
   const { incidents, config, loadFromSupabase } = useIncidentStore();
@@ -177,6 +186,15 @@ export default function Dashboard() {
         </div>
 
         <DashboardKPIs kpis={kpis} />
+
+        {/* Quick Actions - Always visible */}
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" />
+            Actions Rapides
+          </h2>
+          <QuickActions actions={quickActions} columns={4} />
+        </div>
 
         {incidents.length === 0 ? (
           <DashboardEmptyState />
