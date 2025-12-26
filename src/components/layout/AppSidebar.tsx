@@ -12,7 +12,8 @@ import {
   Sparkles,
   Mail,
   Table,
-  LogOut
+  LogOut,
+  BarChart3
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,7 @@ import { toast } from 'sonner';
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/emails', icon: Mail, label: 'Boîte de réception' },
+  { to: '/emails-analyzed', icon: BarChart3, label: 'Emails Analysés' },
   { to: '/journal', icon: BookOpen, label: 'Journal' },
   { to: '/incidents', icon: AlertTriangle, label: 'Incidents' },
   { to: '/nouveau', icon: Plus, label: 'Nouvel incident' },
