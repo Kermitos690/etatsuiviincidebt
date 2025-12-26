@@ -408,18 +408,19 @@ export default function EmailsInbox() {
     });
   };
 
-  const analyzeThread = async (thread: EmailThread) => {
+  const analyzeThread = async (thread: EmailThread, forceReanalyze: boolean = false) => {
     setProcessingThread(thread.threadId);
     try {
-      // Analyze all unprocessed emails in the thread
-      const unprocessed = thread.emails.filter(e => !e.processed);
+      // Analyze emails in the thread (all if force, otherwise just unprocessed)
+      const emailsToAnalyze = forceReanalyze ? thread.emails : thread.emails.filter(e => !e.processed);
       
-      for (const email of unprocessed) {
+      for (const email of emailsToAnalyze) {
         await supabase.functions.invoke('auto-process-email', {
           body: { 
             emailId: email.id,
             autoCreate: autoProcessEnabled,
-            confidenceThreshold: 70
+            confidenceThreshold: 70,
+            forceReanalyze
           }
         });
       }
@@ -434,12 +435,13 @@ export default function EmailsInbox() {
               sender: e.sender,
               subject: e.subject,
               body: e.body
-            }))
+            })),
+            forceReanalyze
           }
         });
       }
       
-      toast.success(`Thread analysé (${thread.emails.length} emails)`);
+      toast.success(`Thread analysé (${emailsToAnalyze.length} emails)`);
       fetchEmails();
     } catch (error) {
       console.error('Error analyzing thread:', error);
@@ -449,17 +451,18 @@ export default function EmailsInbox() {
     }
   };
 
-  const analyzeAllThreads = async () => {
-    const unprocessedThreads = threads.filter(t => t.hasUnprocessed);
-    if (unprocessedThreads.length === 0) {
-      toast.info('Tous les threads sont déjà analysés');
+  const analyzeAllThreads = async (forceReanalyze: boolean = false) => {
+    const threadsToAnalyze = forceReanalyze ? threads : threads.filter(t => t.hasUnprocessed);
+    
+    if (threadsToAnalyze.length === 0) {
+      toast.info('Aucun thread à analyser');
       return;
     }
     
-    toast.info(`Analyse de ${unprocessedThreads.length} threads en cours...`);
+    toast.info(`Analyse de ${threadsToAnalyze.length} threads en cours...`);
     
-    for (const thread of unprocessedThreads) {
-      await analyzeThread(thread);
+    for (const thread of threadsToAnalyze) {
+      await analyzeThread(thread, forceReanalyze);
     }
     
     toast.success('Analyse globale terminée !');
@@ -756,12 +759,21 @@ export default function EmailsInbox() {
                 Actualiser
               </Button>
               <Button 
-                onClick={analyzeAllThreads} 
+                onClick={() => analyzeAllThreads(false)} 
                 className="glow-button text-white"
                 disabled={processingThread !== null || deepAnalyzing}
               >
                 <Brain className="h-4 w-4 mr-2" />
-                Analyser
+                Analyser nouveaux
+              </Button>
+              <Button 
+                onClick={() => analyzeAllThreads(true)} 
+                variant="outline"
+                className="border-primary/30 hover:bg-primary/10"
+                disabled={processingThread !== null || deepAnalyzing}
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Réanalyser tout
               </Button>
               <TooltipProvider>
                 <Tooltip>
