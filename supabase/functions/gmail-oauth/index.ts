@@ -102,7 +102,22 @@ serve(async (req) => {
     }
 
     // Handle POST requests for actions
-    const { action } = await req.json();
+    if (req.method !== "POST") {
+      return new Response(JSON.stringify({ error: "Method not allowed" }), {
+        status: 405,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const body = await req.text();
+    if (!body) {
+      return new Response(JSON.stringify({ error: "Request body is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { action } = JSON.parse(body);
 
     if (action === "get-auth-url") {
       const scopes = [
@@ -145,8 +160,8 @@ serve(async (req) => {
     }
 
     if (action === "update-config") {
-      const body = await req.json();
-      const { domains, keywords, syncEnabled } = body;
+      const parsedBody = JSON.parse(body);
+      const { domains, keywords, syncEnabled } = parsedBody;
 
       const { data: existingConfig } = await supabase
         .from("gmail_config")
