@@ -3,7 +3,8 @@ import {
   Mail, Sparkles, Check, X, RefreshCw, AlertTriangle, ArrowRight, Clock, Brain, Send, 
   MessageSquare, Settings, Zap, Play, Scale, ChevronDown, ChevronRight, Layers, 
   Filter, Search, BarChart3, TrendingUp, Users, Building2, Inbox, Archive, Trash2,
-  LayoutGrid, List, SortAsc, SortDesc, Maximize2, Minimize2, Eye, EyeOff
+  LayoutGrid, List, SortAsc, SortDesc, Maximize2, Minimize2, Eye, EyeOff, Paperclip,
+  FileText, Image, File, Download, Loader2
 } from 'lucide-react';
 import { AppLayout, PageHeader } from '@/components/layout';
 import { Card, CardContent } from '@/components/ui/card';
@@ -49,6 +50,30 @@ interface Email {
   thread_analysis: AdvancedAnalysis | null;
   incident_id: string | null;
   gmail_thread_id?: string;
+  created_at: string;
+  attachments?: EmailAttachment[];
+}
+
+interface EmailAttachment {
+  id: string;
+  email_id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  storage_path: string;
+  ai_analysis: {
+    document_type: string;
+    key_elements: string[];
+    institutions_mentioned: string[];
+    dates_found: string[];
+    problems_detected: string[];
+    legal_implications: string;
+    summary: string;
+    severity: 'none' | 'low' | 'medium' | 'high' | 'critical';
+    confidence: number;
+  } | null;
+  analyzed_at: string | null;
+  extracted_text: string | null;
   created_at: string;
 }
 
@@ -138,6 +163,9 @@ export default function EmailsInbox() {
   const [viewMode, setViewMode] = useState<'threads' | 'list'>('threads');
   const [filterIncidents, setFilterIncidents] = useState(false);
   const [filterUnprocessed, setFilterUnprocessed] = useState(false);
+  const [attachments, setAttachments] = useState<EmailAttachment[]>([]);
+  const [loadingAttachments, setLoadingAttachments] = useState(false);
+  const [analyzingAttachment, setAnalyzingAttachment] = useState<string | null>(null);
   const navigate = useNavigate();
 
   // Group emails by thread
@@ -274,6 +302,91 @@ export default function EmailsInbox() {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  // Fetch attachments when email is selected
+  const fetchAttachments = async (emailId: string) => {
+    setLoadingAttachments(true);
+    try {
+      const { data, error } = await supabase
+        .from('email_attachments')
+        .select('*')
+        .eq('email_id', emailId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      setAttachments((data || []) as unknown as EmailAttachment[]);
+    } catch (error) {
+      console.error('Error fetching attachments:', error);
+      setAttachments([]);
+    } finally {
+      setLoadingAttachments(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedEmail) {
+      fetchAttachments(selectedEmail.id);
+    } else {
+      setAttachments([]);
+    }
+  }, [selectedEmail?.id]);
+
+  const analyzeAttachment = async (attachmentId: string) => {
+    setAnalyzingAttachment(attachmentId);
+    try {
+      const { data, error } = await supabase.functions.invoke('analyze-attachment', {
+        body: { attachmentId }
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast.success('Pièce jointe analysée');
+        if (selectedEmail) {
+          fetchAttachments(selectedEmail.id);
+        }
+      }
+    } catch (error) {
+      console.error('Error analyzing attachment:', error);
+      toast.error('Erreur lors de l\'analyse de la pièce jointe');
+    } finally {
+      setAnalyzingAttachment(null);
+    }
+  };
+
+  const downloadAttachment = async (attachment: EmailAttachment) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('email-attachments')
+        .download(attachment.storage_path);
+
+      if (error) throw error;
+
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = attachment.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading attachment:', error);
+      toast.error('Erreur lors du téléchargement');
+    }
+  };
+
+  const getAttachmentIcon = (mimeType: string) => {
+    if (mimeType.startsWith('image/')) return Image;
+    if (mimeType.includes('pdf') || mimeType.includes('document') || mimeType.includes('text')) return FileText;
+    return File;
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   const toggleThread = (threadId: string) => {
     setExpandedThreads(prev => {
@@ -998,6 +1111,137 @@ export default function EmailsInbox() {
                   <ScrollArea className="h-48 rounded-xl bg-secondary/30 p-4">
                     <p className="text-sm whitespace-pre-wrap leading-relaxed">{selectedEmail.body}</p>
                   </ScrollArea>
+
+                  {/* Attachments Section */}
+                  {(attachments.length > 0 || loadingAttachments) && (
+                    <div className="mt-4 pt-4 border-t border-border/50">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Paperclip className="h-4 w-4 text-primary" />
+                        <span className="font-medium text-sm">
+                          Pièces jointes ({attachments.length})
+                        </span>
+                      </div>
+                      
+                      {loadingAttachments ? (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Chargement...
+                        </div>
+                      ) : (
+                        <div className="grid gap-2">
+                          {attachments.map((attachment) => {
+                            const AttachmentIcon = getAttachmentIcon(attachment.mime_type);
+                            const isAnalyzing = analyzingAttachment === attachment.id;
+                            
+                            return (
+                              <div
+                                key={attachment.id}
+                                className="glass-card p-3 hover:shadow-glow transition-all"
+                              >
+                                <div className="flex items-start gap-3">
+                                  <div className={cn(
+                                    "p-2 rounded-lg",
+                                    attachment.ai_analysis ? "bg-gradient-primary" : "bg-secondary"
+                                  )}>
+                                    <AttachmentIcon className={cn(
+                                      "h-5 w-5",
+                                      attachment.ai_analysis ? "text-white" : "text-muted-foreground"
+                                    )} />
+                                  </div>
+                                  
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-medium text-sm truncate">{attachment.filename}</p>
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                      <span>{formatFileSize(attachment.size_bytes)}</span>
+                                      {attachment.analyzed_at && (
+                                        <>
+                                          <span>•</span>
+                                          <Badge variant="secondary" className="text-xs">
+                                            <Check className="h-3 w-3 mr-1" />
+                                            Analysé
+                                          </Badge>
+                                        </>
+                                      )}
+                                    </div>
+                                    
+                                    {/* AI Analysis Results */}
+                                    {attachment.ai_analysis && (
+                                      <div className="mt-2 p-2 rounded-lg bg-secondary/30 text-xs">
+                                        <p className="font-medium mb-1">{attachment.ai_analysis.document_type}</p>
+                                        <p className="text-muted-foreground line-clamp-2">
+                                          {attachment.ai_analysis.summary}
+                                        </p>
+                                        {attachment.ai_analysis.problems_detected.length > 0 && (
+                                          <div className="mt-2 flex items-center gap-1">
+                                            <AlertTriangle className="h-3 w-3 text-amber-500" />
+                                            <span className="text-amber-600 dark:text-amber-400">
+                                              {attachment.ai_analysis.problems_detected.length} problème(s) détecté(s)
+                                            </span>
+                                          </div>
+                                        )}
+                                        {attachment.ai_analysis.severity !== 'none' && (
+                                          <Badge className={cn(
+                                            "mt-2 text-xs",
+                                            attachment.ai_analysis.severity === 'critical' && "bg-red-500 text-white",
+                                            attachment.ai_analysis.severity === 'high' && "bg-orange-500 text-white",
+                                            attachment.ai_analysis.severity === 'medium' && "bg-amber-500 text-white",
+                                            attachment.ai_analysis.severity === 'low' && "bg-blue-500 text-white"
+                                          )}>
+                                            {attachment.ai_analysis.severity}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                  
+                                  <div className="flex gap-1">
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            onClick={() => downloadAttachment(attachment)}
+                                          >
+                                            <Download className="h-4 w-4" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Télécharger</TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                    
+                                    {!attachment.analyzed_at && (
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-8 w-8"
+                                              onClick={() => analyzeAttachment(attachment.id)}
+                                              disabled={isAnalyzing}
+                                            >
+                                              {isAnalyzing ? (
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                              ) : (
+                                                <Brain className="h-4 w-4" />
+                                              )}
+                                            </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent>Analyser avec l'IA</TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Action Buttons */}
                   <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-border/50">

@@ -41,3 +41,9 @@ verify_jwt = false
 
 [functions.batch-analyze-emails]
 verify_jwt = false
+
+[functions.download-attachments]
+verify_jwt = false
+
+[functions.analyze-attachment]
+verify_jwt = false
