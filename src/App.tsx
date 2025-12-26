@@ -27,6 +27,7 @@ import IATraining from "./pages/IATraining";
 import SwipeTraining from "./pages/SwipeTraining";
 import Tutorial from "./pages/Tutorial";
 import ControlCenter from "./pages/ControlCenter";
+import SystemAdmin from "./pages/SystemAdmin";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -66,6 +67,7 @@ const App = () => (
             <Route path="/ia-training" element={<AuthGuard><IATraining /></AuthGuard>} />
             <Route path="/swipe-training" element={<AuthGuard><SwipeTraining /></AuthGuard>} />
             <Route path="/tutorial" element={<AuthGuard><Tutorial /></AuthGuard>} />
+            <Route path="/system-admin" element={<AuthGuard><SystemAdmin /></AuthGuard>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
