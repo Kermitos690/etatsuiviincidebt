@@ -21,6 +21,7 @@ import AuditDashboard from "./pages/AuditDashboard";
 import EmailsAnalyzed from "./pages/EmailsAnalyzed";
 import ViolationsDashboard from "./pages/ViolationsDashboard";
 import Attachments from "./pages/Attachments";
+import AnalysisPipeline from "./pages/AnalysisPipeline";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -53,6 +54,7 @@ const App = () => (
             <Route path="/emails-analyzed" element={<AuthGuard><EmailsAnalyzed /></AuthGuard>} />
             <Route path="/violations" element={<AuthGuard><ViolationsDashboard /></AuthGuard>} />
             <Route path="/attachments" element={<AuthGuard><Attachments /></AuthGuard>} />
+            <Route path="/analysis-pipeline" element={<AuthGuard><AnalysisPipeline /></AuthGuard>} />
             <Route path="/audit" element={<AuthGuard><AuditDashboard /></AuthGuard>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
