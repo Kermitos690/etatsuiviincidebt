@@ -1,4 +1,5 @@
 import { AppSidebar, MobileHeader, DesktopSidebar } from './AppSidebar';
+import { MobileBottomNav } from './MobileBottomNav';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -18,11 +19,14 @@ export function AppLayout({ children }: AppLayoutProps) {
         {/* Desktop sidebar */}
         <DesktopSidebar />
         
-        {/* Main content */}
-        <main className="flex-1 min-h-screen overflow-y-auto">
+        {/* Main content - add bottom padding on mobile for nav bar */}
+        <main className="flex-1 min-h-screen overflow-y-auto pb-20 lg:pb-0">
           {children}
         </main>
       </div>
+
+      {/* Mobile bottom navigation */}
+      <MobileBottomNav />
     </div>
   );
 }
