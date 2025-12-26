@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, FileText, Eye, BookOpen, Sparkles, ArrowRight } from 'lucide-react';
+import { Search, FileText, Eye, BookOpen, Sparkles, ArrowRight, Loader2, Download } from 'lucide-react';
 import { AppLayout, PageHeader } from '@/components/layout';
 import { PriorityBadge, StatusBadge } from '@/components/common';
 import { useIncidentStore } from '@/stores/incidentStore';
@@ -17,10 +17,19 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import jsPDF from 'jspdf';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { toast } from 'sonner';
 
 export default function Journal() {
-  const { incidents } = useIncidentStore();
+  const { incidents, loadFromSupabase } = useIncidentStore();
   const [search, setSearch] = useState('');
+  const [exportingPdf, setExportingPdf] = useState(false);
+
+  useEffect(() => {
+    loadFromSupabase();
+  }, [loadFromSupabase]);
 
   const sortedIncidents = useMemo(() => {
     let filtered = [...incidents];
@@ -41,6 +50,212 @@ export default function Journal() {
     });
   }, [incidents, search]);
 
+  // Export Journal to PDF with rich visuals
+  const exportJournalPDF = useCallback(async () => {
+    setExportingPdf(true);
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 15;
+      let y = 15;
+
+      // Color helpers (RGB)
+      const colors = {
+        primary: [37, 99, 235],
+        secondary: [139, 92, 246],
+        success: [34, 197, 94],
+        warning: [251, 191, 36],
+        danger: [239, 68, 68],
+        orange: [249, 115, 22],
+        cyan: [6, 182, 212],
+        pink: [236, 72, 153],
+        slate: [100, 116, 139],
+        dark: [30, 41, 59]
+      };
+
+      const setColor = (color: number[], type: 'fill' | 'text' | 'draw' = 'fill') => {
+        if (type === 'fill') doc.setFillColor(color[0], color[1], color[2]);
+        else if (type === 'text') doc.setTextColor(color[0], color[1], color[2]);
+        else doc.setDrawColor(color[0], color[1], color[2]);
+      };
+
+      const addPageIfNeeded = (requiredSpace: number) => {
+        if (y + requiredSpace > pageHeight - 20) {
+          doc.addPage();
+          y = 25;
+          return true;
+        }
+        return false;
+      };
+
+      // === HEADER ===
+      setColor(colors.primary, 'fill');
+      doc.rect(0, 0, pageWidth, 45, 'F');
+      setColor(colors.secondary, 'fill');
+      doc.rect(pageWidth - 50, 0, 50, 45, 'F');
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(28);
+      doc.setFont('helvetica', 'bold');
+      doc.text('JOURNAL CHRONOLOGIQUE', margin, 22);
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Registre des Incidents - Liste Détaillée', margin, 34);
+      
+      // Date badge
+      doc.setFontSize(9);
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(pageWidth - 45, 8, 35, 14, 3, 3, 'F');
+      setColor(colors.primary, 'text');
+      doc.text(format(new Date(), "dd MMM yyyy", { locale: fr }), pageWidth - 42, 17);
+      
+      y = 55;
+
+      // === STATISTICS SUMMARY ===
+      const totalIncidents = sortedIncidents.length;
+      const openIncidents = sortedIncidents.filter(i => i.statut === 'Ouvert').length;
+      const transmisJP = sortedIncidents.filter(i => i.transmisJP).length;
+      const avgScore = totalIncidents > 0 
+        ? Math.round(sortedIncidents.reduce((acc, i) => acc + i.score, 0) / totalIncidents * 10) / 10 
+        : 0;
+
+      const stats = [
+        { label: 'Total', value: totalIncidents, color: colors.primary },
+        { label: 'Ouverts', value: openIncidents, color: colors.warning },
+        { label: 'Transmis JP', value: transmisJP, color: colors.secondary },
+        { label: 'Score moy.', value: avgScore, color: colors.success }
+      ];
+
+      const cardWidth = (pageWidth - 2 * margin - 12) / 4;
+      stats.forEach((stat, idx) => {
+        const x = margin + idx * (cardWidth + 4);
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(x, y, cardWidth, 22, 3, 3, 'F');
+        setColor(stat.color, 'fill');
+        doc.roundedRect(x, y, cardWidth, 4, 3, 3, 'F');
+        doc.rect(x, y + 2, cardWidth, 2, 'F');
+        
+        setColor(colors.dark, 'text');
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text(String(stat.value), x + cardWidth / 2, y + 13, { align: 'center' });
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal');
+        doc.text(stat.label, x + cardWidth / 2, y + 19, { align: 'center' });
+      });
+      y += 32;
+
+      // === TABLE HEADER ===
+      setColor(colors.dark, 'fill');
+      doc.roundedRect(margin, y, pageWidth - 2 * margin, 10, 2, 2, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Date', margin + 3, y + 7);
+      doc.text('N°', margin + 25, y + 7);
+      doc.text('Institution', margin + 38, y + 7);
+      doc.text('Titre', margin + 75, y + 7);
+      doc.text('Type', margin + 120, y + 7);
+      doc.text('Statut', margin + 150, y + 7);
+      doc.text('Score', margin + 172, y + 7);
+      y += 12;
+
+      // === TABLE ROWS ===
+      sortedIncidents.forEach((inc, idx) => {
+        addPageIfNeeded(14);
+        
+        const bgColor = idx % 2 === 0 ? [248, 250, 252] : [255, 255, 255];
+        doc.setFillColor(bgColor[0], bgColor[1], bgColor[2]);
+        setColor(colors.slate, 'draw');
+        doc.roundedRect(margin, y, pageWidth - 2 * margin, 12, 1, 1, 'FD');
+        
+        // Date
+        setColor(colors.slate, 'text');
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal');
+        doc.text(formatDate(inc.dateIncident), margin + 3, y + 7);
+        
+        // Number badge
+        setColor(colors.primary, 'fill');
+        doc.roundedRect(margin + 22, y + 2, 12, 8, 2, 2, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'bold');
+        doc.text(String(inc.numero), margin + 28, y + 7, { align: 'center' });
+        
+        // Institution
+        setColor(colors.dark, 'text');
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'normal');
+        const institution = inc.institution.length > 18 ? inc.institution.substring(0, 15) + '...' : inc.institution;
+        doc.text(institution, margin + 38, y + 7);
+        
+        // Title
+        doc.setFont('helvetica', 'bold');
+        const titre = inc.titre.length > 25 ? inc.titre.substring(0, 22) + '...' : inc.titre;
+        doc.text(titre, margin + 75, y + 7);
+        
+        // Type
+        doc.setFont('helvetica', 'normal');
+        const type = inc.type.length > 15 ? inc.type.substring(0, 12) + '...' : inc.type;
+        doc.text(type, margin + 120, y + 7);
+        
+        // Status badge
+        const statusColors: Record<string, number[]> = {
+          'Ouvert': colors.warning,
+          'En cours': colors.primary,
+          'Résolu': colors.success,
+          'Transmis': colors.secondary,
+          'Classé': colors.slate
+        };
+        const statusColor = statusColors[inc.statut] || colors.slate;
+        setColor(statusColor, 'fill');
+        doc.roundedRect(margin + 147, y + 2, 20, 8, 2, 2, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(5);
+        const statut = inc.statut.length > 10 ? inc.statut.substring(0, 8) + '..' : inc.statut;
+        doc.text(statut, margin + 157, y + 7, { align: 'center' });
+        
+        // Score badge
+        const scoreColor = inc.score >= 70 ? colors.danger : inc.score >= 50 ? colors.orange : colors.success;
+        setColor(scoreColor, 'fill');
+        doc.roundedRect(margin + 170, y + 2, 14, 8, 2, 2, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'bold');
+        doc.text(String(inc.score), margin + 177, y + 7, { align: 'center' });
+        
+        y += 13;
+      });
+
+      // === FOOTER on all pages ===
+      const pageCount = doc.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFillColor(248, 250, 252);
+        doc.rect(0, pageHeight - 12, pageWidth, 12, 'F');
+        setColor(colors.slate, 'text');
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal');
+        doc.text(
+          `Journal des Incidents | Généré le ${format(new Date(), "dd/MM/yyyy à HH:mm", { locale: fr })} | Page ${i}/${pageCount}`,
+          pageWidth / 2,
+          pageHeight - 5,
+          { align: 'center' }
+        );
+      }
+
+      doc.save('journal_incidents_' + format(new Date(), 'yyyy-MM-dd_HHmm') + '.pdf');
+      toast.success('Journal exporté en PDF');
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      toast.error('Erreur lors de la génération du PDF');
+    } finally {
+      setExportingPdf(false);
+    }
+  }, [sortedIncidents]);
+
   return (
     <AppLayout>
       <div className="p-4 md:p-8">
@@ -49,8 +264,18 @@ export default function Journal() {
           description="Vue triée par date d'incident"
           icon={<BookOpen className="h-7 w-7 text-white" />}
           actions={
-            <Button variant="glass" size="sm" className="hidden sm:flex">
-              <FileText className="h-4 w-4 mr-2" />
+            <Button 
+              variant="glass" 
+              size="sm" 
+              className="hidden sm:flex"
+              onClick={exportJournalPDF}
+              disabled={exportingPdf || sortedIncidents.length === 0}
+            >
+              {exportingPdf ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <FileText className="h-4 w-4 mr-2" />
+              )}
               Export PDF
             </Button>
           }
@@ -71,6 +296,22 @@ export default function Journal() {
 
         {/* Mobile Cards View */}
         <div className="md:hidden space-y-4">
+          {/* Mobile Export Button */}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="w-full mb-4"
+            onClick={exportJournalPDF}
+            disabled={exportingPdf || sortedIncidents.length === 0}
+          >
+            {exportingPdf ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
+            Exporter en PDF
+          </Button>
+          
           {sortedIncidents.length === 0 ? (
             <div className="glass-card p-8 text-center animate-scale-in">
               <div className="w-16 h-16 rounded-2xl bg-gradient-primary/10 flex items-center justify-center mx-auto mb-4 animate-float">
