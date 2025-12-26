@@ -71,6 +71,65 @@ export type Database = {
           },
         ]
       }
+      corroborations: {
+        Row: {
+          attachment_ids: string[] | null
+          contradicting_evidence: Json | null
+          corroboration_type: string
+          created_at: string
+          final_confidence: number | null
+          id: string
+          incident_id: string | null
+          notes: string | null
+          supporting_evidence: Json | null
+          thread_analysis_ids: string[] | null
+          updated_at: string
+          verification_status: string | null
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          attachment_ids?: string[] | null
+          contradicting_evidence?: Json | null
+          corroboration_type: string
+          created_at?: string
+          final_confidence?: number | null
+          id?: string
+          incident_id?: string | null
+          notes?: string | null
+          supporting_evidence?: Json | null
+          thread_analysis_ids?: string[] | null
+          updated_at?: string
+          verification_status?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          attachment_ids?: string[] | null
+          contradicting_evidence?: Json | null
+          corroboration_type?: string
+          created_at?: string
+          final_confidence?: number | null
+          id?: string
+          incident_id?: string | null
+          notes?: string | null
+          supporting_evidence?: Json | null
+          thread_analysis_ids?: string[] | null
+          updated_at?: string
+          verification_status?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "corroborations_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "incidents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_attachments: {
         Row: {
           ai_analysis: Json | null
@@ -115,6 +174,116 @@ export type Database = {
           {
             foreignKeyName: "email_attachments_email_id_fkey"
             columns: ["email_id"]
+            isOneToOne: false
+            referencedRelation: "emails"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_facts: {
+        Row: {
+          action_items: string[] | null
+          cc_recipients: string[] | null
+          created_at: string
+          email_id: string
+          extracted_at: string
+          id: string
+          key_phrases: string[] | null
+          mentioned_dates: string[] | null
+          mentioned_institutions: string[] | null
+          mentioned_persons: string[] | null
+          raw_citations: Json | null
+          recipients: string[] | null
+          sender_email: string | null
+          sender_name: string | null
+          sentiment: string | null
+          urgency_level: string | null
+        }
+        Insert: {
+          action_items?: string[] | null
+          cc_recipients?: string[] | null
+          created_at?: string
+          email_id: string
+          extracted_at?: string
+          id?: string
+          key_phrases?: string[] | null
+          mentioned_dates?: string[] | null
+          mentioned_institutions?: string[] | null
+          mentioned_persons?: string[] | null
+          raw_citations?: Json | null
+          recipients?: string[] | null
+          sender_email?: string | null
+          sender_name?: string | null
+          sentiment?: string | null
+          urgency_level?: string | null
+        }
+        Update: {
+          action_items?: string[] | null
+          cc_recipients?: string[] | null
+          created_at?: string
+          email_id?: string
+          extracted_at?: string
+          id?: string
+          key_phrases?: string[] | null
+          mentioned_dates?: string[] | null
+          mentioned_institutions?: string[] | null
+          mentioned_persons?: string[] | null
+          raw_citations?: Json | null
+          recipients?: string[] | null
+          sender_email?: string | null
+          sender_name?: string | null
+          sentiment?: string | null
+          urgency_level?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_facts_email_id_fkey"
+            columns: ["email_id"]
+            isOneToOne: false
+            referencedRelation: "emails"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_relations: {
+        Row: {
+          created_at: string
+          evidence: Json | null
+          id: string
+          relation_type: string
+          source_email_id: string
+          strength: number | null
+          target_email_id: string
+        }
+        Insert: {
+          created_at?: string
+          evidence?: Json | null
+          id?: string
+          relation_type: string
+          source_email_id: string
+          strength?: number | null
+          target_email_id: string
+        }
+        Update: {
+          created_at?: string
+          evidence?: Json | null
+          id?: string
+          relation_type?: string
+          source_email_id?: string
+          strength?: number | null
+          target_email_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_relations_source_email_id_fkey"
+            columns: ["source_email_id"]
+            isOneToOne: false
+            referencedRelation: "emails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_relations_target_email_id_fkey"
+            columns: ["target_email_id"]
             isOneToOne: false
             referencedRelation: "emails"
             referencedColumns: ["id"]
@@ -459,6 +628,51 @@ export type Database = {
           stats?: Json | null
           status?: string | null
           total_emails?: number | null
+        }
+        Relationships: []
+      }
+      thread_analyses: {
+        Row: {
+          analyzed_at: string
+          chronological_summary: string | null
+          citations: Json | null
+          confidence_score: number | null
+          created_at: string
+          detected_issues: Json | null
+          email_ids: string[]
+          id: string
+          participants: Json | null
+          severity: string | null
+          thread_id: string
+          timeline: Json | null
+        }
+        Insert: {
+          analyzed_at?: string
+          chronological_summary?: string | null
+          citations?: Json | null
+          confidence_score?: number | null
+          created_at?: string
+          detected_issues?: Json | null
+          email_ids: string[]
+          id?: string
+          participants?: Json | null
+          severity?: string | null
+          thread_id: string
+          timeline?: Json | null
+        }
+        Update: {
+          analyzed_at?: string
+          chronological_summary?: string | null
+          citations?: Json | null
+          confidence_score?: number | null
+          created_at?: string
+          detected_issues?: Json | null
+          email_ids?: string[]
+          id?: string
+          participants?: Json | null
+          severity?: string | null
+          thread_id?: string
+          timeline?: Json | null
         }
         Relationships: []
       }
