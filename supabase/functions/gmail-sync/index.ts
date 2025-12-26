@@ -1,6 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+declare const EdgeRuntime: {
+  waitUntil: (promise: Promise<any>) => void;
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -48,13 +52,11 @@ async function refreshAccessToken(supabase: any, config: any): Promise<string | 
   return tokenData.access_token;
 }
 
-// Extract email address from "Name <email@domain.com>" format
 function extractEmailAddress(fullAddress: string): string {
   const match = fullAddress.match(/<([^>]+)>/);
   return match ? match[1].toLowerCase() : fullAddress.toLowerCase();
 }
 
-// Determine email type based on labels and subject
 function determineEmailType(
   labels: string[],
   subject: string,
@@ -62,14 +64,10 @@ function determineEmailType(
   userEmail: string
 ): { is_sent: boolean; email_type: string } {
   const isSent = labels.includes("SENT");
-  const isInbox = labels.includes("INBOX");
   const subjectLower = subject.toLowerCase();
-  
-  // Check if user is the sender
   const userIsSender = extractEmailAddress(senderEmail) === userEmail.toLowerCase();
   
   if (isSent || userIsSender) {
-    // It's an outgoing email
     if (subjectLower.startsWith("re:") || subjectLower.startsWith("rép:")) {
       return { is_sent: true, email_type: "replied" };
     } else if (subjectLower.startsWith("fwd:") || subjectLower.startsWith("tr:") || subjectLower.startsWith("fw:")) {
@@ -78,10 +76,181 @@ function determineEmailType(
       return { is_sent: true, email_type: "sent" };
     }
   } else {
-    // It's an incoming email
     return { is_sent: false, email_type: "received" };
   }
 }
+
+// Background task for processing emails
+async function processEmailsInBackground(
+  syncId: string,
+  allMessages: any[],
+  accessToken: string,
+  config: any,
+  supabase: any
+) {
+  console.log(`[Background] Starting processing of ${allMessages.length} emails for sync ${syncId}`);
+  
+  const stats = { received: 0, sent: 0, replied: 0, forwarded: 0 };
+  let processedCount = 0;
+  let newEmailsCount = 0;
+  const BATCH_SIZE = 10;
+  const UPDATE_INTERVAL = 20;
+
+  try {
+    for (let i = 0; i < allMessages.length; i += BATCH_SIZE) {
+      const batch = allMessages.slice(i, Math.min(i + BATCH_SIZE, allMessages.length));
+      
+      // Process batch in parallel
+      const batchPromises = batch.map(async (msg) => {
+        try {
+          const msgResponse = await fetch(
+            `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+          );
+          
+          if (!msgResponse.ok) {
+            console.error(`Failed to fetch message ${msg.id}`);
+            return { success: false };
+          }
+          
+          const msgData = await msgResponse.json();
+          const headers = msgData.payload?.headers || [];
+          const getHeader = (name: string) => 
+            headers.find((h: any) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
+
+          const subject = getHeader("Subject");
+          const sender = getHeader("From");
+          const recipient = getHeader("To");
+          const date = getHeader("Date");
+          const labels = msgData.labelIds || [];
+
+          const { is_sent, email_type } = determineEmailType(labels, subject, sender, config.user_email);
+
+          // Extract body
+          let body = "";
+          if (msgData.payload?.body?.data) {
+            body = atob(msgData.payload.body.data.replace(/-/g, "+").replace(/_/g, "/"));
+          } else if (msgData.payload?.parts) {
+            const textPart = msgData.payload.parts.find((p: any) => p.mimeType === "text/plain");
+            if (textPart?.body?.data) {
+              body = atob(textPart.body.data.replace(/-/g, "+").replace(/_/g, "/"));
+            } else {
+              const htmlPart = msgData.payload.parts.find((p: any) => p.mimeType === "text/html");
+              if (htmlPart?.body?.data) {
+                body = atob(htmlPart.body.data.replace(/-/g, "+").replace(/_/g, "/"));
+                body = body.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+              }
+            }
+          }
+
+          // Check if email already exists
+          const { data: existingEmail } = await supabase
+            .from("emails")
+            .select("id")
+            .eq("gmail_message_id", msg.id)
+            .maybeSingle();
+
+          const isNew = !existingEmail;
+
+          // Upsert email
+          const { error: insertError } = await supabase
+            .from("emails")
+            .upsert({
+              subject,
+              sender,
+              recipient,
+              body: body.substring(0, 10000),
+              received_at: new Date(date).toISOString(),
+              gmail_message_id: msg.id,
+              gmail_thread_id: msgData.threadId,
+              is_sent,
+              email_type,
+            }, { onConflict: "gmail_message_id" });
+
+          if (insertError) {
+            console.error(`Failed to store email ${msg.id}:`, insertError);
+            return { success: false };
+          }
+
+          return { success: true, email_type, isNew };
+        } catch (err) {
+          console.error(`Error processing message ${msg.id}:`, err);
+          return { success: false };
+        }
+      });
+
+      const results = await Promise.all(batchPromises);
+      
+      for (const result of results) {
+        if (result.success) {
+          processedCount++;
+          if (result.isNew) newEmailsCount++;
+          
+          if (result.email_type === "received") stats.received++;
+          else if (result.email_type === "sent") stats.sent++;
+          else if (result.email_type === "replied") stats.replied++;
+          else if (result.email_type === "forwarded") stats.forwarded++;
+        }
+      }
+
+      // Update status periodically
+      if (processedCount % UPDATE_INTERVAL === 0 || i + BATCH_SIZE >= allMessages.length) {
+        await supabase
+          .from("sync_status")
+          .update({
+            processed_emails: processedCount,
+            new_emails: newEmailsCount,
+            stats,
+            last_processed_id: batch[batch.length - 1]?.id
+          })
+          .eq("id", syncId);
+        
+        console.log(`[Background] Progress: ${processedCount}/${allMessages.length} emails`);
+      }
+
+      // Small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
+    // Mark as completed
+    await supabase
+      .from("sync_status")
+      .update({
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        processed_emails: processedCount,
+        new_emails: newEmailsCount,
+        stats
+      })
+      .eq("id", syncId);
+
+    // Update gmail_config last_sync
+    await supabase
+      .from("gmail_config")
+      .update({ last_sync: new Date().toISOString() })
+      .eq("id", config.id);
+
+    console.log(`[Background] Completed! ${processedCount} emails processed, ${newEmailsCount} new`);
+    console.log(`[Background] Stats:`, stats);
+
+  } catch (error) {
+    console.error("[Background] Fatal error:", error);
+    await supabase
+      .from("sync_status")
+      .update({
+        status: "error",
+        error_message: error instanceof Error ? error.message : "Unknown error",
+        processed_emails: processedCount,
+        stats
+      })
+      .eq("id", syncId);
+  }
+}
+
+// Handle graceful shutdown
+addEventListener('beforeunload', (ev) => {
+  console.log('[Shutdown] Function shutting down:', (ev as any).detail?.reason);
+});
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -135,43 +304,35 @@ serve(async (req) => {
       const body = await req.json();
       if (body.domains) domains = body.domains;
       if (body.keywords) keywords = body.keywords;
-      if (body.afterDate) afterDate = body.afterDate; // Format: YYYY/MM/DD
+      if (body.afterDate) afterDate = body.afterDate;
     } catch {
-      // No body or invalid JSON, use defaults from config
+      // No body or invalid JSON
     }
 
-    // Build Gmail search query - fetch both sent and received emails
-    // Query: (from:@domain OR to:@domain) to get both directions
+    // Build Gmail search query
     const domainParts = domains?.length 
       ? domains.map((d: string) => `(@${d})`).join(" OR ")
       : "";
-    
-    // For both sent and received: use from: OR to:
     const domainQuery = domainParts 
       ? `(from:(${domainParts}) OR to:(${domainParts}))` 
       : "";
-    
     const keywordQuery = keywords?.length 
       ? `(${keywords.join(" OR ")})` 
       : "";
-    
-    // Add date filter if specified
     const dateQuery = afterDate ? `after:${afterDate}` : "";
     
     const queryParts = [domainQuery, keywordQuery, dateQuery].filter(Boolean);
     const query = queryParts.join(" ");
 
     console.log("Gmail search query:", query);
-    console.log("User email:", config.user_email);
 
-    // Fetch ALL emails with pagination - no limit
+    // Fetch ALL message IDs with pagination
     let allMessages: any[] = [];
     let pageToken: string | null = null;
     let pageCount = 0;
-    const maxPages = 50; // Safety limit to prevent infinite loops
+    const maxPages = 100;
 
-    let fetchNextPage = true;
-    while (fetchNextPage && pageCount < maxPages) {
+    while (pageCount < maxPages) {
       const apiUrl: string = pageToken 
         ? `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&q=${encodeURIComponent(query)}&pageToken=${pageToken}`
         : `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&q=${encodeURIComponent(query)}`;
@@ -186,7 +347,6 @@ serve(async (req) => {
       if (!listResponse.ok) {
         console.error("Gmail API error:", listData);
         if (listData.error?.code === 401) {
-          // Try to refresh token
           accessToken = await refreshAccessToken(supabase, config);
           if (!accessToken) {
             return new Response(JSON.stringify({ 
@@ -196,7 +356,6 @@ serve(async (req) => {
               headers: { ...corsHeaders, "Content-Type": "application/json" },
             });
           }
-          // Retry this page
           continue;
         } else {
           throw new Error(listData.error?.message || "Gmail API error");
@@ -211,140 +370,61 @@ serve(async (req) => {
       pageToken = listData.nextPageToken || null;
       pageCount++;
       
-      if (!pageToken) {
-        fetchNextPage = false;
-      }
+      if (!pageToken) break;
     }
 
     if (allMessages.length === 0) {
       console.log("No messages found matching criteria");
       
-      // Update last sync time
       await supabase
         .from("gmail_config")
         .update({ last_sync: new Date().toISOString() })
         .eq("id", config.id);
 
       return new Response(JSON.stringify({ 
+        status: "completed",
         emailsProcessed: 0, 
-        emails: [],
         stats: { received: 0, sent: 0, replied: 0, forwarded: 0 }
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    console.log(`Found ${allMessages.length} total messages across ${pageCount} pages`);
+    console.log(`Found ${allMessages.length} total messages. Starting background processing...`);
 
-    const emails = [];
-    const stats = { received: 0, sent: 0, replied: 0, forwarded: 0 };
+    // Create sync status record
+    const { data: syncStatus, error: syncError } = await supabase
+      .from("sync_status")
+      .insert({
+        status: "processing",
+        total_emails: allMessages.length,
+        processed_emails: 0,
+        new_emails: 0,
+        stats: { received: 0, sent: 0, replied: 0, forwarded: 0 }
+      })
+      .select()
+      .single();
 
-    // Process ALL messages (no limit)
-    for (let i = 0; i < allMessages.length; i++) {
-      const msg = allMessages[i];
-      
-      try {
-        const msgResponse = await fetch(
-          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`,
-          { headers: { Authorization: `Bearer ${accessToken}` } }
-        );
-        const msgData = await msgResponse.json();
-
-        if (!msgResponse.ok) {
-          console.error(`Failed to fetch message ${msg.id}:`, msgData);
-          continue;
-        }
-
-        const headers = msgData.payload?.headers || [];
-        const getHeader = (name: string) => 
-          headers.find((h: any) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
-
-        const subject = getHeader("Subject");
-        const sender = getHeader("From");
-        const recipient = getHeader("To");
-        const date = getHeader("Date");
-        const labels = msgData.labelIds || [];
-
-        // Determine email type
-        const { is_sent, email_type } = determineEmailType(labels, subject, sender, config.user_email);
-
-        // Update stats
-        if (email_type === "received") stats.received++;
-        else if (email_type === "sent") stats.sent++;
-        else if (email_type === "replied") stats.replied++;
-        else if (email_type === "forwarded") stats.forwarded++;
-
-        // Extract body
-        let body = "";
-        if (msgData.payload?.body?.data) {
-          body = atob(msgData.payload.body.data.replace(/-/g, "+").replace(/_/g, "/"));
-        } else if (msgData.payload?.parts) {
-          const textPart = msgData.payload.parts.find((p: any) => p.mimeType === "text/plain");
-          if (textPart?.body?.data) {
-            body = atob(textPart.body.data.replace(/-/g, "+").replace(/_/g, "/"));
-          } else {
-            // Try HTML part
-            const htmlPart = msgData.payload.parts.find((p: any) => p.mimeType === "text/html");
-            if (htmlPart?.body?.data) {
-              body = atob(htmlPart.body.data.replace(/-/g, "+").replace(/_/g, "/"));
-              // Basic HTML stripping
-              body = body.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-            }
-          }
-        }
-
-        // Store in database with all fields including is_sent, recipient, email_type
-        const { data: emailData, error: insertError } = await supabase
-          .from("emails")
-          .upsert({
-            subject,
-            sender,
-            recipient,
-            body: body.substring(0, 10000),
-            received_at: new Date(date).toISOString(),
-            gmail_message_id: msg.id,
-            gmail_thread_id: msgData.threadId,
-            is_sent,
-            email_type,
-          }, { onConflict: "gmail_message_id" })
-          .select()
-          .single();
-
-        if (insertError) {
-          console.error(`Failed to store email ${msg.id}:`, insertError);
-        } else {
-          emails.push(emailData);
-          if (i % 10 === 0) {
-            console.log(`Progress: ${i + 1}/${allMessages.length} emails processed`);
-          }
-        }
-      } catch (msgError) {
-        console.error(`Error processing message ${msg.id}:`, msgError);
-      }
-
-      // Small delay every 10 emails to avoid rate limiting
-      if (i > 0 && i % 10 === 0) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+    if (syncError) {
+      console.error("Failed to create sync status:", syncError);
+      throw new Error("Failed to initialize sync");
     }
 
-    // Update last sync time
-    await supabase
-      .from("gmail_config")
-      .update({ last_sync: new Date().toISOString() })
-      .eq("id", config.id);
+    // Start background processing
+    EdgeRuntime.waitUntil(
+      processEmailsInBackground(syncStatus.id, allMessages, accessToken, config, supabase)
+    );
 
-    console.log(`Successfully processed ${emails.length} emails`);
-    console.log(`Stats: ${stats.received} received, ${stats.sent} sent, ${stats.replied} replied, ${stats.forwarded} forwarded`);
-
+    // Return immediate response
     return new Response(JSON.stringify({ 
-      emailsProcessed: emails.length, 
-      emails,
-      stats,
-      pages: pageCount
+      status: "processing",
+      syncId: syncStatus.id,
+      totalEmails: allMessages.length,
+      message: `Traitement de ${allMessages.length} emails en arrière-plan...`
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+
   } catch (error) {
     console.error("Gmail sync error:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
