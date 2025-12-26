@@ -14,7 +14,9 @@ import {
   Mail,
   Image,
   Link as LinkIcon,
-  Loader2
+  Loader2,
+  Volume2,
+  MessageSquare
 } from 'lucide-react';
 import { AppLayout, PageHeader } from '@/components/layout';
 import { PriorityBadge, StatusBadge } from '@/components/common';
@@ -24,6 +26,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
+import { EmailLink } from '@/components/email';
+import { supabase } from '@/integrations/supabase/client';
+import { EmailViewer } from '@/components/email';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 const proofIcons = {
   email: Mail,
@@ -37,6 +45,11 @@ export default function IncidentDetail() {
   const navigate = useNavigate();
   const { incidents, updateIncident, loadFromSupabase, isLoading } = useIncidentStore();
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [sourceEmailId, setSourceEmailId] = useState<string | null>(null);
+  const [relatedEmails, setRelatedEmails] = useState<any[]>([]);
+  const [showEmailViewer, setShowEmailViewer] = useState(false);
+  const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
+  const [speaking, setSpeaking] = useState(false);
   
   useEffect(() => {
     const load = async () => {
@@ -45,6 +58,44 @@ export default function IncidentDetail() {
     };
     load();
   }, [loadFromSupabase]);
+
+  // Fetch source email and related emails
+  useEffect(() => {
+    const fetchRelatedEmails = async () => {
+      if (!id) return;
+      
+      const { data: incidentData } = await supabase
+        .from('incidents')
+        .select('email_source_id, gmail_references')
+        .eq('id', id)
+        .single();
+      
+      if (incidentData?.email_source_id) {
+        setSourceEmailId(incidentData.email_source_id);
+        
+        // Fetch source email to get thread
+        const { data: sourceEmail } = await supabase
+          .from('emails')
+          .select('*')
+          .eq('id', incidentData.email_source_id)
+          .single();
+        
+        if (sourceEmail?.gmail_thread_id) {
+          const { data: threadEmails } = await supabase
+            .from('emails')
+            .select('*')
+            .eq('gmail_thread_id', sourceEmail.gmail_thread_id)
+            .order('received_at', { ascending: true });
+          
+          setRelatedEmails(threadEmails || []);
+        } else {
+          setRelatedEmails(sourceEmail ? [sourceEmail] : []);
+        }
+      }
+    };
+    
+    fetchRelatedEmails();
+  }, [id]);
   
   const incident = incidents.find(i => i.id === id);
 
@@ -77,6 +128,32 @@ export default function IncidentDetail() {
     );
   }
 
+  const speakText = (text: string) => {
+    if (speaking) {
+      window.speechSynthesis.cancel();
+      setSpeaking(false);
+      return;
+    }
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'fr-FR';
+    utterance.onend = () => setSpeaking(false);
+    setSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const speakIncident = () => {
+    const text = `
+      Incident numéro ${incident.numero}. ${incident.titre}.
+      Date: ${formatDate(incident.dateIncident)}.
+      Institution: ${incident.institution}.
+      Type: ${incident.type}.
+      Gravité: ${incident.gravite}.
+      Faits constatés: ${incident.faits}.
+      Dysfonctionnement: ${incident.dysfonctionnement}.
+    `;
+    speakText(text);
+  };
+
   const markTransmisJP = () => {
     updateIncident(incident.id, { 
       transmisJP: true, 
@@ -106,6 +183,27 @@ export default function IncidentDetail() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button 
+              variant={speaking ? "destructive" : "outline"} 
+              size="sm" 
+              onClick={speakIncident}
+            >
+              <Volume2 className="h-4 w-4 mr-2" />
+              {speaking ? 'Stop' : 'Écouter'}
+            </Button>
+            {sourceEmailId && (
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  setSelectedEmailId(sourceEmailId);
+                  setShowEmailViewer(true);
+                }}
+              >
+                <Mail className="h-4 w-4 mr-2" />
+                Email source
+              </Button>
+            )}
             <Button variant="outline" size="sm" asChild>
               <Link to={`/incidents/${incident.id}/edit`}>
                 <Pencil className="h-4 w-4 mr-2" />
@@ -201,6 +299,12 @@ export default function IncidentDetail() {
             <TabsTrigger value="preuves" className="flex-1 md:flex-none">
               Preuves ({incident.preuves.length})
             </TabsTrigger>
+            {relatedEmails.length > 0 && (
+              <TabsTrigger value="emails" className="flex-1 md:flex-none">
+                <MessageSquare className="h-4 w-4 mr-1" />
+                Emails ({relatedEmails.length})
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="resume">
@@ -248,7 +352,19 @@ export default function IncidentDetail() {
                             <p className="font-medium truncate">{preuve.label}</p>
                             <p className="text-xs text-muted-foreground capitalize">{preuve.type}</p>
                           </div>
-                          {preuve.url && (
+                          {preuve.type === 'email' && preuve.url && (
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => {
+                                setSelectedEmailId(preuve.url);
+                                setShowEmailViewer(true);
+                              }}
+                            >
+                              <Mail className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {preuve.url && preuve.type !== 'email' && (
                             <Button variant="ghost" size="sm" asChild>
                               <a href={preuve.url} target="_blank" rel="noopener noreferrer">
                                 <ExternalLink className="h-4 w-4" />
@@ -263,7 +379,93 @@ export default function IncidentDetail() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {relatedEmails.length > 0 && (
+            <TabsContent value="emails">
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-medium flex items-center gap-2">
+                      <MessageSquare className="h-5 w-5" />
+                      Historique de la discussion
+                    </h3>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        const text = relatedEmails.map(e => 
+                          `De: ${e.sender}. Date: ${format(new Date(e.received_at), 'd MMMM yyyy', { locale: fr })}. ${e.body}`
+                        ).join('\n\nEmail suivant:\n\n');
+                        
+                        if (speaking) {
+                          window.speechSynthesis.cancel();
+                          setSpeaking(false);
+                        } else {
+                          speakText(`Discussion complète. ${relatedEmails.length} emails. ${text}`);
+                        }
+                      }}
+                    >
+                      <Volume2 className="h-4 w-4 mr-2" />
+                      {speaking ? 'Stop' : 'Tout écouter'}
+                    </Button>
+                  </div>
+                  <div className="space-y-3">
+                    {relatedEmails.map((email, index) => (
+                      <Card 
+                        key={email.id}
+                        className="cursor-pointer hover:bg-muted/50 transition-colors"
+                        onClick={() => {
+                          setSelectedEmailId(email.id);
+                          setShowEmailViewer(true);
+                        }}
+                      >
+                        <CardContent className="pt-4">
+                          <div className="flex items-start gap-3">
+                            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-muted text-xs font-medium flex-shrink-0">
+                              {index + 1}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium text-sm">{email.sender}</span>
+                                {email.is_sent && (
+                                  <Badge variant="outline" className="text-xs">Envoyé</Badge>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                {format(new Date(email.received_at), "d MMMM yyyy à HH:mm", { locale: fr })}
+                              </p>
+                              <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
+                                {email.body}
+                              </p>
+                            </div>
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              className="flex-shrink-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                speakText(`De: ${email.sender}. ${email.body}`);
+                              }}
+                            >
+                              <Volume2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
         </Tabs>
+
+        {/* Email Viewer Dialog */}
+        <EmailViewer 
+          emailId={selectedEmailId} 
+          open={showEmailViewer} 
+          onOpenChange={setShowEmailViewer} 
+        />
       </div>
     </AppLayout>
   );
