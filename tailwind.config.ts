@@ -184,6 +184,47 @@ export default {
           "0%, 100%": { backgroundPosition: "0% 50%" },
           "50%": { backgroundPosition: "100% 50%" },
         },
+        "bounce-x-right": {
+          "0%, 100%": { transform: "translateX(0)" },
+          "50%": { transform: "translateX(12px)" },
+        },
+        "bounce-x-left": {
+          "0%, 100%": { transform: "translateX(0)" },
+          "50%": { transform: "translateX(-12px)" },
+        },
+        "bounce-y-up": {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-12px)" },
+        },
+        "bounce-y-down": {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(12px)" },
+        },
+        "swipe-out-right": {
+          "0%": { transform: "translateX(0) rotate(0deg)", opacity: "1" },
+          "100%": { transform: "translateX(150%) rotate(15deg)", opacity: "0" },
+        },
+        "swipe-out-left": {
+          "0%": { transform: "translateX(0) rotate(0deg)", opacity: "1" },
+          "100%": { transform: "translateX(-150%) rotate(-15deg)", opacity: "0" },
+        },
+        "swipe-out-up": {
+          "0%": { transform: "translateY(0) scale(1)", opacity: "1" },
+          "100%": { transform: "translateY(-150%) scale(0.8)", opacity: "0" },
+        },
+        "swipe-out-down": {
+          "0%": { transform: "translateY(0) scale(1)", opacity: "1" },
+          "100%": { transform: "translateY(150%) scale(0.8)", opacity: "0" },
+        },
+        "card-enter": {
+          "0%": { transform: "scale(0.8) translateY(50px)", opacity: "0" },
+          "100%": { transform: "scale(1) translateY(0)", opacity: "1" },
+        },
+        "success-pulse": {
+          "0%": { boxShadow: "0 0 0 0 hsl(142 76% 36% / 0.7)" },
+          "70%": { boxShadow: "0 0 0 20px hsl(142 76% 36% / 0)" },
+          "100%": { boxShadow: "0 0 0 0 hsl(142 76% 36% / 0)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -199,6 +240,16 @@ export default {
         "rotate-3d": "rotate-3d 10s ease-in-out infinite",
         "orb-float": "orb-float 20s ease-in-out infinite",
         "border-flow": "border-flow 4s ease infinite",
+        "bounce-x-right": "bounce-x-right 1s ease-in-out infinite",
+        "bounce-x-left": "bounce-x-left 1s ease-in-out infinite",
+        "bounce-y-up": "bounce-y-up 1s ease-in-out infinite",
+        "bounce-y-down": "bounce-y-down 1s ease-in-out infinite",
+        "swipe-out-right": "swipe-out-right 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards",
+        "swipe-out-left": "swipe-out-left 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards",
+        "swipe-out-up": "swipe-out-up 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards",
+        "swipe-out-down": "swipe-out-down 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards",
+        "card-enter": "card-enter 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards",
+        "success-pulse": "success-pulse 0.6s ease-out",
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
