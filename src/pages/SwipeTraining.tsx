@@ -6,11 +6,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { SwipeCard } from '@/components/training/SwipeCard';
 import { SwipeStats } from '@/components/training/SwipeStats';
 import { AIEnrichPanel } from '@/components/training/AIEnrichPanel';
+import { SwipeTutorial, useTutorialState } from '@/components/training/SwipeTutorial';
 import { SwipeDirection } from '@/hooks/useSwipeGesture';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
-import { RefreshCw, Sparkles, GraduationCap, Loader2 } from 'lucide-react';
+import { RefreshCw, Sparkles, GraduationCap, Loader2, HelpCircle } from 'lucide-react';
 
 interface TrainingPair {
   id: string;
@@ -36,6 +37,7 @@ interface UserStats {
 
 export default function SwipeTraining() {
   const { user } = useAuth();
+  const { showTutorial, completeTutorial, resetTutorial } = useTutorialState();
   const [pairs, setPairs] = useState<TrainingPair[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [stats, setStats] = useState<UserStats>({
@@ -49,6 +51,7 @@ export default function SwipeTraining() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
   const [currentEnrichment, setCurrentEnrichment] = useState<any>(null);
+  const [cardKey, setCardKey] = useState(0); // Force re-render for animations
 
   const currentPair = pairs[currentIndex];
 
@@ -236,6 +239,7 @@ export default function SwipeTraining() {
 
       // Passer à la paire suivante
       setCurrentEnrichment(null);
+      setCardKey(prev => prev + 1); // Trigger new card animation
       if (currentIndex < pairs.length - 1) {
         setCurrentIndex(prev => prev + 1);
       } else {
@@ -252,24 +256,37 @@ export default function SwipeTraining() {
 
   return (
     <AppLayout>
+      {/* Tutorial modal */}
+      <SwipeTutorial open={showTutorial} onComplete={completeTutorial} />
+
       <div className="space-y-6">
         <PageHeader
           title="Entraînement IA - Mode Swipe"
           description="Validez les connexions entre emails pour améliorer l'IA"
           icon={<GraduationCap className="h-6 w-6" />}
           actions={
-            <Button
-              onClick={generatePairs}
-              disabled={isGenerating}
-              className="gap-2"
-            >
-              {isGenerating ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
-              Générer des paires
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={resetTutorial}
+                title="Revoir le tutoriel"
+              >
+                <HelpCircle className="h-4 w-4" />
+              </Button>
+              <Button
+                onClick={generatePairs}
+                disabled={isGenerating}
+                className="gap-2"
+              >
+                {isGenerating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                Générer des paires
+              </Button>
+            </div>
           }
         />
 
@@ -296,6 +313,7 @@ export default function SwipeTraining() {
               </Card>
             ) : currentPair?.email_1 && currentPair?.email_2 ? (
               <SwipeCard
+                key={cardKey}
                 email1={currentPair.email_1}
                 email2={currentPair.email_2}
                 aiPrediction={currentPair.ai_prediction || undefined}
