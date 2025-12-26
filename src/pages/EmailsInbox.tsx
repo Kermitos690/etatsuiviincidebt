@@ -1,5 +1,10 @@
-import { useState, useEffect } from 'react';
-import { Mail, Sparkles, Check, X, RefreshCw, AlertTriangle, ArrowRight, Clock, Brain, Send, MessageSquare, Settings, Zap, Play, Scale, FileWarning, Repeat, AlertCircle, Ban } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { 
+  Mail, Sparkles, Check, X, RefreshCw, AlertTriangle, ArrowRight, Clock, Brain, Send, 
+  MessageSquare, Settings, Zap, Play, Scale, ChevronDown, ChevronRight, Layers, 
+  Filter, Search, BarChart3, TrendingUp, Users, Building2, Inbox, Archive, Trash2,
+  LayoutGrid, List, SortAsc, SortDesc, Maximize2, Minimize2, Eye, EyeOff
+} from 'lucide-react';
 import { AppLayout, PageHeader } from '@/components/layout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +16,9 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -97,10 +105,24 @@ interface AdvancedAnalysis {
   all_legal_references?: LegalReference[];
 }
 
+interface EmailThread {
+  threadId: string;
+  subject: string;
+  emails: Email[];
+  latestDate: string;
+  participants: string[];
+  hasIncident: boolean;
+  hasUnprocessed: boolean;
+  avgConfidence: number;
+  institution?: string;
+}
+
 export default function EmailsInbox() {
   const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedThread, setSelectedThread] = useState<EmailThread | null>(null);
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
+  const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
   const [alertEmail, setAlertEmail] = useState(() => localStorage.getItem('alertEmail') || '');
   const [showSettings, setShowSettings] = useState(false);
   const [showResponseDialog, setShowResponseDialog] = useState(false);
@@ -109,49 +131,116 @@ export default function EmailsInbox() {
   const [sendingResponse, setSendingResponse] = useState(false);
   const [autoProcessEnabled, setAutoProcessEnabled] = useState(true);
   const [processingEmail, setProcessingEmail] = useState<string | null>(null);
+  const [processingThread, setProcessingThread] = useState<string | null>(null);
   const [advancedAnalyzing, setAdvancedAnalyzing] = useState(false);
-  const [filterType, setFilterType] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [viewMode, setViewMode] = useState<'threads' | 'list'>('threads');
+  const [filterIncidents, setFilterIncidents] = useState(false);
+  const [filterUnprocessed, setFilterUnprocessed] = useState(false);
   const navigate = useNavigate();
 
-  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/receive-email`;
+  // Group emails by thread
+  const threads = useMemo(() => {
+    const threadMap = new Map<string, EmailThread>();
+    
+    emails.forEach(email => {
+      const threadId = email.gmail_thread_id || email.id;
+      
+      if (!threadMap.has(threadId)) {
+        threadMap.set(threadId, {
+          threadId,
+          subject: email.subject.replace(/^(Re:|Fwd:|TR:|RE:)\s*/gi, ''),
+          emails: [],
+          latestDate: email.received_at,
+          participants: [],
+          hasIncident: false,
+          hasUnprocessed: false,
+          avgConfidence: 0,
+          institution: undefined
+        });
+      }
+      
+      const thread = threadMap.get(threadId)!;
+      thread.emails.push(email);
+      
+      // Update thread metadata
+      if (new Date(email.received_at) > new Date(thread.latestDate)) {
+        thread.latestDate = email.received_at;
+      }
+      
+      if (!thread.participants.includes(email.sender)) {
+        thread.participants.push(email.sender);
+      }
+      if (email.recipient && !thread.participants.includes(email.recipient)) {
+        thread.participants.push(email.recipient);
+      }
+      
+      if (email.incident_id || email.ai_analysis?.isIncident) {
+        thread.hasIncident = true;
+      }
+      
+      if (!email.processed) {
+        thread.hasUnprocessed = true;
+      }
+      
+      if (email.ai_analysis?.suggestedInstitution) {
+        thread.institution = email.ai_analysis.suggestedInstitution;
+      }
+    });
+    
+    // Calculate average confidence and sort emails within threads
+    threadMap.forEach(thread => {
+      thread.emails.sort((a, b) => new Date(a.received_at).getTime() - new Date(b.received_at).getTime());
+      const confidences = thread.emails
+        .filter(e => e.ai_analysis?.confidence)
+        .map(e => e.ai_analysis!.confidence);
+      thread.avgConfidence = confidences.length > 0 
+        ? Math.round(confidences.reduce((a, b) => a + b, 0) / confidences.length) 
+        : 0;
+    });
+    
+    // Convert to array and sort
+    let threadsArray = Array.from(threadMap.values());
+    threadsArray.sort((a, b) => {
+      const dateA = new Date(a.latestDate).getTime();
+      const dateB = new Date(b.latestDate).getTime();
+      return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+    });
+    
+    // Apply filters
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      threadsArray = threadsArray.filter(t => 
+        t.subject.toLowerCase().includes(query) ||
+        t.participants.some(p => p.toLowerCase().includes(query)) ||
+        t.institution?.toLowerCase().includes(query)
+      );
+    }
+    
+    if (filterIncidents) {
+      threadsArray = threadsArray.filter(t => t.hasIncident);
+    }
+    
+    if (filterUnprocessed) {
+      threadsArray = threadsArray.filter(t => t.hasUnprocessed);
+    }
+    
+    return threadsArray;
+  }, [emails, sortOrder, searchQuery, filterIncidents, filterUnprocessed]);
 
-  // Email type badge config
-  const emailTypeBadges: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
-    received: { 
-      label: 'Reçu', 
-      className: 'bg-gradient-to-r from-emerald-500 to-green-600 text-white',
-      icon: <Mail className="h-3 w-3 mr-1" />
-    },
-    sent: { 
-      label: 'Envoyé', 
-      className: 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white',
-      icon: <Send className="h-3 w-3 mr-1" />
-    },
-    replied: { 
-      label: 'Répondu', 
-      className: 'bg-gradient-to-r from-purple-500 to-violet-600 text-white',
-      icon: <MessageSquare className="h-3 w-3 mr-1" />
-    },
-    forwarded: { 
-      label: 'Transféré', 
-      className: 'bg-gradient-to-r from-orange-500 to-amber-600 text-white',
-      icon: <ArrowRight className="h-3 w-3 mr-1" />
-    },
-  };
-
-  // Filter emails by type
-  const filteredEmails = filterType === 'all' 
-    ? emails 
-    : emails.filter(e => e.email_type === filterType);
-
-  // Stats for each type
-  const emailStats = {
-    all: emails.length,
-    received: emails.filter(e => e.email_type === 'received' || !e.email_type).length,
-    sent: emails.filter(e => e.email_type === 'sent').length,
-    replied: emails.filter(e => e.email_type === 'replied').length,
-    forwarded: emails.filter(e => e.email_type === 'forwarded').length,
-  };
+  // Stats
+  const stats = useMemo(() => ({
+    totalEmails: emails.length,
+    totalThreads: threads.length,
+    incidents: emails.filter(e => e.incident_id || e.ai_analysis?.isIncident).length,
+    unprocessed: emails.filter(e => !e.processed).length,
+    avgConfidence: Math.round(
+      emails.filter(e => e.ai_analysis?.confidence)
+        .reduce((acc, e) => acc + (e.ai_analysis?.confidence || 0), 0) / 
+      (emails.filter(e => e.ai_analysis?.confidence).length || 1)
+    )
+  }), [emails, threads]);
 
   const fetchEmails = async () => {
     setLoading(true);
@@ -186,10 +275,73 @@ export default function EmailsInbox() {
     };
   }, []);
 
-  const saveAlertEmail = () => {
-    localStorage.setItem('alertEmail', alertEmail);
-    setShowSettings(false);
-    toast.success('Email d\'alerte enregistré');
+  const toggleThread = (threadId: string) => {
+    setExpandedThreads(prev => {
+      const next = new Set(prev);
+      if (next.has(threadId)) {
+        next.delete(threadId);
+      } else {
+        next.add(threadId);
+      }
+      return next;
+    });
+  };
+
+  const analyzeThread = async (thread: EmailThread) => {
+    setProcessingThread(thread.threadId);
+    try {
+      // Analyze all unprocessed emails in the thread
+      const unprocessed = thread.emails.filter(e => !e.processed);
+      
+      for (const email of unprocessed) {
+        await supabase.functions.invoke('auto-process-email', {
+          body: { 
+            emailId: email.id,
+            autoCreate: autoProcessEnabled,
+            confidenceThreshold: 70
+          }
+        });
+      }
+      
+      // Run advanced thread analysis
+      if (thread.emails.length > 1) {
+        await supabase.functions.invoke('analyze-thread', {
+          body: {
+            threadId: thread.threadId,
+            messages: thread.emails.map(e => ({
+              date: e.received_at,
+              sender: e.sender,
+              subject: e.subject,
+              body: e.body
+            }))
+          }
+        });
+      }
+      
+      toast.success(`Thread analysé (${thread.emails.length} emails)`);
+      fetchEmails();
+    } catch (error) {
+      console.error('Error analyzing thread:', error);
+      toast.error('Erreur lors de l\'analyse du thread');
+    } finally {
+      setProcessingThread(null);
+    }
+  };
+
+  const analyzeAllThreads = async () => {
+    const unprocessedThreads = threads.filter(t => t.hasUnprocessed);
+    if (unprocessedThreads.length === 0) {
+      toast.info('Tous les threads sont déjà analysés');
+      return;
+    }
+    
+    toast.info(`Analyse de ${unprocessedThreads.length} threads en cours...`);
+    
+    for (const thread of unprocessedThreads) {
+      await analyzeThread(thread);
+    }
+    
+    toast.success('Analyse globale terminée !');
   };
 
   const processEmailWithAI = async (email: Email) => {
@@ -236,7 +388,6 @@ export default function EmailsInbox() {
       if (data?.success) {
         toast.success(`Analyse approfondie terminée (${data.emailsAnalyzed} email(s))`);
         fetchEmails();
-        // Update selected email with new analysis
         if (selectedEmail?.id === email.id) {
           setSelectedEmail(prev => prev ? { ...prev, thread_analysis: data.analysis } : null);
         }
@@ -357,6 +508,22 @@ export default function EmailsInbox() {
   };
 
   const formatDate = (date: string) => {
+    const d = new Date(date);
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) {
+      return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    } else if (diffDays === 1) {
+      return 'Hier';
+    } else if (diffDays < 7) {
+      return d.toLocaleDateString('fr-FR', { weekday: 'short' });
+    } else {
+      return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+    }
+  };
+
+  const formatFullDate = (date: string) => {
     return new Date(date).toLocaleDateString('fr-FR', {
       day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit'
@@ -369,21 +536,48 @@ export default function EmailsInbox() {
     return 'from-red-400 to-red-600';
   };
 
+  const saveAlertEmail = () => {
+    localStorage.setItem('alertEmail', alertEmail);
+    setShowSettings(false);
+    toast.success('Email d\'alerte enregistré');
+  };
+
   return (
     <AppLayout>
-      <div className="p-4 md:p-8">
+      <div className="p-4 md:p-8 min-h-screen">
+        {/* Animated Background Orbs */}
+        <div className="fixed inset-0 pointer-events-none overflow-hidden">
+          <div className="orb-bg orb-1" />
+          <div className="orb-bg orb-2" />
+        </div>
+
         <PageHeader 
           title="Boîte de réception" 
-          description="Emails reçus et analysés par l'IA"
-          icon={<Mail className="h-7 w-7 text-white" />}
+          description={`${stats.totalThreads} conversations • ${stats.totalEmails} emails`}
+          icon={<Inbox className="h-7 w-7 text-white" />}
           actions={
             <div className="flex gap-2">
-              <Button onClick={() => setShowSettings(true)} variant="glass" size="icon">
-                <Settings className="h-4 w-4" />
-              </Button>
-              <Button onClick={fetchEmails} variant="glass" disabled={loading}>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button onClick={() => setShowSettings(true)} variant="ghost" size="icon" className="glass-card">
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Paramètres</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <Button onClick={fetchEmails} variant="ghost" disabled={loading} className="glass-card">
                 <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
                 Actualiser
+              </Button>
+              <Button 
+                onClick={analyzeAllThreads} 
+                className="glow-button text-white"
+                disabled={processingThread !== null}
+              >
+                <Brain className="h-4 w-4 mr-2" />
+                Analyser tout
               </Button>
             </div>
           }
@@ -457,630 +651,561 @@ export default function EmailsInbox() {
           </DialogContent>
         </Dialog>
 
-        {/* Alert Email Status */}
-        {!alertEmail && (
-          <div className="glass-card p-4 mb-6 border-amber-500/30 animate-scale-in">
-            <div className="flex items-center gap-3">
-              <AlertTriangle className="h-5 w-5 text-amber-500" />
-              <p className="text-sm text-muted-foreground">Configurez votre email pour les alertes critiques</p>
-              <Button variant="glass" size="sm" onClick={() => setShowSettings(true)}>Configurer</Button>
-            </div>
-          </div>
-        )}
-
-        {/* Webhook Configuration */}
-        <div className="glass-card p-6 mb-6 animate-scale-in">
-          <div className="flex items-start gap-4">
-            <div className="p-3 rounded-xl bg-gradient-primary shadow-glow-sm">
-              <Zap className="h-5 w-5 text-white" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold mb-2">Pipeline automatique actif</h3>
-              <p className="text-sm text-muted-foreground mb-3">
-                Les emails reçus sont automatiquement analysés par l'IA. Si un incident est détecté avec confiance &gt;70%, il est créé automatiquement, synchronisé avec Google Sheets, et une alerte est envoyée si critique.
-              </p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 px-4 py-2 bg-secondary/50 rounded-lg text-xs break-all font-mono">{webhookUrl}</code>
-                <Button variant="glass" size="sm" onClick={() => { navigator.clipboard.writeText(webhookUrl); toast.success('URL copiée !'); }}>Copier</Button>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+          {[
+            { icon: Layers, label: 'Threads', value: stats.totalThreads, color: 'from-blue-500 to-cyan-500' },
+            { icon: Mail, label: 'Emails', value: stats.totalEmails, color: 'from-violet-500 to-purple-500' },
+            { icon: AlertTriangle, label: 'Incidents', value: stats.incidents, color: 'from-rose-500 to-red-500' },
+            { icon: Clock, label: 'Non traités', value: stats.unprocessed, color: 'from-amber-500 to-orange-500' },
+            { icon: TrendingUp, label: 'Confiance moy.', value: `${stats.avgConfidence}%`, color: 'from-emerald-500 to-green-500' },
+          ].map((stat, i) => (
+            <div
+              key={stat.label}
+              className="glass-card card-3d p-4 animate-scale-in group cursor-default"
+              style={{ animationDelay: `${i * 100}ms` }}
+            >
+              <div className="flex items-center gap-3">
+                <div className={cn(
+                  "p-2.5 rounded-xl bg-gradient-to-br shadow-lg transition-transform duration-300 group-hover:scale-110",
+                  stat.color
+                )}>
+                  <stat.icon className="h-4 w-4 text-white" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{stat.value}</p>
+                  <p className="text-xs text-muted-foreground">{stat.label}</p>
+                </div>
               </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Toolbar */}
+        <div className="glass-card p-4 mb-6 animate-slide-up">
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Search */}
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Rechercher par sujet, expéditeur, institution..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 bg-secondary/50"
+              />
+            </div>
+
+            {/* Filters */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant={filterIncidents ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setFilterIncidents(!filterIncidents)}
+                className={cn(filterIncidents && "glow-button text-white")}
+              >
+                <AlertTriangle className="h-4 w-4 mr-1" />
+                Incidents
+              </Button>
+              <Button
+                variant={filterUnprocessed ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setFilterUnprocessed(!filterUnprocessed)}
+                className={cn(filterUnprocessed && "glow-button text-white")}
+              >
+                <Clock className="h-4 w-4 mr-1" />
+                Non traités
+              </Button>
+            </div>
+
+            {/* Sort */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
+              className="glass-card"
+            >
+              {sortOrder === 'desc' ? (
+                <SortDesc className="h-4 w-4 mr-1" />
+              ) : (
+                <SortAsc className="h-4 w-4 mr-1" />
+              )}
+              {sortOrder === 'desc' ? 'Récents' : 'Anciens'}
+            </Button>
+
+            {/* View Mode */}
+            <div className="flex items-center gap-1 p-1 rounded-lg bg-secondary/50">
+              <Button
+                variant={viewMode === 'threads' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('threads')}
+                className={cn("h-8", viewMode === 'threads' && "shadow-glow-sm")}
+              >
+                <Layers className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={viewMode === 'list' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('list')}
+                className={cn("h-8", viewMode === 'list' && "shadow-glow-sm")}
+              >
+                <List className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-6">
-          {/* Email List */}
-          <div className="space-y-4">
-            {/* Filter by type */}
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <h3 className="font-semibold text-lg">Emails ({filteredEmails.length})</h3>
-              <div className="flex gap-1 flex-wrap">
-                <Button 
-                  variant={filterType === 'all' ? 'default' : 'ghost'} 
-                  size="sm"
-                  onClick={() => setFilterType('all')}
-                  className="text-xs"
-                >
-                  Tous ({emailStats.all})
-                </Button>
-                <Button 
-                  variant={filterType === 'received' ? 'default' : 'ghost'} 
-                  size="sm"
-                  onClick={() => setFilterType('received')}
-                  className="text-xs"
-                >
-                  <Mail className="h-3 w-3 mr-1" />
-                  Reçus ({emailStats.received})
-                </Button>
-                <Button 
-                  variant={filterType === 'sent' ? 'default' : 'ghost'} 
-                  size="sm"
-                  onClick={() => setFilterType('sent')}
-                  className="text-xs"
-                >
-                  <Send className="h-3 w-3 mr-1" />
-                  Envoyés ({emailStats.sent})
-                </Button>
-                <Button 
-                  variant={filterType === 'replied' ? 'default' : 'ghost'} 
-                  size="sm"
-                  onClick={() => setFilterType('replied')}
-                  className="text-xs"
-                >
-                  <MessageSquare className="h-3 w-3 mr-1" />
-                  Répondus ({emailStats.replied})
-                </Button>
-                <Button 
-                  variant={filterType === 'forwarded' ? 'default' : 'ghost'} 
-                  size="sm"
-                  onClick={() => setFilterType('forwarded')}
-                  className="text-xs"
-                >
-                  <ArrowRight className="h-3 w-3 mr-1" />
-                  Transférés ({emailStats.forwarded})
-                </Button>
-              </div>
-            </div>
-            
+        {/* Main Content */}
+        <div className="grid lg:grid-cols-5 gap-6">
+          {/* Thread/Email List */}
+          <div className="lg:col-span-2 space-y-3">
             {loading ? (
               <div className="glass-card p-8 text-center animate-pulse">
-                <RefreshCw className="h-8 w-8 mx-auto text-primary animate-spin" />
-                <p className="text-muted-foreground mt-4">Chargement...</p>
-              </div>
-            ) : filteredEmails.length === 0 ? (
-              <div className="glass-card p-8 text-center">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-primary/10 flex items-center justify-center mx-auto mb-4 animate-float">
-                  <Mail className="h-8 w-8 text-primary" />
-                </div>
-                <p className="text-muted-foreground">Aucun email {filterType !== 'all' ? `de type "${filterType}"` : ''}</p>
-                <p className="text-xs text-muted-foreground mt-2">Configurez le webhook ou Gmail pour commencer</p>
-              </div>
-            ) : (
-              filteredEmails.map((email, index) => (
-                <div
-                  key={email.id}
-                  onClick={() => setSelectedEmail(email)}
-                  className={cn(
-                    "glass-card p-4 cursor-pointer transition-all duration-200 animate-scale-in",
-                    selectedEmail?.id === email.id && "ring-2 ring-primary shadow-glow"
-                  )}
-                  style={{ animationDelay: `${index * 50}ms` }}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        {/* Email type badge */}
-                        {email.email_type && emailTypeBadges[email.email_type] && (
-                          <Badge className={cn("text-xs", emailTypeBadges[email.email_type].className)}>
-                            {emailTypeBadges[email.email_type].icon}
-                            {emailTypeBadges[email.email_type].label}
-                          </Badge>
-                        )}
-                        {/* Default to received if no type */}
-                        {!email.email_type && (
-                          <Badge className="bg-gradient-to-r from-emerald-500 to-green-600 text-white text-xs">
-                            <Mail className="h-3 w-3 mr-1" />
-                            Reçu
-                          </Badge>
-                        )}
-                        {email.incident_id ? (
-                          <Badge className="bg-gradient-to-r from-emerald-400 to-emerald-600 text-white text-xs">
-                            <Check className="h-3 w-3 mr-1" />
-                            Incident créé
-                          </Badge>
-                        ) : email.ai_analysis?.isIncident ? (
-                          <Badge className="bg-gradient-to-r from-red-500 to-rose-500 text-white text-xs">
-                            <AlertTriangle className="h-3 w-3 mr-1" />
-                            Incident détecté
-                          </Badge>
-                        ) : email.processed ? (
-                          <Badge variant="secondary" className="text-xs">
-                            <Check className="h-3 w-3 mr-1" />
-                            Analysé
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-xs">
-                            <Clock className="h-3 w-3 mr-1" />
-                            En attente
-                          </Badge>
-                        )}
-                        {email.ai_analysis?.confidence && (
-                          <span className={cn(
-                            "text-xs font-bold px-2 py-0.5 rounded-full bg-gradient-to-r text-white",
-                            getConfidenceColor(email.ai_analysis.confidence)
-                          )}>
-                            {email.ai_analysis.confidence}%
-                          </span>
-                        )}
-                      </div>
-                      <h4 className="font-medium truncate">{email.subject}</h4>
-                      <p className="text-sm text-muted-foreground truncate">
-                        {email.is_sent ? `À : ${email.recipient || 'Inconnu'}` : `De : ${email.sender}`}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">{formatDate(email.received_at)}</p>
-                    </div>
-                    <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <div className="relative w-16 h-16 mx-auto mb-4">
+                  <div className="absolute inset-0 rounded-full bg-gradient-primary opacity-20 animate-ping" />
+                  <div className="relative flex items-center justify-center w-16 h-16 rounded-full bg-gradient-primary">
+                    <RefreshCw className="h-8 w-8 text-white animate-spin" />
                   </div>
                 </div>
-              ))
+                <p className="text-muted-foreground">Chargement des emails...</p>
+              </div>
+            ) : threads.length === 0 ? (
+              <div className="glass-card p-8 text-center">
+                <div className="w-20 h-20 rounded-3xl bg-gradient-primary/10 flex items-center justify-center mx-auto mb-4 animate-float">
+                  <Inbox className="h-10 w-10 text-primary" />
+                </div>
+                <p className="text-lg font-medium mb-2">Aucun email</p>
+                <p className="text-sm text-muted-foreground">
+                  {searchQuery || filterIncidents || filterUnprocessed 
+                    ? 'Aucun résultat pour ces filtres'
+                    : 'Configurez Gmail pour synchroniser vos emails'}
+                </p>
+              </div>
+            ) : (
+              <ScrollArea className="h-[calc(100vh-380px)]">
+                <div className="space-y-2 pr-4">
+                  {threads.map((thread, index) => (
+                    <Collapsible
+                      key={thread.threadId}
+                      open={expandedThreads.has(thread.threadId)}
+                      onOpenChange={() => toggleThread(thread.threadId)}
+                    >
+                      <div
+                        className={cn(
+                          "glass-card overflow-hidden transition-all duration-300 animate-scale-in",
+                          selectedThread?.threadId === thread.threadId && "ring-2 ring-primary shadow-glow",
+                          thread.hasIncident && "border-l-4 border-l-rose-500"
+                        )}
+                        style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
+                      >
+                        <CollapsibleTrigger asChild>
+                          <div
+                            className="p-4 cursor-pointer hover:bg-secondary/30 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedThread(thread);
+                              if (thread.emails.length === 1) {
+                                setSelectedEmail(thread.emails[0]);
+                              }
+                            }}
+                          >
+                            <div className="flex items-start gap-3">
+                              {/* Thread Indicator */}
+                              <div className={cn(
+                                "flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-transform duration-300",
+                                thread.emails.length > 1 
+                                  ? "bg-gradient-to-br from-violet-500 to-purple-600 shadow-lg" 
+                                  : "bg-secondary"
+                              )}>
+                                {thread.emails.length > 1 ? (
+                                  <span className="text-white font-bold text-sm">{thread.emails.length}</span>
+                                ) : (
+                                  <Mail className="h-5 w-5 text-muted-foreground" />
+                                )}
+                              </div>
+
+                              {/* Thread Content */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  {thread.hasIncident && (
+                                    <Badge className="bg-gradient-to-r from-rose-500 to-red-500 text-white text-xs animate-pulse">
+                                      <AlertTriangle className="h-3 w-3 mr-1" />
+                                      Incident
+                                    </Badge>
+                                  )}
+                                  {thread.hasUnprocessed && (
+                                    <Badge variant="outline" className="text-xs border-amber-500/50 text-amber-600">
+                                      <Clock className="h-3 w-3 mr-1" />
+                                      Non traité
+                                    </Badge>
+                                  )}
+                                  {thread.avgConfidence > 0 && (
+                                    <span className={cn(
+                                      "text-xs font-bold px-2 py-0.5 rounded-full bg-gradient-to-r text-white",
+                                      getConfidenceColor(thread.avgConfidence)
+                                    )}>
+                                      {thread.avgConfidence}%
+                                    </span>
+                                  )}
+                                </div>
+
+                                <h4 className="font-semibold truncate text-sm">{thread.subject}</h4>
+                                
+                                <div className="flex items-center gap-2 mt-1">
+                                  <p className="text-xs text-muted-foreground truncate flex-1">
+                                    {thread.participants.slice(0, 2).join(', ')}
+                                    {thread.participants.length > 2 && ` +${thread.participants.length - 2}`}
+                                  </p>
+                                  <span className="text-xs text-muted-foreground flex-shrink-0">
+                                    {formatDate(thread.latestDate)}
+                                  </span>
+                                </div>
+
+                                {thread.institution && (
+                                  <Badge variant="secondary" className="mt-2 text-xs">
+                                    <Building2 className="h-3 w-3 mr-1" />
+                                    {thread.institution}
+                                  </Badge>
+                                )}
+                              </div>
+
+                              {/* Expand Indicator */}
+                              {thread.emails.length > 1 && (
+                                <div className="flex-shrink-0">
+                                  {expandedThreads.has(thread.threadId) ? (
+                                    <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform" />
+                                  ) : (
+                                    <ChevronRight className="h-5 w-5 text-muted-foreground transition-transform" />
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Quick Actions */}
+                            <div className="flex gap-2 mt-3 pt-3 border-t border-border/50">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  analyzeThread(thread);
+                                }}
+                                disabled={processingThread === thread.threadId}
+                                className="flex-1 h-8 text-xs"
+                              >
+                                {processingThread === thread.threadId ? (
+                                  <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                                ) : (
+                                  <Brain className="h-3 w-3 mr-1" />
+                                )}
+                                Analyser
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedThread(thread);
+                                  setSelectedEmail(thread.emails[0]);
+                                }}
+                                className="flex-1 h-8 text-xs"
+                              >
+                                <Eye className="h-3 w-3 mr-1" />
+                                Voir
+                              </Button>
+                            </div>
+                          </div>
+                        </CollapsibleTrigger>
+
+                        {/* Expanded Emails in Thread */}
+                        <CollapsibleContent>
+                          <div className="border-t border-border/50 bg-secondary/20">
+                            {thread.emails.map((email, emailIndex) => (
+                              <div
+                                key={email.id}
+                                onClick={() => {
+                                  setSelectedThread(thread);
+                                  setSelectedEmail(email);
+                                }}
+                                className={cn(
+                                  "p-3 pl-16 cursor-pointer transition-all hover:bg-secondary/30 border-b border-border/30 last:border-b-0",
+                                  selectedEmail?.id === email.id && "bg-primary/10"
+                                )}
+                              >
+                                <div className="flex items-center gap-2 mb-1">
+                                  {email.incident_id ? (
+                                    <Badge className="bg-emerald-500/20 text-emerald-600 text-xs">
+                                      <Check className="h-3 w-3 mr-1" />
+                                      Incident créé
+                                    </Badge>
+                                  ) : email.ai_analysis?.isIncident ? (
+                                    <Badge className="bg-rose-500/20 text-rose-600 text-xs">
+                                      <AlertTriangle className="h-3 w-3 mr-1" />
+                                      Incident détecté
+                                    </Badge>
+                                  ) : email.processed ? (
+                                    <Badge variant="secondary" className="text-xs">
+                                      <Check className="h-3 w-3 mr-1" />
+                                      Analysé
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="outline" className="text-xs">
+                                      <Clock className="h-3 w-3 mr-1" />
+                                      En attente
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-sm truncate">{email.sender}</p>
+                                <p className="text-xs text-muted-foreground">{formatFullDate(email.received_at)}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </CollapsibleContent>
+                      </div>
+                    </Collapsible>
+                  ))}
+                </div>
+              </ScrollArea>
             )}
           </div>
 
-          {/* Email Detail & AI Analysis */}
-          <div className="space-y-4">
-            <h3 className="font-semibold text-lg">Détail & Analyse IA</h3>
-            
+          {/* Email Detail & Analysis */}
+          <div className="lg:col-span-3 space-y-4">
             {selectedEmail ? (
-              <div className="space-y-4 animate-scale-in">
-                <div className="glass-card p-6">
-                  {/* Email type badge in detail */}
-                  {selectedEmail.email_type && emailTypeBadges[selectedEmail.email_type] && (
-                    <div className="mb-3">
-                      <Badge className={cn("text-sm", emailTypeBadges[selectedEmail.email_type].className)}>
-                        {emailTypeBadges[selectedEmail.email_type].icon}
-                        {emailTypeBadges[selectedEmail.email_type].label}
-                      </Badge>
+              <div className="space-y-4 animate-slide-up">
+                {/* Email Content Card */}
+                <div className="glass-card card-3d p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1">
+                      <h3 className="text-xl font-bold mb-2">{selectedEmail.subject}</h3>
+                      <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                        <span className="font-medium text-foreground">{selectedEmail.sender}</span>
+                        <span>→</span>
+                        <span>{selectedEmail.recipient || 'Moi'}</span>
+                        <span className="text-xs">•</span>
+                        <span className="text-xs">{formatFullDate(selectedEmail.received_at)}</span>
+                      </div>
                     </div>
-                  )}
-                  <h4 className="font-semibold mb-2">{selectedEmail.subject}</h4>
-                  <div className="flex flex-col gap-1 mb-4">
-                    <p className="text-sm text-muted-foreground">De : {selectedEmail.sender}</p>
-                    {selectedEmail.recipient && (
-                      <p className="text-sm text-muted-foreground">À : {selectedEmail.recipient}</p>
+                    {selectedEmail.ai_analysis?.confidence && (
+                      <div className={cn(
+                        "px-4 py-2 rounded-xl bg-gradient-to-r text-white font-bold",
+                        getConfidenceColor(selectedEmail.ai_analysis.confidence)
+                      )}>
+                        {selectedEmail.ai_analysis.confidence}%
+                      </div>
                     )}
                   </div>
-                  <div className="bg-secondary/30 rounded-xl p-4 max-h-48 overflow-y-auto">
-                    <p className="text-sm whitespace-pre-wrap">{selectedEmail.body}</p>
-                  </div>
-                </div>
 
-                {/* Process Button for unprocessed emails */}
-                {!selectedEmail.processed && (
-                  <Button 
-                    onClick={() => processEmailWithAI(selectedEmail)} 
-                    disabled={processingEmail === selectedEmail.id}
-                    className="w-full glow-button"
-                  >
-                    {processingEmail === selectedEmail.id ? (
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Play className="h-4 w-4 mr-2" />
-                    )}
-                    Analyser avec l'IA
-                  </Button>
-                )}
+                  <ScrollArea className="h-48 rounded-xl bg-secondary/30 p-4">
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{selectedEmail.body}</p>
+                  </ScrollArea>
 
-                {/* Analysis Tabs */}
-                <Tabs defaultValue="basic" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="basic">Analyse de base</TabsTrigger>
-                    <TabsTrigger value="advanced">Analyse approfondie</TabsTrigger>
-                  </TabsList>
-
-                  {/* Basic Analysis Tab */}
-                  <TabsContent value="basic" className="space-y-4">
-                    {selectedEmail.ai_analysis ? (
-                      <div className="glass-card p-6">
-                        <div className="flex items-center gap-3 mb-4">
-                          <div className="p-2 rounded-xl bg-gradient-secondary shadow-glow-sm">
-                            <Brain className="h-5 w-5 text-white" />
-                          </div>
-                          <div>
-                            <h4 className="font-semibold">Analyse IA</h4>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-xs text-muted-foreground">Confiance :</span>
-                              <span className={cn(
-                                "text-xs font-bold px-2 py-0.5 rounded-full bg-gradient-to-r text-white",
-                                getConfidenceColor(selectedEmail.ai_analysis.confidence)
-                              )}>
-                                {selectedEmail.ai_analysis.confidence}%
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {selectedEmail.ai_analysis.isIncident ? (
-                          <>
-                            <div className="space-y-3 mb-4">
-                              <div>
-                                <p className="text-xs text-muted-foreground">Titre suggéré</p>
-                                <p className="font-medium">{selectedEmail.ai_analysis.suggestedTitle}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-muted-foreground">Résumé</p>
-                                <p className="text-sm">{selectedEmail.ai_analysis.summary}</p>
-                              </div>
-                              <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                  <p className="text-xs text-muted-foreground">Institution</p>
-                                  <p className="text-sm font-medium">{selectedEmail.ai_analysis.suggestedInstitution}</p>
-                                </div>
-                                <div>
-                                  <p className="text-xs text-muted-foreground">Gravité</p>
-                                  <Badge className={cn(
-                                    "text-white",
-                                    selectedEmail.ai_analysis.suggestedGravity === 'Critique' && "bg-gradient-to-r from-red-500 to-rose-500",
-                                    selectedEmail.ai_analysis.suggestedGravity === 'Grave' && "bg-gradient-to-r from-orange-500 to-amber-500",
-                                    selectedEmail.ai_analysis.suggestedGravity === 'Modéré' && "bg-gradient-to-r from-amber-400 to-yellow-500",
-                                    selectedEmail.ai_analysis.suggestedGravity === 'Mineur' && "bg-gradient-to-r from-emerald-400 to-emerald-600"
-                                  )}>
-                                    {selectedEmail.ai_analysis.suggestedGravity}
-                                  </Badge>
-                                </div>
-                              </div>
-                            </div>
-
-                            {selectedEmail.incident_id ? (
-                              <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center">
-                                <Check className="h-6 w-6 text-emerald-500 mx-auto mb-2" />
-                                <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">Incident déjà créé</p>
-                              </div>
-                            ) : (
-                              <div className="flex gap-2">
-                                <Button variant="glass" className="flex-1" onClick={() => generateAIResponse(selectedEmail)}>
-                                  <MessageSquare className="h-4 w-4 mr-2" />
-                                  Générer réponse
-                                </Button>
-                                <Button className="flex-1" onClick={() => createIncidentFromEmail(selectedEmail)}>
-                                  <Sparkles className="h-4 w-4 mr-2" />
-                                  Créer incident
-                                </Button>
-                              </div>
-                            )}
-                          </>
+                  {/* Action Buttons */}
+                  <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-border/50">
+                    {!selectedEmail.processed && (
+                      <Button
+                        onClick={() => processEmailWithAI(selectedEmail)}
+                        disabled={processingEmail === selectedEmail.id}
+                        className="glow-button text-white"
+                      >
+                        {processingEmail === selectedEmail.id ? (
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                         ) : (
-                          <div className="text-center py-4">
-                            <Check className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
-                            <p className="text-sm text-muted-foreground">L'IA n'a pas détecté d'incident dans cet email</p>
-                            <Button variant="glass" className="mt-4" onClick={() => generateAIResponse(selectedEmail)}>
-                              <MessageSquare className="h-4 w-4 mr-2" />
-                              Générer une réponse
-                            </Button>
-                          </div>
+                          <Brain className="h-4 w-4 mr-2" />
                         )}
-                      </div>
-                    ) : selectedEmail.processed ? (
-                      <div className="glass-card p-6 text-center">
-                        <X className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                        <p className="text-sm text-muted-foreground">Aucune analyse disponible</p>
-                        <Button variant="glass" className="mt-4" onClick={() => processEmailWithAI(selectedEmail)}>
-                          <Play className="h-4 w-4 mr-2" />
-                          Réanalyser
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="glass-card p-6 text-center">
-                        <Clock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                        <p className="text-sm text-muted-foreground">Analyse IA en attente</p>
-                      </div>
+                        Analyser avec l'IA
+                      </Button>
                     )}
-                  </TabsContent>
-
-                  {/* Advanced Analysis Tab */}
-                  <TabsContent value="advanced" className="space-y-4">
-                    {/* Launch Analysis Button */}
-                    <Button 
+                    <Button
+                      variant="ghost"
                       onClick={() => runAdvancedAnalysis(selectedEmail)}
                       disabled={advancedAnalyzing}
-                      className="w-full glow-button"
+                      className="glass-card"
                     >
                       {advancedAnalyzing ? (
                         <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                       ) : (
                         <Scale className="h-4 w-4 mr-2" />
                       )}
-                      {advancedAnalyzing ? 'Analyse en cours...' : 'Lancer l\'analyse approfondie'}
+                      Analyse approfondie
                     </Button>
+                    {selectedEmail.ai_analysis && (
+                      <>
+                        <Button variant="ghost" onClick={() => generateAIResponse(selectedEmail)} className="glass-card">
+                          <MessageSquare className="h-4 w-4 mr-2" />
+                          Répondre
+                        </Button>
+                        {!selectedEmail.incident_id && selectedEmail.ai_analysis.isIncident && (
+                          <Button onClick={() => createIncidentFromEmail(selectedEmail)} className="glow-button text-white">
+                            <Sparkles className="h-4 w-4 mr-2" />
+                            Créer incident
+                          </Button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
 
-                    {selectedEmail.thread_analysis ? (
-                      <div className="space-y-4">
-                        {/* Problem Score */}
-                        <div className="glass-card p-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-medium">Score de problèmes</span>
-                            <span className={cn(
-                              "text-lg font-bold",
-                              selectedEmail.thread_analysis.problem_score >= 70 && "text-red-500",
-                              selectedEmail.thread_analysis.problem_score >= 40 && selectedEmail.thread_analysis.problem_score < 70 && "text-amber-500",
-                              selectedEmail.thread_analysis.problem_score < 40 && "text-emerald-500"
+                {/* Analysis Results */}
+                {selectedEmail.ai_analysis && (
+                  <div className="glass-card p-6 animate-scale-in">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="p-3 rounded-xl bg-gradient-secondary shadow-glow-sm">
+                        <Brain className="h-6 w-6 text-white" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-lg">Analyse IA</h4>
+                        <p className="text-sm text-muted-foreground">
+                          {selectedEmail.ai_analysis.isIncident ? 'Incident potentiel détecté' : 'Aucun incident détecté'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {selectedEmail.ai_analysis.isIncident ? (
+                      <div className="grid gap-4">
+                        <div className="p-4 rounded-xl bg-secondary/30">
+                          <p className="text-xs text-muted-foreground mb-1">Titre suggéré</p>
+                          <p className="font-semibold">{selectedEmail.ai_analysis.suggestedTitle}</p>
+                        </div>
+                        <div className="p-4 rounded-xl bg-secondary/30">
+                          <p className="text-xs text-muted-foreground mb-1">Résumé</p>
+                          <p className="text-sm">{selectedEmail.ai_analysis.summary}</p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="p-4 rounded-xl bg-secondary/30">
+                            <p className="text-xs text-muted-foreground mb-1">Institution</p>
+                            <div className="flex items-center gap-2">
+                              <Building2 className="h-4 w-4 text-primary" />
+                              <span className="font-medium">{selectedEmail.ai_analysis.suggestedInstitution}</span>
+                            </div>
+                          </div>
+                          <div className="p-4 rounded-xl bg-secondary/30">
+                            <p className="text-xs text-muted-foreground mb-1">Gravité</p>
+                            <Badge className={cn(
+                              "text-white",
+                              selectedEmail.ai_analysis.suggestedGravity === 'Critique' && "bg-gradient-to-r from-red-500 to-rose-500",
+                              selectedEmail.ai_analysis.suggestedGravity === 'Grave' && "bg-gradient-to-r from-orange-500 to-amber-500",
+                              selectedEmail.ai_analysis.suggestedGravity === 'Modéré' && "bg-gradient-to-r from-amber-400 to-yellow-500",
+                              selectedEmail.ai_analysis.suggestedGravity === 'Mineur' && "bg-gradient-to-r from-emerald-400 to-emerald-600"
                             )}>
-                              {selectedEmail.thread_analysis.problem_score}/100
-                            </span>
+                              {selectedEmail.ai_analysis.suggestedGravity}
+                            </Badge>
                           </div>
-                          <Progress 
-                            value={selectedEmail.thread_analysis.problem_score} 
-                            className={cn(
-                              "h-2",
-                              selectedEmail.thread_analysis.problem_score >= 70 && "[&>div]:bg-red-500",
-                              selectedEmail.thread_analysis.problem_score >= 40 && selectedEmail.thread_analysis.problem_score < 70 && "[&>div]:bg-amber-500",
-                              selectedEmail.thread_analysis.problem_score < 40 && "[&>div]:bg-emerald-500"
-                            )}
-                          />
-                          <p className="text-xs text-muted-foreground mt-2">
-                            Confiance: {selectedEmail.thread_analysis.confidence}
-                          </p>
                         </div>
 
-                        {/* Summary */}
-                        <div className="glass-card p-4">
-                          <h5 className="font-semibold mb-2 flex items-center gap-2">
-                            <Brain className="h-4 w-4 text-primary" />
-                            Résumé
-                          </h5>
-                          <p className="text-sm text-muted-foreground">{selectedEmail.thread_analysis.summary}</p>
-                        </div>
-
-                        {/* Deadline Violations */}
-                        {selectedEmail.thread_analysis.deadline_violations.detected && (
-                          <div className="glass-card p-4 border-l-4 border-red-500">
-                            <h5 className="font-semibold mb-2 flex items-center gap-2 text-red-500">
-                              <Clock className="h-4 w-4" />
-                              Ruptures de délai
-                              <Badge variant="destructive" className="ml-auto">
-                                {selectedEmail.thread_analysis.deadline_violations.severity}
-                              </Badge>
-                            </h5>
-                            <ul className="text-sm space-y-1">
-                              {selectedEmail.thread_analysis.deadline_violations.details.map((detail, i) => (
-                                <li key={i} className="flex items-start gap-2">
-                                  <AlertTriangle className="h-3 w-3 mt-1 text-red-500 flex-shrink-0" />
-                                  {detail}
-                                </li>
-                              ))}
-                            </ul>
-                            {selectedEmail.thread_analysis.deadline_violations.legal_basis && selectedEmail.thread_analysis.deadline_violations.legal_basis.length > 0 && (
-                              <div className="mt-3 pt-2 border-t border-border/50">
-                                <p className="text-xs text-muted-foreground mb-1">Base légale:</p>
-                                <div className="flex flex-wrap gap-1">
-                                  {selectedEmail.thread_analysis.deadline_violations.legal_basis.map((ref, i) => (
-                                    <a 
-                                      key={i} 
-                                      href={ref.source_url} 
-                                      target="_blank" 
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1 text-xs bg-red-500/10 text-red-600 dark:text-red-400 px-2 py-0.5 rounded hover:bg-red-500/20 transition-colors"
-                                      title={ref.description}
-                                    >
-                                      <Scale className="h-3 w-3" />
-                                      {ref.article}
-                                    </a>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Unanswered Questions */}
-                        {selectedEmail.thread_analysis.unanswered_questions.detected && (
-                          <div className="glass-card p-4 border-l-4 border-amber-500">
-                            <h5 className="font-semibold mb-2 flex items-center gap-2 text-amber-500">
-                              <AlertCircle className="h-4 w-4" />
-                              Questions sans réponse
-                            </h5>
-                            <ul className="text-sm space-y-1">
-                              {selectedEmail.thread_analysis.unanswered_questions.questions.map((q, i) => (
-                                <li key={i} className="flex items-start gap-2">
-                                  <span className="text-amber-500">•</span>
-                                  {q}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                        {/* Repetitions */}
-                        {selectedEmail.thread_analysis.repetitions.detected && (
-                          <div className="glass-card p-4 border-l-4 border-orange-500">
-                            <h5 className="font-semibold mb-2 flex items-center gap-2 text-orange-500">
-                              <Repeat className="h-4 w-4" />
-                              Demandes répétées ({selectedEmail.thread_analysis.repetitions.count}x)
-                            </h5>
-                            <ul className="text-sm space-y-1">
-                              {selectedEmail.thread_analysis.repetitions.repeated_requests.map((req, i) => (
-                                <li key={i} className="flex items-start gap-2">
-                                  <span className="text-orange-500">•</span>
-                                  {req}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                        {/* Contradictions */}
-                        {selectedEmail.thread_analysis.contradictions.detected && (
-                          <div className="glass-card p-4 border-l-4 border-purple-500">
-                            <h5 className="font-semibold mb-2 flex items-center gap-2 text-purple-500">
-                              <FileWarning className="h-4 w-4" />
-                              Contradictions
-                            </h5>
-                            <div className="space-y-2">
-                              {selectedEmail.thread_analysis.contradictions.conflicting_statements.map((conflict, i) => (
-                                <div key={i} className="text-sm bg-secondary/30 rounded p-2">
-                                  <p className="text-muted-foreground mb-1">
-                                    "{conflict.statement1}"
-                                    {conflict.source1 && <span className="text-xs ml-1 opacity-60">({conflict.source1})</span>}
-                                  </p>
-                                  <p className="text-purple-500 font-medium">
-                                    ↔ "{conflict.statement2}"
-                                    {conflict.source2 && <span className="text-xs ml-1 opacity-60">({conflict.source2})</span>}
-                                  </p>
-                                </div>
-                              ))}
-                            </div>
-                            {selectedEmail.thread_analysis.contradictions.legal_basis && selectedEmail.thread_analysis.contradictions.legal_basis.length > 0 && (
-                              <div className="mt-3 pt-2 border-t border-border/50">
-                                <p className="text-xs text-muted-foreground mb-1">Base légale:</p>
-                                <div className="flex flex-wrap gap-1">
-                                  {selectedEmail.thread_analysis.contradictions.legal_basis.map((ref, i) => (
-                                    <a 
-                                      key={i} 
-                                      href={ref.source_url} 
-                                      target="_blank" 
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1 text-xs bg-purple-500/10 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded hover:bg-purple-500/20 transition-colors"
-                                      title={ref.description}
-                                    >
-                                      <Scale className="h-3 w-3" />
-                                      {ref.article}
-                                    </a>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Rule Violations */}
-                        {selectedEmail.thread_analysis.rule_violations.detected && (
-                          <div className="glass-card p-4 border-l-4 border-red-600">
-                            <h5 className="font-semibold mb-2 flex items-center gap-2 text-red-600">
-                              <Scale className="h-4 w-4" />
-                              Violations des règles
-                            </h5>
-                            <ul className="text-sm space-y-2">
-                              {selectedEmail.thread_analysis.rule_violations.violations.map((v, i) => (
-                                <li key={i}>{v}</li>
-                              ))}
-                            </ul>
-                            {selectedEmail.thread_analysis.rule_violations.legal_basis && selectedEmail.thread_analysis.rule_violations.legal_basis.length > 0 && (
-                              <div className="mt-3 pt-2 border-t border-border/50">
-                                <p className="text-xs text-muted-foreground mb-1">Base légale:</p>
-                                <div className="flex flex-wrap gap-1">
-                                  {selectedEmail.thread_analysis.rule_violations.legal_basis.map((ref, i) => (
-                                    <a 
-                                      key={i} 
-                                      href={ref.source_url} 
-                                      target="_blank" 
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1 text-xs bg-red-600/10 text-red-600 dark:text-red-400 px-2 py-0.5 rounded hover:bg-red-600/20 transition-colors"
-                                      title={ref.description}
-                                    >
-                                      <Scale className="h-3 w-3" />
-                                      {ref.article}
-                                    </a>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Circumvention */}
-                        {selectedEmail.thread_analysis.circumvention.detected && (
-                          <div className="glass-card p-4 border-l-4 border-slate-500">
-                            <h5 className="font-semibold mb-2 flex items-center gap-2 text-slate-500">
-                              <Ban className="h-4 w-4" />
-                              Contournements détectés
-                            </h5>
-                            <ul className="text-sm space-y-1">
-                              {selectedEmail.thread_analysis.circumvention.details.map((detail, i) => (
-                                <li key={i} className="flex items-start gap-2">
-                                  <span className="text-slate-500">•</span>
-                                  {detail}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                        {/* Recommendations */}
-                        {selectedEmail.thread_analysis.recommendations.length > 0 && (
-                          <div className="glass-card p-4 bg-gradient-to-br from-primary/5 to-accent/5">
-                            <h5 className="font-semibold mb-2 flex items-center gap-2">
-                              <Sparkles className="h-4 w-4 text-primary" />
-                              Recommandations
-                            </h5>
-                            <ul className="text-sm space-y-2">
-                              {selectedEmail.thread_analysis.recommendations.map((rec, i) => (
-                                <li key={i} className="flex items-start gap-2">
-                                  <ArrowRight className="h-3 w-3 mt-1 text-primary flex-shrink-0" />
-                                  {rec}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                        {/* All Legal References */}
-                        {selectedEmail.thread_analysis.all_legal_references && selectedEmail.thread_analysis.all_legal_references.length > 0 && (
-                          <div className="glass-card p-4 border border-primary/20">
-                            <h5 className="font-semibold mb-3 flex items-center gap-2">
-                              <Scale className="h-4 w-4 text-primary" />
-                              Références légales suisses
-                            </h5>
-                            <div className="space-y-2">
-                              {selectedEmail.thread_analysis.all_legal_references.map((ref, i) => (
-                                <div key={i} className="flex items-start gap-2 text-sm">
-                                  <a 
-                                    href={ref.source_url} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1 font-medium text-primary hover:underline min-w-fit"
-                                  >
-                                    {ref.article}
-                                  </a>
-                                  <span className="text-muted-foreground">
-                                    ({ref.law}) - {ref.description}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-3 pt-2 border-t border-border/50">
-                              Sources: fedlex.admin.ch, silgeneve.ch, admin.ch
-                            </p>
-                          </div>
-                        )}
-
-                        {/* No Issues Detected */}
-                        {!selectedEmail.thread_analysis.deadline_violations.detected &&
-                         !selectedEmail.thread_analysis.unanswered_questions.detected &&
-                         !selectedEmail.thread_analysis.repetitions.detected &&
-                         !selectedEmail.thread_analysis.contradictions.detected &&
-                         !selectedEmail.thread_analysis.rule_violations.detected &&
-                         !selectedEmail.thread_analysis.circumvention.detected && (
-                          <div className="glass-card p-6 text-center">
+                        {selectedEmail.incident_id && (
+                          <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center">
                             <Check className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
-                            <p className="text-sm text-muted-foreground">Aucun problème majeur détecté</p>
+                            <p className="font-medium text-emerald-600 dark:text-emerald-400">Incident déjà créé</p>
                           </div>
                         )}
                       </div>
                     ) : (
-                      <div className="glass-card p-6 text-center">
-                        <Scale className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                        <p className="text-sm text-muted-foreground">
-                          Lancez l'analyse approfondie pour détecter les ruptures de délai, répétitions, contradictions et violations des règles
-                        </p>
+                      <div className="text-center py-6">
+                        <Check className="h-12 w-12 text-emerald-500 mx-auto mb-3" />
+                        <p className="text-muted-foreground">Cet email ne nécessite pas de suivi particulier</p>
                       </div>
                     )}
-                  </TabsContent>
-                </Tabs>
+                  </div>
+                )}
+
+                {/* Thread Analysis */}
+                {selectedEmail.thread_analysis && (
+                  <div className="glass-card p-6 animate-scale-in">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="p-3 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 shadow-glow-sm">
+                        <Scale className="h-6 w-6 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-lg">Analyse approfondie</h4>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Progress 
+                            value={selectedEmail.thread_analysis.problem_score} 
+                            className="h-2 flex-1"
+                          />
+                          <span className={cn(
+                            "text-sm font-bold",
+                            selectedEmail.thread_analysis.problem_score >= 70 ? "text-rose-500" :
+                            selectedEmail.thread_analysis.problem_score >= 40 ? "text-amber-500" : "text-emerald-500"
+                          )}>
+                            {selectedEmail.thread_analysis.problem_score}/100
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3">
+                      {selectedEmail.thread_analysis.deadline_violations.detected && (
+                        <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20">
+                          <p className="font-medium text-rose-600 dark:text-rose-400 flex items-center gap-2">
+                            <Clock className="h-4 w-4" />
+                            Violations de délais
+                          </p>
+                          <ul className="mt-2 space-y-1">
+                            {selectedEmail.thread_analysis.deadline_violations.details.slice(0, 3).map((d, i) => (
+                              <li key={i} className="text-sm text-muted-foreground">• {d}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {selectedEmail.thread_analysis.unanswered_questions.detected && (
+                        <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                          <p className="font-medium text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                            <MessageSquare className="h-4 w-4" />
+                            Questions sans réponse
+                          </p>
+                          <ul className="mt-2 space-y-1">
+                            {selectedEmail.thread_analysis.unanswered_questions.questions.slice(0, 3).map((q, i) => (
+                              <li key={i} className="text-sm text-muted-foreground">• {q}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {selectedEmail.thread_analysis.contradictions.detected && (
+                        <div className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/20">
+                          <p className="font-medium text-purple-600 dark:text-purple-400 flex items-center gap-2">
+                            <X className="h-4 w-4" />
+                            Contradictions détectées
+                          </p>
+                        </div>
+                      )}
+                      {selectedEmail.thread_analysis.rule_violations.detected && (
+                        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                          <p className="font-medium text-red-600 dark:text-red-400 flex items-center gap-2">
+                            <AlertTriangle className="h-4 w-4" />
+                            Violations de règles
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {selectedEmail.thread_analysis.recommendations.length > 0 && (
+                      <div className="mt-4 p-4 rounded-xl bg-primary/5 border border-primary/20">
+                        <p className="font-medium mb-2 flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-primary" />
+                          Recommandations
+                        </p>
+                        <ul className="space-y-2">
+                          {selectedEmail.thread_analysis.recommendations.slice(0, 3).map((rec, i) => (
+                            <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                              <ArrowRight className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                              {rec}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
-              <div className="glass-card p-8 text-center">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-secondary/10 flex items-center justify-center mx-auto mb-4">
-                  <Brain className="h-8 w-8 text-accent" />
+              <div className="glass-card p-12 text-center animate-scale-in">
+                <div className="w-24 h-24 rounded-3xl bg-gradient-primary/10 flex items-center justify-center mx-auto mb-6 animate-float">
+                  <Mail className="h-12 w-12 text-primary" />
                 </div>
-                <p className="text-muted-foreground">Sélectionnez un email pour voir l'analyse</p>
+                <h3 className="text-xl font-semibold mb-2">Sélectionnez un thread</h3>
+                <p className="text-muted-foreground max-w-md mx-auto">
+                  Cliquez sur un thread dans la liste pour voir les détails et l'analyse IA
+                </p>
               </div>
             )}
           </div>
