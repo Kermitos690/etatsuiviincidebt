@@ -16,19 +16,27 @@ import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 const primaryNavItems = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/control-center', icon: Gauge, label: 'Contrôle' },
+  { to: '/', icon: LayoutDashboard, label: 'Accueil' },
   { to: '/emails', icon: Mail, label: 'Emails' },
   { to: '/incidents', icon: AlertTriangle, label: 'Incidents' },
+  { to: '/control-center', icon: Gauge, label: 'Contrôle' },
 ];
 
 const moreNavSections = [
   {
-    title: 'Analyse',
+    title: 'Analyse & IA',
     items: [
-      { to: '/analysis-pipeline', label: 'Pipeline IA', icon: Sparkles },
+      { to: '/analysis-pipeline', label: 'Analyse IA', icon: Sparkles },
       { to: '/emails-analyzed', label: 'Emails Analysés', icon: Mail },
+      { to: '/ia-auditeur', label: 'IA Auditeur', icon: Sparkles },
+    ]
+  },
+  {
+    title: 'Incidents',
+    items: [
       { to: '/incidents-timeline', label: 'Timeline', icon: AlertTriangle },
+      { to: '/journal', label: 'Journal', icon: AlertTriangle },
+      { to: '/nouveau', label: 'Nouveau', icon: AlertTriangle },
       { to: '/violations', label: 'Violations', icon: Scale },
     ]
   },
@@ -36,28 +44,11 @@ const moreNavSections = [
     title: 'Outils',
     items: [
       { to: '/attachments', label: 'Pièces Jointes' },
-      { to: '/journal', label: 'Journal' },
-      { to: '/exports', label: 'Exports PDF' },
+      { to: '/exports', label: 'Exports' },
+      { to: '/gmail-config', label: 'Intégrations' },
+      { to: '/admin', label: 'Paramètres' },
     ]
   },
-  {
-    title: 'IA & Configuration',
-    items: [
-      { to: '/ia-auditeur', label: 'IA Auditeur' },
-      { to: '/ia-training', label: 'Entraînement IA' },
-      { to: '/gmail-config', label: 'Config Gmail' },
-      { to: '/sheets-config', label: 'Config Sheets' },
-    ]
-  },
-  {
-    title: 'Autres',
-    items: [
-      { to: '/nouveau', label: 'Nouvel Incident' },
-      { to: '/audit', label: 'Audit Dashboard' },
-      { to: '/admin', label: 'Administration' },
-      { to: '/tutorial', label: 'Tutoriel' },
-    ]
-  }
 ];
 
 export const MobileBottomNav = forwardRef<HTMLElement, Record<string, never>>((_, ref) => {
