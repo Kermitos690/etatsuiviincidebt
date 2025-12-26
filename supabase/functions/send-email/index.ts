@@ -1,9 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { verifyAuth, unauthorizedResponse, badRequestResponse, corsHeaders, isValidEmail, sanitizeHtml } from "../_shared/auth.ts";
 
 interface SendEmailRequest {
   to: string;
@@ -18,6 +14,13 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
+    // 1. AUTHENTICATION CHECK
+    const { user, error: authError } = await verifyAuth(req);
+    if (authError || !user) {
+      console.error("Authentication failed:", authError);
+      return unauthorizedResponse(authError || "Unauthorized");
+    }
+
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     if (!RESEND_API_KEY) {
       throw new Error("RESEND_API_KEY not configured");
@@ -25,8 +28,32 @@ const handler = async (req: Request): Promise<Response> => {
 
     const { to, subject, html, replyTo }: SendEmailRequest = await req.json();
 
-    console.log("Sending email to:", to);
-    console.log("Subject:", subject);
+    // 2. INPUT VALIDATION
+    if (!to || !isValidEmail(to)) {
+      return badRequestResponse("Invalid recipient email address");
+    }
+
+    if (!subject || subject.trim().length === 0) {
+      return badRequestResponse("Subject is required");
+    }
+
+    if (subject.length > 200) {
+      return badRequestResponse("Subject must be less than 200 characters");
+    }
+
+    if (!html || html.trim().length === 0) {
+      return badRequestResponse("Email body is required");
+    }
+
+    if (replyTo && !isValidEmail(replyTo)) {
+      return badRequestResponse("Invalid reply-to email address");
+    }
+
+    // 3. SANITIZE HTML CONTENT
+    const sanitizedHtml = sanitizeHtml(html);
+
+    // 4. AUDIT LOG
+    console.log(`Email send request by user ${user.email || user.id} to ${to}`);
 
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -37,8 +64,8 @@ const handler = async (req: Request): Promise<Response> => {
       body: JSON.stringify({
         from: "Incidents <onboarding@resend.dev>",
         to: [to],
-        subject: subject,
-        html: html,
+        subject: subject.trim(),
+        html: sanitizedHtml,
         reply_to: replyTo,
       }),
     });
@@ -50,7 +77,7 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error(data.message || "Failed to send email");
     }
 
-    console.log("Email sent successfully:", data);
+    console.log("Email sent successfully:", data.id);
 
     return new Response(JSON.stringify(data), {
       status: 200,
