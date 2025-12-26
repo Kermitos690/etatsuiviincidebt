@@ -65,3 +65,9 @@ verify_jwt = false
 
 [functions.cross-reference-analysis]
 verify_jwt = false
+
+[functions.legal-reference-system]
+verify_jwt = false
+
+[functions.detect-betrayal-patterns]
+verify_jwt = false
