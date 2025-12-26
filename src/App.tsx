@@ -24,6 +24,7 @@ import Attachments from "./pages/Attachments";
 import AnalysisPipeline from "./pages/AnalysisPipeline";
 import IncidentsTimeline from "./pages/IncidentsTimeline";
 import IATraining from "./pages/IATraining";
+import Tutorial from "./pages/Tutorial";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -60,6 +61,7 @@ const App = () => (
             <Route path="/analysis-pipeline" element={<AuthGuard><AnalysisPipeline /></AuthGuard>} />
             <Route path="/audit" element={<AuthGuard><AuditDashboard /></AuthGuard>} />
             <Route path="/ia-training" element={<AuthGuard><IATraining /></AuthGuard>} />
+            <Route path="/tutorial" element={<AuthGuard><Tutorial /></AuthGuard>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
