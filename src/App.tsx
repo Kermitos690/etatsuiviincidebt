@@ -33,6 +33,7 @@ const Tutorial = lazy(() => import("./pages/Tutorial"));
 const ControlCenter = lazy(() => import("./pages/ControlCenter"));
 const SystemAdmin = lazy(() => import("./pages/SystemAdmin"));
 const Profile = lazy(() => import("./pages/Profile"));
+const SixMonthPlan = lazy(() => import("./pages/SixMonthPlan"));
 const Auth = lazy(() => import("./pages/Auth"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -97,6 +98,7 @@ const App = () => (
               <Route path="/tutorial" element={<AuthGuard><Tutorial /></AuthGuard>} />
               <Route path="/system-admin" element={<AuthGuard><SystemAdmin /></AuthGuard>} />
               <Route path="/profile" element={<AuthGuard><Profile /></AuthGuard>} />
+              <Route path="/plan-6-mois" element={<AuthGuard><SixMonthPlan /></AuthGuard>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
