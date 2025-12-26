@@ -35,11 +35,22 @@ interface GmailConfig {
 
 interface SyncStatus {
   id: string;
-  status: 'processing' | 'completed' | 'error';
+  status: 'processing' | 'analyzing' | 'completed' | 'error';
   total_emails: number;
   processed_emails: number;
   new_emails: number;
-  stats: { received: number; sent: number; replied: number; forwarded: number };
+  stats: { 
+    received: number; 
+    sent: number; 
+    replied: number; 
+    forwarded: number;
+    sync_completed?: boolean;
+    analysis_started?: boolean;
+    analysis_completed?: boolean;
+    emails_analyzed?: number;
+    incidents_created?: number;
+    analysis_error?: boolean;
+  };
   progress: number;
   error_message?: string;
 }
@@ -200,10 +211,20 @@ export default function GmailConfig() {
             pollingRef.current = null;
           }
           setConfig(prev => ({ ...prev, lastSync: new Date().toISOString() }));
-          toast.success(`Synchronisation terminée: ${data.new_emails} nouveaux emails sur ${data.processed_emails} traités`);
+          
+          // Build completion message
+          const stats = data.stats || {};
+          let message = `${data.new_emails} nouveaux emails synchronisés`;
+          if (stats.emails_analyzed) {
+            message += `, ${stats.emails_analyzed} analysés par l'IA`;
+          }
+          if (stats.incidents_created) {
+            message += `, ${stats.incidents_created} incidents créés`;
+          }
+          toast.success(message);
           
           // Clear status after delay
-          setTimeout(() => setSyncStatus(null), 10000);
+          setTimeout(() => setSyncStatus(null), 15000);
         } else if (data.status === 'error') {
           setSyncing(false);
           if (pollingRef.current) {
@@ -212,6 +233,7 @@ export default function GmailConfig() {
           }
           toast.error(`Erreur: ${data.error_message || 'Erreur inconnue'}`);
         }
+        // Keep polling for 'processing' and 'analyzing' statuses
       }
     } catch (error) {
       console.error('Failed to poll sync status:', error);
@@ -320,7 +342,7 @@ export default function GmailConfig() {
           {syncStatus && (
             <Card className={cn(
               "glass-card border-2 transition-all",
-              syncStatus.status === 'processing' && "border-primary/50",
+              (syncStatus.status === 'processing' || syncStatus.status === 'analyzing') && "border-primary/50",
               syncStatus.status === 'completed' && "border-green-500/50",
               syncStatus.status === 'error' && "border-destructive/50"
             )}>
@@ -328,7 +350,7 @@ export default function GmailConfig() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      {syncStatus.status === 'processing' && (
+                      {(syncStatus.status === 'processing' || syncStatus.status === 'analyzing') && (
                         <Loader2 className="h-5 w-5 animate-spin text-primary" />
                       )}
                       {syncStatus.status === 'completed' && (
@@ -340,21 +362,49 @@ export default function GmailConfig() {
                       <div>
                         <p className="font-medium">
                           {syncStatus.status === 'processing' && 'Synchronisation en cours...'}
+                          {syncStatus.status === 'analyzing' && '🤖 Analyse IA en cours...'}
                           {syncStatus.status === 'completed' && 'Synchronisation terminée'}
                           {syncStatus.status === 'error' && 'Erreur de synchronisation'}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          {syncStatus.processed_emails} / {syncStatus.total_emails} emails traités
-                          {syncStatus.new_emails > 0 && ` (${syncStatus.new_emails} nouveaux)`}
+                          {syncStatus.status === 'processing' && (
+                            <>
+                              {syncStatus.processed_emails} / {syncStatus.total_emails} emails traités
+                              {syncStatus.new_emails > 0 && ` (${syncStatus.new_emails} nouveaux)`}
+                            </>
+                          )}
+                          {syncStatus.status === 'analyzing' && (
+                            <>
+                              Analyse des {syncStatus.new_emails} nouveaux emails avec l'IA...
+                            </>
+                          )}
+                          {syncStatus.status === 'completed' && syncStatus.stats?.analysis_completed && (
+                            <>
+                              {syncStatus.stats.emails_analyzed || 0} emails analysés
+                              {(syncStatus.stats.incidents_created || 0) > 0 && (
+                                <span className="text-orange-500 font-medium">
+                                  {' '}• {syncStatus.stats.incidents_created} incidents créés
+                                </span>
+                              )}
+                            </>
+                          )}
+                          {syncStatus.status === 'completed' && !syncStatus.stats?.analysis_completed && (
+                            <>
+                              {syncStatus.processed_emails} emails synchronisés
+                            </>
+                          )}
                         </p>
                       </div>
                     </div>
                     <span className="text-2xl font-bold text-primary">
-                      {syncStatus.progress}%
+                      {syncStatus.status === 'analyzing' ? '🔍' : `${syncStatus.progress}%`}
                     </span>
                   </div>
                   
-                  <Progress value={syncStatus.progress} className="h-3" />
+                  <Progress 
+                    value={syncStatus.status === 'analyzing' ? 100 : syncStatus.progress} 
+                    className={cn("h-3", syncStatus.status === 'analyzing' && "animate-pulse")} 
+                  />
                   
                   {syncStatus.stats && (syncStatus.stats.received > 0 || syncStatus.stats.sent > 0) && (
                     <div className="flex flex-wrap gap-2 pt-2">
@@ -370,6 +420,11 @@ export default function GmailConfig() {
                       <Badge variant="outline" className="bg-orange-500/10 text-orange-600 border-orange-500/20">
                         ↪️ {syncStatus.stats.forwarded} transférés
                       </Badge>
+                      {syncStatus.stats.incidents_created !== undefined && syncStatus.stats.incidents_created > 0 && (
+                        <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/20">
+                          🚨 {syncStatus.stats.incidents_created} incidents
+                        </Badge>
+                      )}
                     </div>
                   )}
                 </div>
