@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
@@ -14,7 +15,7 @@ interface ChartEvolutionProps {
   data: ChartDataPoint[];
 }
 
-export function ChartEvolution({ data }: ChartEvolutionProps) {
+function ChartEvolutionComponent({ data }: ChartEvolutionProps) {
   return (
     <div className="glass-card p-4 md:p-6 lg:col-span-2 animate-scale-in" style={{ animationDelay: '150ms' }}>
       <div className="flex items-center gap-3 mb-4">
@@ -53,3 +54,16 @@ export function ChartEvolution({ data }: ChartEvolutionProps) {
     </div>
   );
 }
+
+// Custom comparison to prevent unnecessary re-renders
+function areEqual(prevProps: ChartEvolutionProps, nextProps: ChartEvolutionProps): boolean {
+  if (prevProps.data.length !== nextProps.data.length) return false;
+  return prevProps.data.every((item, index) => 
+    item.name === nextProps.data[index].name && 
+    item.total === nextProps.data[index].total &&
+    item.transmisJP === nextProps.data[index].transmisJP &&
+    item.critiques === nextProps.data[index].critiques
+  );
+}
+
+export const ChartEvolution = memo(ChartEvolutionComponent, areEqual);

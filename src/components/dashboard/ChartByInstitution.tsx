@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Shield } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -10,7 +11,7 @@ interface ChartByInstitutionProps {
   data: ChartDataPoint[];
 }
 
-export function ChartByInstitution({ data }: ChartByInstitutionProps) {
+function ChartByInstitutionComponent({ data }: ChartByInstitutionProps) {
   return (
     <div className="glass-card p-4 md:p-6 animate-scale-in" style={{ animationDelay: '300ms' }}>
       <div className="flex items-center gap-3 mb-4">
@@ -46,3 +47,14 @@ export function ChartByInstitution({ data }: ChartByInstitutionProps) {
     </div>
   );
 }
+
+// Custom comparison to prevent unnecessary re-renders
+function areEqual(prevProps: ChartByInstitutionProps, nextProps: ChartByInstitutionProps): boolean {
+  if (prevProps.data.length !== nextProps.data.length) return false;
+  return prevProps.data.every((item, index) => 
+    item.name === nextProps.data[index].name && 
+    item.value === nextProps.data[index].value
+  );
+}
+
+export const ChartByInstitution = memo(ChartByInstitutionComponent, areEqual);

@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { Zap } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
@@ -11,8 +12,8 @@ interface ChartByPriorityProps {
   data: PriorityData[];
 }
 
-export function ChartByPriority({ data }: ChartByPriorityProps) {
-  const filteredData = data.filter(d => d.value > 0);
+function ChartByPriorityComponent({ data }: ChartByPriorityProps) {
+  const filteredData = useMemo(() => data.filter(d => d.value > 0), [data]);
 
   return (
     <div className="glass-card p-4 md:p-6 animate-scale-in" style={{ animationDelay: '400ms' }}>
@@ -58,3 +59,15 @@ export function ChartByPriority({ data }: ChartByPriorityProps) {
     </div>
   );
 }
+
+// Custom comparison to prevent unnecessary re-renders
+function areEqual(prevProps: ChartByPriorityProps, nextProps: ChartByPriorityProps): boolean {
+  if (prevProps.data.length !== nextProps.data.length) return false;
+  return prevProps.data.every((item, index) => 
+    item.name === nextProps.data[index].name && 
+    item.value === nextProps.data[index].value &&
+    item.fill === nextProps.data[index].fill
+  );
+}
+
+export const ChartByPriority = memo(ChartByPriorityComponent, areEqual);

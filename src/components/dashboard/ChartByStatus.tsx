@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { CheckCircle } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -12,8 +13,8 @@ interface ChartByStatusProps {
   data: ChartDataPoint[];
 }
 
-export function ChartByStatus({ data }: ChartByStatusProps) {
-  const filteredData = data.filter(d => d.value > 0);
+function ChartByStatusComponent({ data }: ChartByStatusProps) {
+  const filteredData = useMemo(() => data.filter(d => d.value > 0), [data]);
 
   return (
     <div className="glass-card p-4 md:p-6 animate-scale-in" style={{ animationDelay: '200ms' }}>
@@ -64,3 +65,14 @@ export function ChartByStatus({ data }: ChartByStatusProps) {
     </div>
   );
 }
+
+// Custom comparison to prevent unnecessary re-renders
+function areEqual(prevProps: ChartByStatusProps, nextProps: ChartByStatusProps): boolean {
+  if (prevProps.data.length !== nextProps.data.length) return false;
+  return prevProps.data.every((item, index) => 
+    item.name === nextProps.data[index].name && 
+    item.value === nextProps.data[index].value
+  );
+}
+
+export const ChartByStatus = memo(ChartByStatusComponent, areEqual);

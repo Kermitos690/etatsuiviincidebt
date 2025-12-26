@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { RadialBarChart, RadialBar, Legend, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -11,7 +12,7 @@ interface ChartByGraviteProps {
   data: ChartDataPoint[];
 }
 
-export function ChartByGravite({ data }: ChartByGraviteProps) {
+function ChartByGraviteComponent({ data }: ChartByGraviteProps) {
   return (
     <div className="glass-card p-4 md:p-6 animate-scale-in" style={{ animationDelay: '250ms' }}>
       <div className="flex items-center gap-3 mb-4">
@@ -54,3 +55,15 @@ export function ChartByGravite({ data }: ChartByGraviteProps) {
     </div>
   );
 }
+
+// Custom comparison to prevent unnecessary re-renders
+function areEqual(prevProps: ChartByGraviteProps, nextProps: ChartByGraviteProps): boolean {
+  if (prevProps.data.length !== nextProps.data.length) return false;
+  return prevProps.data.every((item, index) => 
+    item.name === nextProps.data[index].name && 
+    item.value === nextProps.data[index].value &&
+    item.fill === nextProps.data[index].fill
+  );
+}
+
+export const ChartByGravite = memo(ChartByGraviteComponent, areEqual);
