@@ -6,10 +6,10 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   return (
-    <div className="min-h-screen w-full mesh-bg relative overflow-hidden">
+    <div className="min-h-screen w-full mesh-bg relative">
       {/* Animated background orbs */}
-      <div className="orb-bg orb-1" />
-      <div className="orb-bg orb-2" />
+      <div className="orb-bg orb-1 fixed" />
+      <div className="orb-bg orb-2 fixed" />
       
       {/* Mobile header */}
       <MobileHeader />
@@ -19,7 +19,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <DesktopSidebar />
         
         {/* Main content */}
-        <main className="flex-1 min-h-screen lg:min-h-[calc(100vh)] overflow-auto">
+        <main className="flex-1 min-h-screen overflow-y-auto">
           {children}
         </main>
       </div>
