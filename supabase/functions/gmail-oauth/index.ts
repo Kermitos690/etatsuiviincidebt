@@ -78,21 +78,30 @@ serve(async (req) => {
 
       console.log("Tokens stored successfully for:", userEmail);
 
-      // Return HTML that sends message to parent window
+      // Get the app URL for redirect
+      const appUrl = Deno.env.get("SITE_URL") || "https://csysnvkvnoghhyqaxdkz.lovableproject.com";
+      
+      // Return HTML that handles both mobile and desktop
       const html = `
         <!DOCTYPE html>
         <html>
         <head><title>Gmail Connected</title></head>
         <body>
           <script>
-            window.opener.postMessage({
-              type: 'gmail-oauth-callback',
-              success: true,
-              email: '${userEmail}'
-            }, '*');
-            window.close();
+            // Check if opened in popup (has opener) or direct navigation (mobile)
+            if (window.opener) {
+              window.opener.postMessage({
+                type: 'gmail-oauth-callback',
+                success: true,
+                email: '${userEmail}'
+              }, '*');
+              window.close();
+            } else {
+              // Mobile: redirect back to gmail-config page
+              window.location.href = '${appUrl}/gmail-config?connected=true&email=${encodeURIComponent(userEmail)}';
+            }
           </script>
-          <p>Connexion réussie! Cette fenêtre va se fermer...</p>
+          <p>Connexion réussie! Redirection en cours...</p>
         </body>
         </html>
       `;
