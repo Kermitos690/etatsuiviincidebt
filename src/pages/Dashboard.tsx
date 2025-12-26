@@ -161,7 +161,7 @@ export default function Dashboard() {
     ];
   }, [incidents]);
 
-  // Export Dashboard to PDF
+  // Export Dashboard to PDF with rich visuals
   const exportDashboardPDF = useCallback(async () => {
     setExportingPdf(true);
     try {
@@ -170,6 +170,26 @@ export default function Dashboard() {
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 15;
       let y = 15;
+
+      // Color helpers (RGB)
+      const colors = {
+        primary: [37, 99, 235],
+        secondary: [139, 92, 246],
+        success: [34, 197, 94],
+        warning: [251, 191, 36],
+        danger: [239, 68, 68],
+        orange: [249, 115, 22],
+        cyan: [6, 182, 212],
+        pink: [236, 72, 153],
+        slate: [100, 116, 139],
+        dark: [30, 41, 59]
+      };
+
+      const setColor = (color: number[], type: 'fill' | 'text' | 'draw' = 'fill') => {
+        if (type === 'fill') doc.setFillColor(color[0], color[1], color[2]);
+        else if (type === 'text') doc.setTextColor(color[0], color[1], color[2]);
+        else doc.setDrawColor(color[0], color[1], color[2]);
+      };
 
       const addPageIfNeeded = (requiredSpace: number) => {
         if (y + requiredSpace > pageHeight - 20) {
@@ -180,181 +200,367 @@ export default function Dashboard() {
         return false;
       };
 
-      const drawSection = (title: string) => {
-        addPageIfNeeded(20);
-        doc.setFillColor(243, 244, 246);
-        doc.roundedRect(margin, y, pageWidth - 2 * margin, 10, 2, 2, 'F');
-        doc.setTextColor(37, 99, 235);
+      const drawSectionHeader = (title: string, icon?: string) => {
+        addPageIfNeeded(25);
+        // Gradient-like effect with two overlapping rects
+        setColor(colors.primary, 'fill');
+        doc.roundedRect(margin, y, pageWidth - 2 * margin, 12, 2, 2, 'F');
+        setColor(colors.secondary, 'fill');
+        doc.roundedRect(pageWidth - margin - 60, y, 60, 12, 2, 2, 'F');
+        
+        doc.setTextColor(255, 255, 255);
         doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
-        doc.text(title, margin + 4, y + 7);
-        y += 15;
-        doc.setTextColor(0, 0, 0);
+        doc.text(title, margin + 5, y + 8);
+        y += 18;
       };
 
-      // Header
-      doc.setFillColor(37, 99, 235);
-      doc.rect(0, 0, pageWidth, 35, 'F');
-      doc.setFillColor(139, 92, 246);
-      doc.rect(pageWidth - 60, 0, 60, 35, 'F');
+      // === HEADER ===
+      // Create gradient header
+      setColor(colors.dark, 'fill');
+      doc.rect(0, 0, pageWidth, 45, 'F');
+      setColor(colors.primary, 'fill');
+      doc.rect(0, 0, pageWidth * 0.7, 45, 'F');
+      setColor(colors.secondary, 'fill');
+      doc.rect(pageWidth * 0.7, 0, pageWidth * 0.3, 45, 'F');
+      
+      // Header content
       doc.setTextColor(255, 255, 255);
-      doc.setFontSize(22);
+      doc.setFontSize(28);
       doc.setFont('helvetica', 'bold');
-      doc.text('TABLEAU DE BORD', margin, 18);
-      doc.setFontSize(10);
+      doc.text('TABLEAU DE BORD', margin, 22);
+      doc.setFontSize(12);
       doc.setFont('helvetica', 'normal');
-      doc.text('Registre des Incidents', margin, 26);
+      doc.text('Registre des Incidents - Rapport Analytique', margin, 34);
+      
+      // Date badge
       doc.setFontSize(9);
-      doc.text(format(new Date(), "dd MMMM yyyy HH:mm", { locale: fr }), pageWidth - margin - 50, 22);
-      y = 45;
-
-      // KPIs
-      drawSection('INDICATEURS CLÉS');
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(60, 60, 60);
-      doc.text('Total: ' + kpis.total, margin + 5, y);
-      doc.text('Ouverts: ' + kpis.ouverts, margin + 50, y);
-      doc.text('Non résolus: ' + kpis.nonResolus, margin + 100, y);
-      y += 8;
-      doc.text('Transmis JP: ' + kpis.transmisJP, margin + 5, y);
-      doc.text('Score moyen: ' + kpis.scoreMoyen, margin + 50, y);
-      y += 12;
-
-      // Par statut
-      drawSection('RÉPARTITION PAR STATUT');
-      doc.setFontSize(9);
-      chartByStatus.filter(d => d.value > 0).forEach((stat) => {
-        const pct = incidents.length > 0 ? Math.round(stat.value / incidents.length * 100) : 0;
-        doc.setFont('helvetica', 'normal');
-        doc.text(stat.name + ': ' + stat.value + ' (' + pct + '%)', margin + 5, y);
-        y += 7;
-      });
-      y += 5;
-
-      // Par gravité
-      drawSection('RÉPARTITION PAR GRAVITÉ');
-      chartByGravite.forEach((g) => {
-        const pct = incidents.length > 0 ? Math.round(g.value / incidents.length * 100) : 0;
-        doc.text(g.name + ': ' + g.value + ' (' + pct + '%)', margin + 5, y);
-        y += 7;
-      });
-      y += 5;
-
-      // Par priorité
-      drawSection('RÉPARTITION PAR PRIORITÉ');
-      priorityStats.forEach((p) => {
-        const pct = incidents.length > 0 ? Math.round(p.value / incidents.length * 100) : 0;
-        doc.text(p.name + ': ' + p.value + ' (' + pct + '%)', margin + 5, y);
-        y += 7;
-      });
-      y += 5;
-
-      // Par institution
-      addPageIfNeeded(50);
-      drawSection('PAR INSTITUTION');
-      chartByInstitution.forEach((inst) => {
-        addPageIfNeeded(10);
-        const pct = incidents.length > 0 ? Math.round(inst.value / incidents.length * 100) : 0;
-        doc.text(inst.name + ': ' + inst.value + ' (' + pct + '%)', margin + 5, y);
-        y += 7;
-      });
-      y += 5;
-
-      // Par type
-      addPageIfNeeded(50);
-      drawSection('PAR TYPE DE DYSFONCTIONNEMENT');
-      chartByType.forEach((type) => {
-        addPageIfNeeded(10);
-        const pct = incidents.length > 0 ? Math.round(type.value / incidents.length * 100) : 0;
-        const name = type.name.length > 40 ? type.name.substring(0, 37) + '...' : type.name;
-        doc.text(name + ': ' + type.value + ' (' + pct + '%)', margin + 5, y);
-        y += 7;
-      });
-      y += 5;
-
-      // Évolution 6 mois
-      addPageIfNeeded(60);
-      drawSection('ÉVOLUTION SUR 6 MOIS');
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(pageWidth - 55, 8, 45, 14, 3, 3, 'F');
+      setColor(colors.primary, 'text');
+      doc.text(format(new Date(), "dd MMM yyyy", { locale: fr }), pageWidth - 52, 17);
+      doc.setTextColor(255, 255, 255);
       doc.setFontSize(8);
-      doc.setFillColor(37, 99, 235);
-      doc.rect(margin, y, pageWidth - 2 * margin, 7, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Mois', margin + 5, y + 5);
-      doc.text('Total', margin + 45, y + 5);
-      doc.text('Transmis JP', margin + 75, y + 5);
-      doc.text('Critiques', margin + 115, y + 5);
-      y += 9;
-      doc.setTextColor(60, 60, 60);
-      doc.setFont('helvetica', 'normal');
-      chartEvolution.forEach((m, idx) => {
-        doc.setFillColor(idx % 2 === 0 ? 249 : 255, 250, 251);
-        doc.rect(margin, y - 2, pageWidth - 2 * margin, 6, 'F');
-        doc.text(m.name, margin + 5, y + 2);
-        doc.text(String(m.total), margin + 45, y + 2);
-        doc.text(String(m.transmisJP), margin + 75, y + 2);
-        doc.text(String(m.critiques), margin + 115, y + 2);
-        y += 6;
-      });
-      y += 8;
+      doc.text(format(new Date(), "HH:mm", { locale: fr }), pageWidth - 52, 20);
+      
+      y = 55;
 
-      // Top 5 incidents
-      addPageIfNeeded(50);
-      drawSection('TOP 5 INCIDENTS PAR SCORE');
-      doc.setFontSize(9);
-      topIncidents.forEach((inc, idx) => {
-        addPageIfNeeded(10);
+      // === KPI CARDS ===
+      const kpiData = [
+        { label: 'Total', value: kpis.total, color: colors.primary },
+        { label: 'Ouverts', value: kpis.ouverts, color: colors.warning },
+        { label: 'Non résolus', value: kpis.nonResolus, color: colors.orange },
+        { label: 'Transmis JP', value: kpis.transmisJP, color: colors.secondary },
+        { label: 'Score moyen', value: kpis.scoreMoyen, color: colors.success }
+      ];
+
+      const cardWidth = (pageWidth - 2 * margin - 16) / 5;
+      kpiData.forEach((kpi, idx) => {
+        const x = margin + idx * (cardWidth + 4);
+        // Card background
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(x, y, cardWidth, 28, 3, 3, 'F');
+        // Color accent bar
+        setColor(kpi.color, 'fill');
+        doc.roundedRect(x, y, cardWidth, 5, 3, 3, 'F');
+        doc.rect(x, y + 3, cardWidth, 2, 'F');
+        // Value
+        setColor(colors.dark, 'text');
+        doc.setFontSize(16);
         doc.setFont('helvetica', 'bold');
-        doc.text('#' + (idx + 1), margin + 5, y);
-        doc.setFont('helvetica', 'normal');
-        doc.text(inc.name + ' - Score: ' + inc.score + ' (' + inc.gravite + ')', margin + 15, y);
-        y += 8;
-      });
-
-      // Liste détaillée
-      doc.addPage();
-      y = 20;
-      doc.setFillColor(37, 99, 235);
-      doc.rect(0, 0, pageWidth, 20, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      doc.text('LISTE DÉTAILLÉE DES INCIDENTS', margin, 14);
-      y = 30;
-
-      incidents.slice(0, 25).forEach((inc, idx) => {
-        addPageIfNeeded(18);
-        doc.setFillColor(idx % 2 === 0 ? 249 : 255, 250, 251);
-        doc.setDrawColor(229, 231, 235);
-        doc.roundedRect(margin, y, pageWidth - 2 * margin, 14, 1, 1, 'FD');
-        doc.setTextColor(37, 99, 235);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8);
-        doc.text('#' + inc.numero, margin + 3, y + 5);
-        doc.setTextColor(60, 60, 60);
-        doc.setFont('helvetica', 'normal');
-        const titre = inc.titre.length > 55 ? inc.titre.substring(0, 52) + '...' : inc.titre;
-        doc.text(titre, margin + 15, y + 5);
+        doc.text(String(kpi.value), x + cardWidth / 2, y + 17, { align: 'center' });
+        // Label
         doc.setFontSize(7);
-        doc.text(inc.dateIncident + ' | ' + inc.institution + ' | ' + inc.gravite + ' | ' + inc.statut + ' | Score: ' + inc.score, margin + 3, y + 11);
-        y += 16;
+        doc.setFont('helvetica', 'normal');
+        doc.text(kpi.label, x + cardWidth / 2, y + 24, { align: 'center' });
       });
+      y += 38;
 
-      if (incidents.length > 25) {
-        doc.setTextColor(100, 100, 100);
-        doc.setFontSize(8);
-        doc.text('... et ' + (incidents.length - 25) + ' autres incidents', margin, y + 5);
+      // === CHARTS SECTION ===
+      drawSectionHeader('RÉPARTITIONS STATISTIQUES');
+
+      // --- PIE CHART: By Gravité ---
+      const pieX = margin + 30;
+      const pieY = y + 30;
+      const pieRadius = 25;
+      const graviteColors = [colors.danger, colors.orange, colors.warning, colors.success];
+      let startAngle = 0;
+      const total = chartByGravite.reduce((acc, g) => acc + g.value, 0);
+      
+      if (total > 0) {
+        chartByGravite.forEach((g, idx) => {
+          const sliceAngle = (g.value / total) * 2 * Math.PI;
+          const endAngle = startAngle + sliceAngle;
+          
+          // Draw pie slice using polygon approximation
+          setColor(graviteColors[idx % graviteColors.length], 'fill');
+          const points: [number, number][] = [[pieX, pieY]];
+          for (let a = startAngle; a <= endAngle; a += 0.1) {
+            points.push([pieX + Math.cos(a) * pieRadius, pieY + Math.sin(a) * pieRadius]);
+          }
+          points.push([pieX + Math.cos(endAngle) * pieRadius, pieY + Math.sin(endAngle) * pieRadius]);
+          
+          // Draw as filled shape
+          if (points.length > 2) {
+            doc.setFillColor(graviteColors[idx % graviteColors.length][0], graviteColors[idx % graviteColors.length][1], graviteColors[idx % graviteColors.length][2]);
+            doc.triangle(
+              points[0][0], points[0][1],
+              points[Math.floor(points.length / 2)][0], points[Math.floor(points.length / 2)][1],
+              points[points.length - 1][0], points[points.length - 1][1],
+              'F'
+            );
+          }
+          startAngle = endAngle;
+        });
+        
+        // Center circle (donut effect)
+        doc.setFillColor(255, 255, 255);
+        doc.circle(pieX, pieY, 12, 'F');
+        setColor(colors.dark, 'text');
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text(String(total), pieX, pieY + 3, { align: 'center' });
       }
 
-      // Footer
+      // Gravité legend
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      setColor(colors.dark, 'text');
+      doc.text('Gravité', pieX - 20, y + 2);
+      let legendY = y + 58;
+      chartByGravite.forEach((g, idx) => {
+        setColor(graviteColors[idx % graviteColors.length], 'fill');
+        doc.circle(margin + 5, legendY - 2, 2, 'F');
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal');
+        setColor(colors.dark, 'text');
+        const pct = total > 0 ? Math.round(g.value / total * 100) : 0;
+        doc.text(`${g.name}: ${g.value} (${pct}%)`, margin + 10, legendY);
+        legendY += 6;
+      });
+
+      // --- BAR CHART: By Status ---
+      const barChartX = pageWidth / 2 + 10;
+      const barChartWidth = pageWidth / 2 - margin - 15;
+      const maxStatusValue = Math.max(...chartByStatus.map(s => s.value), 1);
+      
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      setColor(colors.dark, 'text');
+      doc.text('Par Statut', barChartX, y + 2);
+      
+      let barY = y + 8;
+      const statusColors = [colors.primary, colors.success, colors.warning, colors.orange, colors.secondary, colors.pink];
+      chartByStatus.filter(s => s.value > 0).slice(0, 6).forEach((status, idx) => {
+        const barWidth = (status.value / maxStatusValue) * (barChartWidth - 40);
+        // Background bar
+        doc.setFillColor(241, 245, 249);
+        doc.roundedRect(barChartX, barY, barChartWidth - 40, 8, 2, 2, 'F');
+        // Value bar
+        setColor(statusColors[idx % statusColors.length], 'fill');
+        doc.roundedRect(barChartX, barY, Math.max(barWidth, 5), 8, 2, 2, 'F');
+        // Label
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'normal');
+        setColor(colors.dark, 'text');
+        const label = status.name.length > 12 ? status.name.substring(0, 10) + '..' : status.name;
+        doc.text(label, barChartX + barChartWidth - 35, barY + 6);
+        // Value
+        doc.setFont('helvetica', 'bold');
+        doc.text(String(status.value), barChartX + barWidth + 3, barY + 6);
+        barY += 11;
+      });
+
+      y += 90;
+
+      // === HORIZONTAL BAR: Institutions ===
+      addPageIfNeeded(80);
+      drawSectionHeader('RÉPARTITION PAR INSTITUTION');
+      
+      const maxInstValue = Math.max(...chartByInstitution.map(i => i.value), 1);
+      const instColors = [colors.primary, colors.secondary, colors.cyan, colors.pink, colors.success, colors.warning, colors.orange, colors.danger];
+      
+      chartByInstitution.slice(0, 6).forEach((inst, idx) => {
+        const barWidth = (inst.value / maxInstValue) * (pageWidth - 2 * margin - 60);
+        const pct = incidents.length > 0 ? Math.round(inst.value / incidents.length * 100) : 0;
+        
+        // Background
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(margin, y, pageWidth - 2 * margin, 10, 2, 2, 'F');
+        // Bar
+        setColor(instColors[idx % instColors.length], 'fill');
+        doc.roundedRect(margin, y, Math.max(barWidth, 10), 10, 2, 2, 'F');
+        // Text on bar
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+        const instName = inst.name.length > 30 ? inst.name.substring(0, 27) + '...' : inst.name;
+        doc.text(instName, margin + 3, y + 7);
+        // Value
+        setColor(colors.dark, 'text');
+        doc.text(`${inst.value} (${pct}%)`, pageWidth - margin - 25, y + 7);
+        y += 13;
+      });
+      y += 5;
+
+      // === EVOLUTION TABLE ===
+      addPageIfNeeded(70);
+      drawSectionHeader('ÉVOLUTION SUR 6 MOIS');
+      
+      // Table header
+      setColor(colors.dark, 'fill');
+      doc.roundedRect(margin, y, pageWidth - 2 * margin, 10, 2, 2, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Mois', margin + 8, y + 7);
+      doc.text('Total', margin + 50, y + 7);
+      doc.text('Transmis JP', margin + 85, y + 7);
+      doc.text('Critiques', margin + 130, y + 7);
+      y += 12;
+
+      chartEvolution.forEach((m, idx) => {
+        const bgColor = idx % 2 === 0 ? [248, 250, 252] : [255, 255, 255];
+        doc.setFillColor(bgColor[0], bgColor[1], bgColor[2]);
+        doc.rect(margin, y, pageWidth - 2 * margin, 8, 'F');
+        
+        setColor(colors.dark, 'text');
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.text(m.name, margin + 8, y + 6);
+        
+        // Colored badges for values
+        setColor(colors.primary, 'fill');
+        doc.roundedRect(margin + 45, y + 1, 18, 6, 1, 1, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(7);
+        doc.text(String(m.total), margin + 54, y + 5.5, { align: 'center' });
+        
+        setColor(colors.secondary, 'fill');
+        doc.roundedRect(margin + 80, y + 1, 22, 6, 1, 1, 'F');
+        doc.text(String(m.transmisJP), margin + 91, y + 5.5, { align: 'center' });
+        
+        const critColor = m.critiques > 0 ? colors.danger : colors.success;
+        setColor(critColor, 'fill');
+        doc.roundedRect(margin + 125, y + 1, 18, 6, 1, 1, 'F');
+        doc.text(String(m.critiques), margin + 134, y + 5.5, { align: 'center' });
+        
+        y += 9;
+      });
+      y += 10;
+
+      // === TOP 5 INCIDENTS ===
+      addPageIfNeeded(70);
+      drawSectionHeader('TOP 5 INCIDENTS PAR SCORE');
+      
+      topIncidents.forEach((inc, idx) => {
+        const rankColors = [colors.warning, colors.slate, colors.orange, colors.primary, colors.secondary];
+        
+        // Card
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(margin, y, pageWidth - 2 * margin, 12, 2, 2, 'F');
+        
+        // Rank badge
+        setColor(rankColors[idx], 'fill');
+        doc.circle(margin + 8, y + 6, 5, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.text(String(idx + 1), margin + 8, y + 8, { align: 'center' });
+        
+        // Title
+        setColor(colors.dark, 'text');
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.text(inc.name, margin + 18, y + 7);
+        
+        // Score badge
+        const scoreColor = inc.score >= 70 ? colors.danger : inc.score >= 50 ? colors.orange : colors.success;
+        setColor(scoreColor, 'fill');
+        doc.roundedRect(pageWidth - margin - 35, y + 2, 25, 8, 2, 2, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Score: ${inc.score}`, pageWidth - margin - 22.5, y + 7.5, { align: 'center' });
+        
+        y += 14;
+      });
+
+      // === DETAILED LIST ===
+      doc.addPage();
+      y = 10;
+      
+      // Page header
+      setColor(colors.primary, 'fill');
+      doc.rect(0, 0, pageWidth, 25, 'F');
+      setColor(colors.secondary, 'fill');
+      doc.rect(pageWidth - 50, 0, 50, 25, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text('LISTE DÉTAILLÉE DES INCIDENTS', margin, 17);
+      y = 35;
+
+      incidents.slice(0, 20).forEach((inc, idx) => {
+        addPageIfNeeded(20);
+        
+        // Card background
+        const bgColor = idx % 2 === 0 ? [248, 250, 252] : [255, 255, 255];
+        doc.setFillColor(bgColor[0], bgColor[1], bgColor[2]);
+        setColor(colors.slate, 'draw');
+        doc.roundedRect(margin, y, pageWidth - 2 * margin, 16, 2, 2, 'FD');
+        
+        // Number badge
+        setColor(colors.primary, 'fill');
+        doc.roundedRect(margin + 2, y + 2, 15, 12, 2, 2, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`#${inc.numero}`, margin + 9.5, y + 10, { align: 'center' });
+        
+        // Title
+        setColor(colors.dark, 'text');
+        doc.setFontSize(8);
+        const titre = inc.titre.length > 45 ? inc.titre.substring(0, 42) + '...' : inc.titre;
+        doc.text(titre, margin + 20, y + 7);
+        
+        // Details line
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'normal');
+        setColor(colors.slate, 'text');
+        doc.text(`${inc.dateIncident} | ${inc.institution} | ${inc.gravite} | ${inc.statut}`, margin + 20, y + 13);
+        
+        // Score badge
+        const scoreColor = inc.score >= 70 ? colors.danger : inc.score >= 50 ? colors.orange : colors.success;
+        setColor(scoreColor, 'fill');
+        doc.roundedRect(pageWidth - margin - 18, y + 4, 16, 8, 2, 2, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+        doc.text(String(inc.score), pageWidth - margin - 10, y + 9.5, { align: 'center' });
+        
+        y += 18;
+      });
+
+      if (incidents.length > 20) {
+        setColor(colors.slate, 'text');
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'italic');
+        doc.text(`... et ${incidents.length - 20} autres incidents`, margin, y + 5);
+      }
+
+      // === FOOTER on all pages ===
       const pageCount = doc.getNumberOfPages();
       for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i);
+        // Footer bar
+        doc.setFillColor(248, 250, 252);
+        doc.rect(0, pageHeight - 12, pageWidth, 12, 'F');
+        setColor(colors.slate, 'text');
         doc.setFontSize(7);
-        doc.setTextColor(120, 120, 120);
+        doc.setFont('helvetica', 'normal');
         doc.text(
-          'Registre des Incidents - Page ' + i + '/' + pageCount,
+          `Registre des Incidents | Généré le ${format(new Date(), "dd/MM/yyyy à HH:mm", { locale: fr })} | Page ${i}/${pageCount}`,
           pageWidth / 2,
           pageHeight - 5,
           { align: 'center' }
@@ -362,7 +568,7 @@ export default function Dashboard() {
       }
 
       doc.save('dashboard_incidents_' + format(new Date(), 'yyyy-MM-dd_HHmm') + '.pdf');
-      toast.success('Dashboard exporté en PDF');
+      toast.success('Dashboard exporté en PDF avec graphiques');
     } catch (error) {
       console.error('Error generating PDF:', error);
       toast.error('Erreur lors de la génération du PDF');
