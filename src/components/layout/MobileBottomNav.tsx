@@ -5,9 +5,8 @@ import {
   AlertTriangle, 
   Sparkles,
   MoreHorizontal,
-  Bell,
   Scale,
-  Search
+  Gauge
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -18,9 +17,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 
 const primaryNavItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/control-center', icon: Gauge, label: 'Contrôle' },
   { to: '/emails', icon: Mail, label: 'Emails' },
   { to: '/incidents', icon: AlertTriangle, label: 'Incidents' },
-  { to: '/violations', icon: Scale, label: 'Violations' },
 ];
 
 const moreNavSections = [
@@ -30,6 +29,7 @@ const moreNavSections = [
       { to: '/analysis-pipeline', label: 'Pipeline IA', icon: Sparkles },
       { to: '/emails-analyzed', label: 'Emails Analysés', icon: Mail },
       { to: '/incidents-timeline', label: 'Timeline', icon: AlertTriangle },
+      { to: '/violations', label: 'Violations', icon: Scale },
     ]
   },
   {
@@ -53,6 +53,7 @@ const moreNavSections = [
     title: 'Autres',
     items: [
       { to: '/nouveau', label: 'Nouvel Incident' },
+      { to: '/audit', label: 'Audit Dashboard' },
       { to: '/admin', label: 'Administration' },
       { to: '/tutorial', label: 'Tutoriel' },
     ]

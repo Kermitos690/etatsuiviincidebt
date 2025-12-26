@@ -8,7 +8,9 @@ const corsHeaders = {
 
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
-// PROMPT MAÎTRE ULTRA-STRICT pour l'analyse factuelle
+// ===============================================================
+// PROMPT MAÎTRE ULTRA-STRICT - BASES LÉGALES SUISSES EXHAUSTIVES
+// ===============================================================
 const MASTER_ANALYSIS_PROMPT = `Tu es un auditeur juridique ULTRA-RIGOUREUX spécialisé dans les dossiers de protection de l'adulte en Suisse.
 
 🔒 RÈGLES ABSOLUES - VIOLATION = ÉCHEC DE L'ANALYSE 🔒
@@ -38,52 +40,170 @@ const MASTER_ANALYSIS_PROMPT = `Tu es un auditeur juridique ULTRA-RIGOUREUX spé
    - "PROBABLE" = Déduction logique de 2+ citations convergentes
    - "POSSIBLE" = Interprétation d'une seule citation - À VÉRIFIER
 
-6. **BASES LÉGALES SUISSES UNIQUEMENT**
-   Référence aux articles pertinents:
-   
-   PROTECTION DE L'ADULTE (CC 360-456):
-   - Art. 388 CC: But des mesures (assistance, représentation, protection)
-   - Art. 390 CC: Conditions de la curatelle
-   - Art. 398 CC: Diligence du curateur
-   - Art. 404 CC: Collaboration avec la personne concernée
-   - Art. 406 CC: Information et rapport
-   - Art. 413 CC: Révocation du curateur
-   - Art. 415 CC: Surveillance de l'autorité
-   - Art. 417 CC: Conflits d'intérêts
-   - Art. 419-420 CC: Responsabilité
-   - Art. 450 CC: Recours
-   
-   PROCÉDURE ADMINISTRATIVE (PA):
-   - Art. 26 PA: Droit de consulter les pièces
-   - Art. 29 PA: Droit d'être entendu
-   - Art. 35 PA: Motivation des décisions
-   - Art. 46a PA: Déni de justice / retard
-   
-   CONSTITUTION (Cst.):
-   - Art. 7 Cst.: Dignité humaine
-   - Art. 8 Cst.: Égalité
-   - Art. 9 Cst.: Protection contre l'arbitraire
-   - Art. 10 Cst.: Liberté personnelle
-   - Art. 29 Cst.: Garanties de procédure
-   
-   PROTECTION DES DONNÉES (LPD):
-   - Art. 6 LPD: Principes de traitement
-   - Art. 25 LPD: Droit d'accès
+================================================================================
+BASES LÉGALES SUISSES EXHAUSTIVES
+================================================================================
 
-7. **DÉTECTION DES INCOHÉRENCES**
-   Pour CHAQUE personne mentionnée:
-   - Compare ses affirmations dans les différents emails
-   - Signale TOUTE contradiction avec: [CONTRADICTION DÉTECTÉE]
-   - Format: "Email 1 dit: '[citation1]' MAIS Email 2 dit: '[citation2]'"
+═══════════════════════════════════════════════════════════════════════════════
+DROIT FÉDÉRAL
+═══════════════════════════════════════════════════════════════════════════════
 
-8. **DÉTECTION DES TRAHISONS**
-   Recherche activement:
-   - CC/BCC suspects (communications cachées)
-   - Références à des conversations non documentées
-   - Promesses non tenues (avec dates)
-   - Actions contre les intérêts du pupille
+▀▀▀ CONSTITUTION FÉDÉRALE (Cst. - RS 101) ▀▀▀
 
-FORMAT JSON STRICT:
+DROITS FONDAMENTAUX:
+- Art. 7 Cst.: Dignité humaine
+- Art. 8 Cst.: Égalité devant la loi
+- Art. 9 Cst.: Protection contre l'arbitraire et bonne foi
+- Art. 10 Cst.: Droit à la vie et à la liberté personnelle
+- Art. 13 Cst.: Protection de la sphère privée
+
+GARANTIES DE PROCÉDURE:
+- Art. 29 Cst.: Garanties générales de procédure
+- Art. 29 al. 1 Cst.: Décision dans un délai raisonnable
+- Art. 29 al. 2 Cst.: Droit d'être entendu
+- Art. 29a Cst.: Garantie de l'accès au juge
+- Art. 30 Cst.: Garanties de procédure judiciaire
+- Art. 36 Cst.: Restriction des droits (base légale, proportionnalité)
+
+▀▀▀ CODE CIVIL SUISSE (CC - RS 210) ▀▀▀
+
+PRINCIPES:
+- Art. 2 CC: Bonne foi - Abus de droit non protégé
+- Art. 27 CC: Protection de la personnalité
+- Art. 28 CC: Atteintes illicites à la personnalité
+
+PROTECTION DE L'ADULTE (Art. 360-456 CC):
+- Art. 388 CC: But des mesures = BIEN-ÊTRE du pupille
+- Art. 389 CC: SUBSIDIARITÉ et PROPORTIONNALITÉ
+- Art. 390-391 CC: Conditions de la curatelle
+- Art. 392 CC: Curatelle de REPRÉSENTATION
+- Art. 393 CC: Curatelle de GESTION
+- Art. 394 CC: Curatelle de COOPÉRATION - Assister avec consentement
+- Art. 395 CC: Combinaison des curatelles
+- Art. 396 CC: Curatelle de portée générale
+- Art. 400-403 CC: Nomination du curateur
+- Art. 404 CC: COLLABORATION avec la personne concernée
+- Art. 405 CC: Information et consultation
+- Art. 406 CC: DEVOIRS DU CURATEUR - respect de l'avis et volonté
+- Art. 407 CC: Gestion patrimoniale diligente
+- Art. 408-410 CC: Inventaire, comptes, rémunération
+- Art. 411 CC: Rapports périodiques à l'autorité
+- Art. 413 CC: Révocation du curateur
+- Art. 415 CC: Surveillance par l'autorité
+- Art. 416 CC: Actes requérant consentement de l'autorité
+- Art. 417 CC: Conflits d'intérêts
+- Art. 419 CC: DROIT D'ÊTRE ENTENDU du pupille
+- Art. 440-449 CC: Autorité de protection
+- Art. 450 CC: Recours (délai 30 jours)
+- Art. 450a-e CC: Procédure de recours
+- Art. 454-456 CC: Responsabilité
+
+▀▀▀ CODE DES OBLIGATIONS (CO - RS 220) ▀▀▀
+
+MANDAT:
+- Art. 394 CO: Définition du mandat
+- Art. 397 CO: Diligence et fidélité du mandataire
+- Art. 398 CO: RESPONSABILITÉ pour exécution diligente
+- Art. 400 CO: Obligation de rendre compte
+
+RESPONSABILITÉ CIVILE:
+- Art. 41 CO: Responsabilité pour faute
+- Art. 49 CO: Tort moral
+
+▀▀▀ LOI SUR LA PROCÉDURE ADMINISTRATIVE (PA - RS 172.021) ▀▀▀
+
+- Art. 12 PA: Établissement des faits
+- Art. 26 PA: Droit de consulter les pièces
+- Art. 29 PA: Droit d'être entendu
+- Art. 35 PA: Motivation des décisions (OBLIGATOIRE)
+- Art. 46a PA: Déni de justice, retard injustifié
+- Art. 48 PA: Qualité pour recourir
+
+▀▀▀ LOI SUR LA PROTECTION DES DONNÉES (LPD - RS 235.1) ▀▀▀
+
+- Art. 6 LPD: Principes (licéité, bonne foi, proportionnalité)
+- Art. 25 LPD: Droit d'accès
+- Art. 30 LPD: Communication à des tiers = CONSENTEMENT requis
+
+▀▀▀ CODE PÉNAL SUISSE (CP - RS 311.0) ▀▀▀
+
+- Art. 312 CP: Abus d'autorité
+- Art. 314 CP: Gestion déloyale des intérêts publics
+- Art. 320 CP: Violation du secret de fonction
+- Art. 321 CP: Violation du secret professionnel
+
+═══════════════════════════════════════════════════════════════════════════════
+DROIT CANTONAL VAUDOIS
+═══════════════════════════════════════════════════════════════════════════════
+
+▀▀▀ LVPAE - Loi d'application protection adulte/enfant (BLV 211.255) ▀▀▀
+- Art. 2 LVPAE: Autorité de protection (Juge de Paix)
+- Art. 11 LVPAE: Audition de la personne concernée
+- Art. 20 LVPAE: Surveillance des curateurs
+- Art. 21 LVPAE: Rapports périodiques
+- Art. 30-31 LVPAE: Recours (Chambre des curatelles)
+
+▀▀▀ RAM - Règlement administration mandats (BLV 211.255.1) ▀▀▀
+- Gestion du patrimoine, comptes, contrôle
+
+▀▀▀ LSP - Loi santé publique (BLV 800.01) ▀▀▀
+- Art. 21 LSP: Secret professionnel médical
+- Art. 23-24 LSP: Dossier médical, accès
+
+▀▀▀ LPA-VD - Procédure administrative vaudoise (BLV 173.36) ▀▀▀
+- Consultation des pièces, droit d'être entendu, recours
+
+═══════════════════════════════════════════════════════════════════════════════
+NORMES PROFESSIONNELLES
+═══════════════════════════════════════════════════════════════════════════════
+
+▀▀▀ DIRECTIVES COPMA ▀▀▀
+- Qualité des décisions, audition, surveillance des curateurs
+
+▀▀▀ STANDARDS KOKES ▀▀▀
+- Formation, nombre de mandats, supervision
+
+▀▀▀ DÉONTOLOGIE DU CURATEUR ▀▀▀
+- Diligence, loyauté, confidentialité, information, collaboration
+
+================================================================================
+VIOLATIONS À DÉTECTER
+================================================================================
+
+1. COLLABORATION CURATEUR-PUPILLE:
+   - Décision unilatérale sans consultation
+   - Exclusion du pupille des réunions
+   - Non-transmission d'informations
+
+2. CONSENTEMENT ET CONFIDENTIALITÉ:
+   - Communication à tiers sans consentement
+   - Violation du secret médical
+   - Partage de données sensibles
+
+3. DÉLAIS ET PROCÉDURES:
+   - Retard injustifié (Art. 46a PA)
+   - Déni de justice
+   - Non-réponse aux demandes
+
+4. DROITS PROCÉDURAUX:
+   - Droit d'être entendu bafoué
+   - Décision non motivée
+   - Accès au dossier refusé
+
+5. GESTION PATRIMONIALE:
+   - Mauvaise gestion
+   - Actes non autorisés (Art. 416 CC)
+   - Absence de comptabilité
+
+6. ABUS DE POUVOIR:
+   - Dépassement du mandat
+   - Conflit d'intérêts
+   - Gestion déloyale
+
+================================================================================
+FORMAT JSON STRICT
+================================================================================
+
 {
   "analysis_metadata": {
     "date": "YYYY-MM-DD",
@@ -115,7 +235,7 @@ FORMAT JSON STRICT:
   ],
   "issues": [
     {
-      "type": "délai/refus/non-réponse/violation_droits/conflit_intérêt/abus/autre",
+      "type": "délai/refus/non-réponse/violation_droits/conflit_intérêt/abus/collaboration/confidentialité/gestion",
       "description": "Description FACTUELLE du problème",
       "severity": "critique/élevée/moyenne/faible",
       "confidence": "CERTAIN/PROBABLE/POSSIBLE",
@@ -129,6 +249,7 @@ FORMAT JSON STRICT:
       "legal_violations": [
         {
           "article": "Art. XXX CC/PA/Cst./LPD",
+          "law": "Nom complet de la loi",
           "description": "Description de la violation",
           "evidence": "Citation prouvant la violation"
         }
@@ -221,12 +342,10 @@ async function analyzeThreadWithMasterPrompt(emails: Email[]): Promise<ThreadAna
     return null;
   }
 
-  // Sort emails chronologically
   const sortedEmails = [...emails].sort((a, b) => 
     new Date(a.received_at).getTime() - new Date(b.received_at).getTime()
   );
 
-  // Build comprehensive thread content
   const threadContent = sortedEmails.map((email, index) => {
     const date = new Date(email.received_at).toLocaleDateString('fr-CH');
     const fullDate = new Date(email.received_at).toISOString().split('T')[0];
@@ -249,6 +368,7 @@ RAPPELS CRITIQUES:
 3. Compare les affirmations de chaque personne entre les emails
 4. Détecte les promesses et vérifie si elles ont été tenues
 5. Identifie les questions restées sans réponse
+6. Recherche les violations des bases légales suisses (CC, PA, Cst., LPD, LVPAE, etc.)
 
 THREAD À ANALYSER (${sortedEmails.length} emails):
 ${threadContent}
@@ -269,7 +389,6 @@ CHAQUE problème identifié DOIT avoir au moins une citation exacte.`;
           { role: 'system', content: MASTER_ANALYSIS_PROMPT },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.1,
       }),
     });
 
@@ -312,21 +431,19 @@ serve(async (req) => {
 
     const { threadId, batchSize = 10 } = await req.json().catch(() => ({}));
 
-    console.log('Starting complete thread analysis with MASTER prompt (Pass 2)...');
+    console.log('Starting complete thread analysis with MASTER prompt (exhaustive Swiss legal bases)...');
 
     let threadsToAnalyze: string[] = [];
 
     if (threadId) {
       threadsToAnalyze = [threadId];
     } else {
-      // Get threads that haven't been analyzed yet
       const { data: existingAnalyses } = await supabase
         .from('thread_analyses')
         .select('thread_id');
       
       const analyzedThreads = new Set(existingAnalyses?.map(a => a.thread_id) || []);
 
-      // Get unique thread IDs from emails with content
       const { data: emails } = await supabase
         .from('emails')
         .select('gmail_thread_id')
@@ -338,19 +455,19 @@ serve(async (req) => {
       threadsToAnalyze = uniqueThreads.filter(t => !analyzedThreads.has(t!)).slice(0, batchSize) as string[];
     }
 
-    console.log(`Analyzing ${threadsToAnalyze.length} threads with MASTER prompt`);
+    console.log(`Analyzing ${threadsToAnalyze.length} threads with exhaustive Swiss legal bases`);
 
     const results = {
       analyzed: 0,
       issuesFound: 0,
       contradictionsFound: 0,
       promisesTracked: 0,
+      legalViolationsFound: 0,
       errors: [] as string[],
     };
 
     for (const currentThreadId of threadsToAnalyze) {
       try {
-        // Get all emails in this thread
         const { data: threadEmails, error: emailsError } = await supabase
           .from('emails')
           .select('id, sender, recipient, subject, body, received_at')
@@ -373,7 +490,6 @@ serve(async (req) => {
           continue;
         }
 
-        // Calculate severity and confidence
         const severityScores: Record<string, number> = {
           'critique': 4,
           'élevée': 3,
@@ -391,7 +507,11 @@ serve(async (req) => {
           ? certainIssues / analysis.issues.length
           : 0;
 
-        // Store the analysis with enhanced data
+        // Count legal violations
+        const legalViolations = (analysis.issues || []).reduce((count: number, issue: any) => {
+          return count + (issue.legal_violations?.length || 0);
+        }, 0);
+
         const { error: insertError } = await supabase
           .from('thread_analyses')
           .insert({
@@ -416,8 +536,9 @@ serve(async (req) => {
         results.issuesFound += (analysis.issues || []).length;
         results.contradictionsFound += (analysis.contradictions || []).length;
         results.promisesTracked += (analysis.promises_tracking || []).length;
+        results.legalViolationsFound += legalViolations;
 
-        console.log(`Thread ${currentThreadId} analyzed: ${analysis.issues?.length || 0} issues, ${analysis.contradictions?.length || 0} contradictions`);
+        console.log(`Thread ${currentThreadId} analyzed: ${analysis.issues?.length || 0} issues, ${legalViolations} legal violations, ${analysis.contradictions?.length || 0} contradictions`);
 
         // Rate limiting
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -427,7 +548,7 @@ serve(async (req) => {
       }
     }
 
-    console.log('Thread analysis with MASTER prompt completed:', results);
+    console.log('Thread analysis with exhaustive Swiss legal bases completed:', results);
 
     return new Response(JSON.stringify({
       success: true,

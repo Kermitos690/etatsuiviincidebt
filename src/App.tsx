@@ -25,6 +25,7 @@ import AnalysisPipeline from "./pages/AnalysisPipeline";
 import IncidentsTimeline from "./pages/IncidentsTimeline";
 import IATraining from "./pages/IATraining";
 import Tutorial from "./pages/Tutorial";
+import ControlCenter from "./pages/ControlCenter";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -43,6 +44,7 @@ const App = () => (
             
             {/* Protected routes */}
             <Route path="/" element={<AuthGuard><Dashboard /></AuthGuard>} />
+            <Route path="/control-center" element={<AuthGuard><ControlCenter /></AuthGuard>} />
             <Route path="/journal" element={<AuthGuard><Journal /></AuthGuard>} />
             <Route path="/incidents" element={<AuthGuard><Incidents /></AuthGuard>} />
             <Route path="/incidents/:id" element={<AuthGuard><IncidentDetail /></AuthGuard>} />
