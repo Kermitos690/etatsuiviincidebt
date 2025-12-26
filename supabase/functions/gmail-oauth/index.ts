@@ -79,34 +79,38 @@ serve(async (req) => {
       console.log("Tokens stored successfully for:", userEmail);
 
       // Get the app URL for redirect
-      const appUrl = Deno.env.get("SITE_URL") || "https://csysnvkvnoghhyqaxdkz.lovableproject.com";
+      const appUrl = Deno.env.get("SITE_URL") || "https://68b94080-8702-44ad-92ac-e956f60a1e94.lovableproject.com";
+      const redirectUrl = `${appUrl}/gmail-config?connected=true&email=${encodeURIComponent(userEmail)}`;
       
       // Return HTML that handles both mobile and desktop
-      const html = `
-        <!DOCTYPE html>
-        <html>
-        <head><title>Gmail Connected</title></head>
-        <body>
-          <script>
-            // Check if opened in popup (has opener) or direct navigation (mobile)
-            if (window.opener) {
-              window.opener.postMessage({
-                type: 'gmail-oauth-callback',
-                success: true,
-                email: '${userEmail}'
-              }, '*');
-              window.close();
-            } else {
-              // Mobile: redirect back to gmail-config page
-              window.location.href = '${appUrl}/gmail-config?connected=true&email=${encodeURIComponent(userEmail)}';
-            }
-          </script>
-          <p>Connexion réussie! Redirection en cours...</p>
-        </body>
-        </html>
-      `;
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="refresh" content="0;url=${redirectUrl}">
+  <title>Gmail Connected</title>
+</head>
+<body>
+  <script>
+    if (window.opener) {
+      window.opener.postMessage({
+        type: 'gmail-oauth-callback',
+        success: true,
+        email: '${userEmail}'
+      }, '*');
+      window.close();
+    } else {
+      window.location.replace('${redirectUrl}');
+    }
+  </script>
+  <p>Connexion réussie! <a href="${redirectUrl}">Cliquez ici si vous n'êtes pas redirigé</a></p>
+</body>
+</html>`;
       return new Response(html, {
-        headers: { "Content-Type": "text/html" },
+        headers: { 
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-cache, no-store, must-revalidate"
+        },
       });
     }
 
