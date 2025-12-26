@@ -98,7 +98,7 @@ export default function Auth() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
+    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
       {/* Decorative orbs */}
       <div className="absolute top-20 left-20 w-72 h-72 rounded-full bg-gradient-to-br from-primary/20 to-accent/10 blur-3xl animate-orb-float" />
       <div className="absolute bottom-20 right-20 w-72 h-72 rounded-full bg-gradient-to-br from-accent/20 to-primary/10 blur-3xl animate-orb-float" style={{ animationDelay: '-10s' }} />
@@ -238,6 +238,6 @@ export default function Auth() {
           </p>
         </CardFooter>
       </Card>
-    </div>
+    </main>
   );
 }
