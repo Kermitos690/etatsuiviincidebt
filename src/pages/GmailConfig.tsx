@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,15 +9,16 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AppSidebar } from '@/components/layout/AppSidebar';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   Mail, Settings, Check, X, RefreshCw, Plus, 
-  ExternalLink, Shield, Clock, CalendarIcon
+  ExternalLink, Shield, Clock, CalendarIcon, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { INSTITUTIONAL_DOMAINS, SYNC_KEYWORDS } from '@/config/appConfig';
-import { format } from 'date-fns';
+import { format, setMonth, setYear } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 
@@ -29,6 +30,13 @@ interface GmailConfig {
   domains: string[];
   keywords: string[];
 }
+
+const MONTHS = [
+  'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
+];
+
+const YEARS = Array.from({ length: 20 }, (_, i) => new Date().getFullYear() - i);
 
 export default function GmailConfig() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -42,7 +50,30 @@ export default function GmailConfig() {
   const [syncing, setSyncing] = useState(false);
   const [newDomain, setNewDomain] = useState('');
   const [newKeyword, setNewKeyword] = useState('');
-  const [syncFromDate, setSyncFromDate] = useState<Date | undefined>(new Date('2025-12-18'));
+  const [syncFromDate, setSyncFromDate] = useState<Date | undefined>(new Date('2024-01-01'));
+  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
+  const [configId, setConfigId] = useState<string | null>(null);
+
+  // Save config to database
+  const saveConfigToDb = useCallback(async (domains: string[], keywords: string[], syncEnabled: boolean) => {
+    if (!configId) return;
+    
+    try {
+      const { error } = await supabase
+        .from('gmail_config')
+        .update({
+          domains,
+          keywords,
+          sync_enabled: syncEnabled,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', configId);
+      
+      if (error) throw error;
+    } catch (error) {
+      console.error('Failed to save config:', error);
+    }
+  }, [configId]);
 
   // Handle OAuth callback from mobile redirect
   useEffect(() => {
@@ -52,7 +83,6 @@ export default function GmailConfig() {
     if (connected === 'true' && email) {
       setConfig(prev => ({ ...prev, connected: true, email: decodeURIComponent(email) }));
       toast.success('Connexion Gmail réussie');
-      // Clean up URL params
       setSearchParams({});
     }
   }, [searchParams, setSearchParams]);
@@ -69,6 +99,7 @@ export default function GmailConfig() {
       });
       if (error) throw error;
       if (data?.config) {
+        setConfigId(data.config.id);
         setConfig({
           connected: data.connected,
           email: data.config.user_email,
@@ -155,26 +186,41 @@ export default function GmailConfig() {
     }
   };
 
-  const addDomain = () => {
+  const addDomain = async () => {
     if (newDomain && !config.domains.includes(newDomain)) {
-      setConfig(prev => ({ ...prev, domains: [...prev.domains, newDomain] }));
+      const newDomains = [...config.domains, newDomain];
+      setConfig(prev => ({ ...prev, domains: newDomains }));
       setNewDomain('');
+      await saveConfigToDb(newDomains, config.keywords, config.syncEnabled);
+      toast.success('Domaine ajouté et sauvegardé');
     }
   };
 
-  const removeDomain = (domain: string) => {
-    setConfig(prev => ({ ...prev, domains: prev.domains.filter(d => d !== domain) }));
+  const removeDomain = async (domain: string) => {
+    const newDomains = config.domains.filter(d => d !== domain);
+    setConfig(prev => ({ ...prev, domains: newDomains }));
+    await saveConfigToDb(newDomains, config.keywords, config.syncEnabled);
   };
 
-  const addKeyword = () => {
+  const addKeyword = async () => {
     if (newKeyword && !config.keywords.includes(newKeyword)) {
-      setConfig(prev => ({ ...prev, keywords: [...prev.keywords, newKeyword] }));
+      const newKeywords = [...config.keywords, newKeyword];
+      setConfig(prev => ({ ...prev, keywords: newKeywords }));
       setNewKeyword('');
+      await saveConfigToDb(config.domains, newKeywords, config.syncEnabled);
+      toast.success('Mot-clé ajouté et sauvegardé');
     }
   };
 
-  const removeKeyword = (keyword: string) => {
-    setConfig(prev => ({ ...prev, keywords: prev.keywords.filter(k => k !== keyword) }));
+  const removeKeyword = async (keyword: string) => {
+    const newKeywords = config.keywords.filter(k => k !== keyword);
+    setConfig(prev => ({ ...prev, keywords: newKeywords }));
+    await saveConfigToDb(config.domains, newKeywords, config.syncEnabled);
+  };
+
+  const handleSyncEnabledChange = async (checked: boolean) => {
+    setConfig(prev => ({ ...prev, syncEnabled: checked }));
+    await saveConfigToDb(config.domains, config.keywords, checked);
   };
 
   return (
@@ -233,7 +279,7 @@ export default function GmailConfig() {
                   <Label className="text-base">Synchronisation automatique</Label>
                   <p className="text-sm text-muted-foreground">Récupérer automatiquement les nouveaux emails</p>
                 </div>
-                <Switch checked={config.syncEnabled} onCheckedChange={(checked) => setConfig(prev => ({ ...prev, syncEnabled: checked }))} />
+                <Switch checked={config.syncEnabled} onCheckedChange={handleSyncEnabledChange} />
               </div>
               <Separator />
               <div className="space-y-3">
@@ -294,12 +340,67 @@ export default function GmailConfig() {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
+                    <div className="p-3 space-y-3">
+                      {/* Year/Month selector */}
+                      <div className="flex items-center justify-between gap-2">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => setCalendarMonth(prev => setYear(prev, prev.getFullYear() - 1))}
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        <div className="flex gap-2">
+                          <Select
+                            value={calendarMonth.getMonth().toString()}
+                            onValueChange={(value) => setCalendarMonth(prev => setMonth(prev, parseInt(value)))}
+                          >
+                            <SelectTrigger className="w-[110px] h-8">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {MONTHS.map((month, index) => (
+                                <SelectItem key={index} value={index.toString()}>
+                                  {month}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={calendarMonth.getFullYear().toString()}
+                            onValueChange={(value) => setCalendarMonth(prev => setYear(prev, parseInt(value)))}
+                          >
+                            <SelectTrigger className="w-[80px] h-8">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {YEARS.map((year) => (
+                                <SelectItem key={year} value={year.toString()}>
+                                  {year}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => setCalendarMonth(prev => setYear(prev, prev.getFullYear() + 1))}
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
                     <Calendar
                       mode="single"
                       selected={syncFromDate}
                       onSelect={setSyncFromDate}
+                      month={calendarMonth}
+                      onMonthChange={setCalendarMonth}
                       initialFocus
-                      className={cn("p-3 pointer-events-auto")}
+                      className={cn("p-3 pt-0 pointer-events-auto")}
                     />
                   </PopoverContent>
                 </Popover>
