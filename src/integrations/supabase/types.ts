@@ -30,6 +30,7 @@ export type Database = {
           promises_broken_count: number | null
           trust_score: number | null
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           actor_email?: string | null
@@ -46,6 +47,7 @@ export type Database = {
           promises_broken_count?: number | null
           trust_score?: number | null
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           actor_email?: string | null
@@ -62,6 +64,7 @@ export type Database = {
           promises_broken_count?: number | null
           trust_score?: number | null
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -498,6 +501,7 @@ export type Database = {
           token_expiry: string | null
           updated_at: string | null
           user_email: string
+          user_id: string | null
         }
         Insert: {
           access_token: string
@@ -511,6 +515,7 @@ export type Database = {
           token_expiry?: string | null
           updated_at?: string | null
           user_email: string
+          user_id?: string | null
         }
         Update: {
           access_token?: string
@@ -524,6 +529,7 @@ export type Database = {
           token_expiry?: string | null
           updated_at?: string | null
           user_email?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -551,6 +557,7 @@ export type Database = {
           transmis_jp: boolean
           type: string
           updated_at: string
+          user_id: string | null
           validated_at: string | null
           validated_by: string | null
         }
@@ -577,6 +584,7 @@ export type Database = {
           transmis_jp?: boolean
           type: string
           updated_at?: string
+          user_id?: string | null
           validated_at?: string | null
           validated_by?: string | null
         }
@@ -603,6 +611,7 @@ export type Database = {
           transmis_jp?: boolean
           type?: string
           updated_at?: string
+          user_id?: string | null
           validated_at?: string | null
           validated_by?: string | null
         }
@@ -1001,7 +1010,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      user_owns_email: { Args: { _email_id: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
