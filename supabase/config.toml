@@ -1,7 +1,7 @@
 project_id = "csysnvkvnoghhyqaxdkz"
 
 [functions.analyze-incident]
-verify_jwt = false
+verify_jwt = true
 
 [functions.receive-email]
 verify_jwt = false
@@ -22,70 +22,70 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.analyze-thread]
-verify_jwt = false
+verify_jwt = true
 
 [functions.auto-process-email]
-verify_jwt = false
+verify_jwt = true
 
 [functions.analyze-email-advanced]
-verify_jwt = false
+verify_jwt = true
 
 [functions.daily-audit-analysis]
-verify_jwt = false
+verify_jwt = true
 
 [functions.generate-monthly-report]
-verify_jwt = false
+verify_jwt = true
 
 [functions.sync-status]
-verify_jwt = false
+verify_jwt = true
 
 [functions.batch-analyze-emails]
-verify_jwt = false
+verify_jwt = true
 
 [functions.download-attachments]
-verify_jwt = false
+verify_jwt = true
 
 [functions.analyze-attachment]
-verify_jwt = false
+verify_jwt = true
 
 [functions.deep-analyze-emails]
-verify_jwt = false
+verify_jwt = true
 
 [functions.resync-email-bodies]
-verify_jwt = false
+verify_jwt = true
 
 [functions.download-all-attachments]
-verify_jwt = false
+verify_jwt = true
 
 [functions.extract-email-facts]
-verify_jwt = false
+verify_jwt = true
 
 [functions.analyze-thread-complete]
-verify_jwt = false
+verify_jwt = true
 
 [functions.cross-reference-analysis]
-verify_jwt = false
+verify_jwt = true
 
 [functions.legal-reference-system]
-verify_jwt = false
+verify_jwt = true
 
 [functions.backup-data]
-verify_jwt = false
+verify_jwt = true
 
 [functions.monitoring-logs]
-verify_jwt = false
+verify_jwt = true
 
 [functions.internal-backup]
-verify_jwt = false
+verify_jwt = true
 
 [functions.internal-monitoring]
-verify_jwt = false
+verify_jwt = true
 
 [functions.ai-enrich-context]
-verify_jwt = false
+verify_jwt = true
 
 [functions.generate-training-pairs]
-verify_jwt = false
+verify_jwt = true
 
 [functions.update-training-stats]
-verify_jwt = false
+verify_jwt = true

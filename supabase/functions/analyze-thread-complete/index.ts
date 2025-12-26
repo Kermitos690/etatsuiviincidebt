@@ -540,6 +540,7 @@ serve(async (req) => {
         const { error: insertError } = await supabase
           .from('thread_analyses')
           .insert({
+            user_id: user.id,
             thread_id: currentThreadId,
             email_ids: threadEmails.map(e => e.id),
             chronological_summary: analysis.summary,

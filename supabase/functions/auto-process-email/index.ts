@@ -7,6 +7,7 @@ const corsHeaders = {
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
@@ -47,7 +48,7 @@ async function analyzeWithAI(emailContent: string): Promise<any> {
       model: "google/gemini-2.5-flash",
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: emailContent }
+        { role: "user", content: emailContent },
       ],
     }),
   });
@@ -59,10 +60,8 @@ async function analyzeWithAI(emailContent: string): Promise<any> {
 
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content;
-  
   if (!content) return null;
 
-  // Extract JSON from response
   const jsonMatch = content.match(/\{[\s\S]*\}/);
   if (!jsonMatch) return null;
 
@@ -74,40 +73,66 @@ async function analyzeWithAI(emailContent: string): Promise<any> {
   }
 }
 
+function getBearer(req: Request) {
+  const authHeader = req.headers.get("Authorization") || "";
+  return authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { emailId, autoCreate = false, confidenceThreshold = 70 } = await req.json();
+    const { emailId, autoCreate = false, confidenceThreshold = 70, forceReanalyze = false } = await req.json();
+
+    const jwt = getBearer(req);
+    if (!jwt) {
+      return new Response(JSON.stringify({ error: "Authorization Bearer token requis" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Validate user
+    const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: `Bearer ${jwt}` } },
+    });
+    const { data: userData, error: userErr } = await supabaseAuth.auth.getUser();
+    if (userErr || !userData?.user) {
+      return new Response(JSON.stringify({ error: "Token invalide" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const userId = userData.user.id;
+
+    // Service role client for DB ops
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Get the email
+    // Get the email (ownership check)
     const { data: email, error: emailError } = await supabase
       .from("emails")
       .select("*")
       .eq("id", emailId)
+      .eq("user_id", userId)
       .single();
 
     if (emailError || !email) {
-      return new Response(JSON.stringify({ error: "Email not found" }), {
+      return new Response(JSON.stringify({ error: "Email not found or not authorized" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Skip if already processed
-    if (email.processed && email.ai_analysis) {
-      return new Response(JSON.stringify({ 
-        message: "Email already processed",
-        analysis: email.ai_analysis 
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // Skip if already processed (unless force)
+    if (!forceReanalyze && email.processed && email.ai_analysis) {
+      return new Response(
+        JSON.stringify({ message: "Email already processed", analysis: email.ai_analysis }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
-    // Analyze with AI
     const emailContent = `
 De: ${email.sender}
 Sujet: ${email.subject}
@@ -116,7 +141,7 @@ Date: ${email.received_at}
 ${email.body}
     `.trim();
 
-    console.log("Analyzing email:", email.subject);
+    console.log(`Analyzing email for user ${userId}:`, email.subject);
     const analysis = await analyzeWithAI(emailContent);
 
     if (!analysis) {
@@ -126,34 +151,37 @@ ${email.body}
       });
     }
 
-    console.log("Analysis result:", analysis);
-
     // Update email with analysis
     await supabase
       .from("emails")
-      .update({ 
+      .update({
         ai_analysis: analysis,
-        processed: true 
+        processed: true,
+        user_id: userId,
       })
       .eq("id", emailId);
 
     let createdIncident = null;
 
-    // Auto-create incident if criteria met
     if (autoCreate && analysis.isIncident && analysis.confidence >= confidenceThreshold) {
-      console.log(`Creating incident automatically (confidence: ${analysis.confidence}%)`);
+      console.log(`Creating incident automatically (confidence: ${analysis.confidence}%) for user ${userId}`);
 
       const { data: incident, error: incError } = await supabase
         .from("incidents")
         .insert({
+          user_id: userId,
           titre: analysis.titre || email.subject,
           faits: analysis.faits || email.body.substring(0, 1000),
           dysfonctionnement: analysis.dysfonctionnement || "À compléter",
           institution: analysis.institution || "Non identifiée",
           type: analysis.type || "Autre",
           gravite: analysis.gravite || "Moyenne",
-          priorite: analysis.gravite === "Critique" ? "critique" : 
-                   analysis.gravite === "Haute" ? "haute" : "normale",
+          priorite:
+            analysis.gravite === "Critique"
+              ? "critique"
+              : analysis.gravite === "Haute"
+                ? "haute"
+                : "normale",
           date_incident: new Date(email.received_at).toISOString().split("T")[0],
           email_source_id: emailId,
           confidence_level: `${analysis.confidence}%`,
@@ -167,37 +195,23 @@ ${email.body}
         console.error("Failed to create incident:", incError);
       } else {
         createdIncident = incident;
-        console.log("Incident created:", incident.numero);
 
-        // Link email to incident
-        await supabase
-          .from("emails")
-          .update({ incident_id: incident.id })
-          .eq("id", emailId);
+        await supabase.from("emails").update({ incident_id: incident.id }).eq("id", emailId);
 
-        // Sync to Google Sheets if configured
+        // Non-blocking: sync + notify
         try {
-          const sheetsResponse = await fetch(`${SUPABASE_URL}/functions/v1/sheets-sync`, {
+          await fetch(`${SUPABASE_URL}/functions/v1/sheets-sync`, {
             method: "POST",
             headers: {
               Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ 
-              action: "sync-incident",
-              incidentId: incident.id 
-            }),
+            body: JSON.stringify({ action: "sync-incident", incidentId: incident.id }),
           });
-          
-          if (sheetsResponse.ok) {
-            console.log("Incident synced to Google Sheets");
-          }
-        } catch (sheetError) {
-          console.error("Sheets sync failed:", sheetError);
-          // Non-blocking error
+        } catch (e) {
+          console.error("Sheets sync failed:", e);
         }
 
-        // Send notification if critical
         if (analysis.gravite === "Critique" || analysis.gravite === "Haute") {
           try {
             await fetch(`${SUPABASE_URL}/functions/v1/notify-critical`, {
@@ -208,22 +222,17 @@ ${email.body}
               },
               body: JSON.stringify({ incidentId: incident.id }),
             });
-            console.log("Critical notification sent");
-          } catch (notifyError) {
-            console.error("Notification failed:", notifyError);
+          } catch (e) {
+            console.error("Notification failed:", e);
           }
         }
       }
     }
 
-    return new Response(JSON.stringify({ 
-      success: true,
-      analysis,
-      incidentCreated: !!createdIncident,
-      incident: createdIncident
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ success: true, analysis, incidentCreated: !!createdIncident, incident: createdIncident }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   } catch (error) {
     console.error("Auto-process error:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
