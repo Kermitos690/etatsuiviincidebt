@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.analyze-attachment]
 verify_jwt = false
+
+[functions.deep-analyze-emails]
+verify_jwt = false
