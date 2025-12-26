@@ -44,43 +44,57 @@ interface Email {
   created_at: string;
 }
 
+interface LegalReference {
+  article: string;
+  law: string;
+  description: string;
+  source_url?: string;
+}
+
 interface AdvancedAnalysis {
   deadline_violations: {
     detected: boolean;
     details: string[];
     missed_deadlines: string[];
     severity: "none" | "low" | "medium" | "high" | "critical";
+    legal_basis?: LegalReference[];
   };
   unanswered_questions: {
     detected: boolean;
     questions: string[];
     waiting_since: string[];
+    legal_basis?: LegalReference[];
   };
   repetitions: {
     detected: boolean;
     repeated_requests: string[];
     count: number;
+    legal_basis?: LegalReference[];
   };
   contradictions: {
     detected: boolean;
     details: string[];
-    conflicting_statements: Array<{ statement1: string; statement2: string }>;
+    conflicting_statements: Array<{ statement1: string; statement2: string; source1?: string; source2?: string }>;
+    legal_basis?: LegalReference[];
   };
   rule_violations: {
     detected: boolean;
     violations: string[];
     rules_concerned: string[];
     legal_references: string[];
+    legal_basis?: LegalReference[];
   };
   circumvention: {
     detected: boolean;
     details: string[];
     evasive_responses: string[];
+    legal_basis?: LegalReference[];
   };
   problem_score: number;
   summary: string;
   recommendations: string[];
   confidence: "High" | "Medium" | "Low";
+  all_legal_references?: LegalReference[];
 }
 
 export default function EmailsInbox() {
@@ -833,6 +847,26 @@ export default function EmailsInbox() {
                                 </li>
                               ))}
                             </ul>
+                            {selectedEmail.thread_analysis.deadline_violations.legal_basis && selectedEmail.thread_analysis.deadline_violations.legal_basis.length > 0 && (
+                              <div className="mt-3 pt-2 border-t border-border/50">
+                                <p className="text-xs text-muted-foreground mb-1">Base légale:</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {selectedEmail.thread_analysis.deadline_violations.legal_basis.map((ref, i) => (
+                                    <a 
+                                      key={i} 
+                                      href={ref.source_url} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-xs bg-red-500/10 text-red-600 dark:text-red-400 px-2 py-0.5 rounded hover:bg-red-500/20 transition-colors"
+                                      title={ref.description}
+                                    >
+                                      <Scale className="h-3 w-3" />
+                                      {ref.article}
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -882,11 +916,37 @@ export default function EmailsInbox() {
                             <div className="space-y-2">
                               {selectedEmail.thread_analysis.contradictions.conflicting_statements.map((conflict, i) => (
                                 <div key={i} className="text-sm bg-secondary/30 rounded p-2">
-                                  <p className="text-muted-foreground mb-1">"{conflict.statement1}"</p>
-                                  <p className="text-purple-500 font-medium">↔ "{conflict.statement2}"</p>
+                                  <p className="text-muted-foreground mb-1">
+                                    "{conflict.statement1}"
+                                    {conflict.source1 && <span className="text-xs ml-1 opacity-60">({conflict.source1})</span>}
+                                  </p>
+                                  <p className="text-purple-500 font-medium">
+                                    ↔ "{conflict.statement2}"
+                                    {conflict.source2 && <span className="text-xs ml-1 opacity-60">({conflict.source2})</span>}
+                                  </p>
                                 </div>
                               ))}
                             </div>
+                            {selectedEmail.thread_analysis.contradictions.legal_basis && selectedEmail.thread_analysis.contradictions.legal_basis.length > 0 && (
+                              <div className="mt-3 pt-2 border-t border-border/50">
+                                <p className="text-xs text-muted-foreground mb-1">Base légale:</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {selectedEmail.thread_analysis.contradictions.legal_basis.map((ref, i) => (
+                                    <a 
+                                      key={i} 
+                                      href={ref.source_url} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-xs bg-purple-500/10 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded hover:bg-purple-500/20 transition-colors"
+                                      title={ref.description}
+                                    >
+                                      <Scale className="h-3 w-3" />
+                                      {ref.article}
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -902,11 +962,24 @@ export default function EmailsInbox() {
                                 <li key={i}>{v}</li>
                               ))}
                             </ul>
-                            {selectedEmail.thread_analysis.rule_violations.legal_references.length > 0 && (
-                              <div className="mt-2 flex flex-wrap gap-1">
-                                {selectedEmail.thread_analysis.rule_violations.legal_references.map((ref, i) => (
-                                  <Badge key={i} variant="outline" className="text-xs">{ref}</Badge>
-                                ))}
+                            {selectedEmail.thread_analysis.rule_violations.legal_basis && selectedEmail.thread_analysis.rule_violations.legal_basis.length > 0 && (
+                              <div className="mt-3 pt-2 border-t border-border/50">
+                                <p className="text-xs text-muted-foreground mb-1">Base légale:</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {selectedEmail.thread_analysis.rule_violations.legal_basis.map((ref, i) => (
+                                    <a 
+                                      key={i} 
+                                      href={ref.source_url} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-xs bg-red-600/10 text-red-600 dark:text-red-400 px-2 py-0.5 rounded hover:bg-red-600/20 transition-colors"
+                                      title={ref.description}
+                                    >
+                                      <Scale className="h-3 w-3" />
+                                      {ref.article}
+                                    </a>
+                                  ))}
+                                </div>
                               </div>
                             )}
                           </div>
@@ -945,6 +1018,36 @@ export default function EmailsInbox() {
                                 </li>
                               ))}
                             </ul>
+                          </div>
+                        )}
+
+                        {/* All Legal References */}
+                        {selectedEmail.thread_analysis.all_legal_references && selectedEmail.thread_analysis.all_legal_references.length > 0 && (
+                          <div className="glass-card p-4 border border-primary/20">
+                            <h5 className="font-semibold mb-3 flex items-center gap-2">
+                              <Scale className="h-4 w-4 text-primary" />
+                              Références légales suisses
+                            </h5>
+                            <div className="space-y-2">
+                              {selectedEmail.thread_analysis.all_legal_references.map((ref, i) => (
+                                <div key={i} className="flex items-start gap-2 text-sm">
+                                  <a 
+                                    href={ref.source_url} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 font-medium text-primary hover:underline min-w-fit"
+                                  >
+                                    {ref.article}
+                                  </a>
+                                  <span className="text-muted-foreground">
+                                    ({ref.law}) - {ref.description}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-3 pt-2 border-t border-border/50">
+                              Sources: fedlex.admin.ch, silgeneve.ch, admin.ch
+                            </p>
                           </div>
                         )}
 
