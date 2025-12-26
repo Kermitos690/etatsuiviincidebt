@@ -79,6 +79,7 @@ export type Database = {
           original_detection: Json | null
           used_for_training: boolean | null
           user_correction: Json | null
+          user_id: string | null
         }
         Insert: {
           created_at?: string
@@ -90,6 +91,7 @@ export type Database = {
           original_detection?: Json | null
           used_for_training?: boolean | null
           user_correction?: Json | null
+          user_id?: string | null
         }
         Update: {
           created_at?: string
@@ -101,6 +103,7 @@ export type Database = {
           original_detection?: Json | null
           used_for_training?: boolean | null
           user_correction?: Json | null
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -117,6 +120,7 @@ export type Database = {
           resolved_at: string | null
           severity: string
           title: string
+          user_id: string | null
         }
         Insert: {
           alert_type: string
@@ -130,6 +134,7 @@ export type Database = {
           resolved_at?: string | null
           severity?: string
           title: string
+          user_id?: string | null
         }
         Update: {
           alert_type?: string
@@ -143,6 +148,7 @@ export type Database = {
           resolved_at?: string | null
           severity?: string
           title?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -173,6 +179,7 @@ export type Database = {
           id: string
           severity: string
           thread_id: string
+          user_id: string | null
           verified: boolean | null
           verified_at: string | null
           verified_by: string | null
@@ -188,6 +195,7 @@ export type Database = {
           id?: string
           severity: string
           thread_id: string
+          user_id?: string | null
           verified?: boolean | null
           verified_at?: string | null
           verified_by?: string | null
@@ -203,6 +211,7 @@ export type Database = {
           id?: string
           severity?: string
           thread_id?: string
+          user_id?: string | null
           verified?: boolean | null
           verified_at?: string | null
           verified_by?: string | null
@@ -222,6 +231,7 @@ export type Database = {
           supporting_evidence: Json | null
           thread_analysis_ids: string[] | null
           updated_at: string
+          user_id: string | null
           verification_status: string | null
           verified_at: string | null
           verified_by: string | null
@@ -238,6 +248,7 @@ export type Database = {
           supporting_evidence?: Json | null
           thread_analysis_ids?: string[] | null
           updated_at?: string
+          user_id?: string | null
           verification_status?: string | null
           verified_at?: string | null
           verified_by?: string | null
@@ -254,6 +265,7 @@ export type Database = {
           supporting_evidence?: Json | null
           thread_analysis_ids?: string[] | null
           updated_at?: string
+          user_id?: string | null
           verification_status?: string | null
           verified_at?: string | null
           verified_by?: string | null
@@ -640,6 +652,7 @@ export type Database = {
           report_date: string
           severity_breakdown: Json | null
           summary: string | null
+          user_id: string | null
           violations_count: number
         }
         Insert: {
@@ -656,6 +669,7 @@ export type Database = {
           report_date?: string
           severity_breakdown?: Json | null
           summary?: string | null
+          user_id?: string | null
           violations_count?: number
         }
         Update: {
@@ -672,6 +686,7 @@ export type Database = {
           report_date?: string
           severity_breakdown?: Json | null
           summary?: string | null
+          user_id?: string | null
           violations_count?: number
         }
         Relationships: []
@@ -687,6 +702,7 @@ export type Database = {
           occurrence_count: number
           related_incidents: Json | null
           updated_at: string
+          user_id: string | null
           violation_type: string
         }
         Insert: {
@@ -699,6 +715,7 @@ export type Database = {
           occurrence_count?: number
           related_incidents?: Json | null
           updated_at?: string
+          user_id?: string | null
           violation_type: string
         }
         Update: {
@@ -711,6 +728,7 @@ export type Database = {
           occurrence_count?: number
           related_incidents?: Json | null
           updated_at?: string
+          user_id?: string | null
           violation_type?: string
         }
         Relationships: []
@@ -725,6 +743,7 @@ export type Database = {
           spreadsheet_id: string | null
           sync_enabled: boolean | null
           updated_at: string | null
+          user_id: string | null
         }
         Insert: {
           column_mapping?: Json | null
@@ -735,6 +754,7 @@ export type Database = {
           spreadsheet_id?: string | null
           sync_enabled?: boolean | null
           updated_at?: string | null
+          user_id?: string | null
         }
         Update: {
           column_mapping?: Json | null
@@ -745,6 +765,7 @@ export type Database = {
           spreadsheet_id?: string | null
           sync_enabled?: boolean | null
           updated_at?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -764,6 +785,7 @@ export type Database = {
           keywords_overlap: string[] | null
           pair_type: string
           priority_score: number | null
+          user_id: string | null
         }
         Insert: {
           actors_overlap?: string[] | null
@@ -780,6 +802,7 @@ export type Database = {
           keywords_overlap?: string[] | null
           pair_type: string
           priority_score?: number | null
+          user_id?: string | null
         }
         Update: {
           actors_overlap?: string[] | null
@@ -796,6 +819,7 @@ export type Database = {
           keywords_overlap?: string[] | null
           pair_type?: string
           priority_score?: number | null
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -913,6 +937,7 @@ export type Database = {
           stats: Json | null
           status: string | null
           total_emails: number | null
+          user_id: string | null
         }
         Insert: {
           completed_at?: string | null
@@ -926,6 +951,7 @@ export type Database = {
           stats?: Json | null
           status?: string | null
           total_emails?: number | null
+          user_id?: string | null
         }
         Update: {
           completed_at?: string | null
@@ -939,6 +965,7 @@ export type Database = {
           stats?: Json | null
           status?: string | null
           total_emails?: number | null
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -1011,6 +1038,7 @@ export type Database = {
     }
     Functions: {
       user_owns_email: { Args: { _email_id: string }; Returns: boolean }
+      user_owns_training_pair: { Args: { _pair_id: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never

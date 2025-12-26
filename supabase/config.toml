@@ -74,3 +74,18 @@ verify_jwt = true
 
 [functions.monitoring-logs]
 verify_jwt = true
+
+[functions.internal-backup]
+verify_jwt = false
+
+[functions.internal-monitoring]
+verify_jwt = false
+
+[functions.ai-enrich-context]
+verify_jwt = true
+
+[functions.generate-training-pairs]
+verify_jwt = true
+
+[functions.update-training-stats]
+verify_jwt = true
