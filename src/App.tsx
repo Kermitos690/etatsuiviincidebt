@@ -17,6 +17,7 @@ import Exports from "./pages/Exports";
 import Admin from "./pages/Admin";
 import GmailConfig from "./pages/GmailConfig";
 import SheetsConfig from "./pages/SheetsConfig";
+import AuditDashboard from "./pages/AuditDashboard";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -46,6 +47,7 @@ const App = () => (
             <Route path="/admin" element={<AuthGuard><Admin /></AuthGuard>} />
             <Route path="/gmail-config" element={<AuthGuard><GmailConfig /></AuthGuard>} />
             <Route path="/sheets-config" element={<AuthGuard><SheetsConfig /></AuthGuard>} />
+            <Route path="/audit" element={<AuthGuard><AuditDashboard /></AuthGuard>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

@@ -29,3 +29,9 @@ verify_jwt = false
 
 [functions.analyze-email-advanced]
 verify_jwt = false
+
+[functions.daily-audit-analysis]
+verify_jwt = false
+
+[functions.generate-monthly-report]
+verify_jwt = false

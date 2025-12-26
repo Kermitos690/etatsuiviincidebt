@@ -14,6 +14,63 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_alerts: {
+        Row: {
+          alert_type: string
+          created_at: string
+          description: string
+          id: string
+          is_resolved: boolean | null
+          legal_reference: Json | null
+          related_email_id: string | null
+          related_incident_id: string | null
+          resolved_at: string | null
+          severity: string
+          title: string
+        }
+        Insert: {
+          alert_type: string
+          created_at?: string
+          description: string
+          id?: string
+          is_resolved?: boolean | null
+          legal_reference?: Json | null
+          related_email_id?: string | null
+          related_incident_id?: string | null
+          resolved_at?: string | null
+          severity?: string
+          title: string
+        }
+        Update: {
+          alert_type?: string
+          created_at?: string
+          description?: string
+          id?: string
+          is_resolved?: boolean | null
+          legal_reference?: Json | null
+          related_email_id?: string | null
+          related_incident_id?: string | null
+          resolved_at?: string | null
+          severity?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_alerts_related_email_id_fkey"
+            columns: ["related_email_id"]
+            isOneToOne: false
+            referencedRelation: "emails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_alerts_related_incident_id_fkey"
+            columns: ["related_incident_id"]
+            isOneToOne: false
+            referencedRelation: "incidents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       emails: {
         Row: {
           ai_analysis: Json | null
@@ -189,6 +246,96 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      monthly_reports: {
+        Row: {
+          created_at: string
+          cumulative_score: number
+          emails_count: number
+          id: string
+          incidents_count: number
+          institution_breakdown: Json | null
+          key_issues: Json | null
+          legal_references: Json | null
+          month_year: string
+          recommendations: Json | null
+          report_date: string
+          severity_breakdown: Json | null
+          summary: string | null
+          violations_count: number
+        }
+        Insert: {
+          created_at?: string
+          cumulative_score?: number
+          emails_count?: number
+          id?: string
+          incidents_count?: number
+          institution_breakdown?: Json | null
+          key_issues?: Json | null
+          legal_references?: Json | null
+          month_year: string
+          recommendations?: Json | null
+          report_date?: string
+          severity_breakdown?: Json | null
+          summary?: string | null
+          violations_count?: number
+        }
+        Update: {
+          created_at?: string
+          cumulative_score?: number
+          emails_count?: number
+          id?: string
+          incidents_count?: number
+          institution_breakdown?: Json | null
+          key_issues?: Json | null
+          legal_references?: Json | null
+          month_year?: string
+          recommendations?: Json | null
+          report_date?: string
+          severity_breakdown?: Json | null
+          summary?: string | null
+          violations_count?: number
+        }
+        Relationships: []
+      }
+      recurrence_tracking: {
+        Row: {
+          created_at: string
+          first_occurrence: string
+          id: string
+          institution: string
+          last_occurrence: string
+          legal_implications: string | null
+          occurrence_count: number
+          related_incidents: Json | null
+          updated_at: string
+          violation_type: string
+        }
+        Insert: {
+          created_at?: string
+          first_occurrence: string
+          id?: string
+          institution: string
+          last_occurrence: string
+          legal_implications?: string | null
+          occurrence_count?: number
+          related_incidents?: Json | null
+          updated_at?: string
+          violation_type: string
+        }
+        Update: {
+          created_at?: string
+          first_occurrence?: string
+          id?: string
+          institution?: string
+          last_occurrence?: string
+          legal_implications?: string | null
+          occurrence_count?: number
+          related_incidents?: Json | null
+          updated_at?: string
+          violation_type?: string
+        }
+        Relationships: []
       }
       sheets_config: {
         Row: {
