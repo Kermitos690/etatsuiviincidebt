@@ -1,5 +1,5 @@
 // Google API utilities for Gmail and Sheets
-import { log, withRetry } from "./index.ts";
+import { log, withRetry } from "./core.ts";
 
 // ============= Types =============
 export interface GoogleTokens {
