@@ -1,12 +1,26 @@
 import jsPDF from 'jspdf';
 
+// Import actual screenshots from the application
+import gmailConfigImg from '@/assets/tutorial/gmail-config.png';
+import emailSyncImg from '@/assets/tutorial/email-sync.png';
+import analysisPipelineImg from '@/assets/tutorial/analysis-pipeline.png';
+import emailsAnalyzedImg from '@/assets/tutorial/emails-analyzed.png';
+import incidentsImg from '@/assets/tutorial/incidents.png';
+import dashboardImg from '@/assets/tutorial/dashboard.png';
+import attachmentsImg from '@/assets/tutorial/attachments.png';
+import violationsImg from '@/assets/tutorial/violations.png';
+import exportsImg from '@/assets/tutorial/exports.png';
+import iaAuditorImg from '@/assets/tutorial/ia-auditor.png';
+import iaTrainingImg from '@/assets/tutorial/ia-training.png';
+
 interface TutorialSection {
   title: string;
   description: string;
   steps: string[];
   result: string;
   tips?: string[];
-  imagePath?: string;
+  imageUrl?: string;
+  imageCaption?: string;
 }
 
 interface FAQItem {
@@ -31,6 +45,37 @@ const COLORS = {
   white: [255, 255, 255] as [number, number, number],
 };
 
+// Helper to load image and convert to base64
+async function loadImageAsBase64(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.error('Error loading image:', url, error);
+    return null;
+  }
+}
+
+// Helper to get image dimensions
+function getImageDimensions(base64: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      resolve({ width: img.width, height: img.height });
+    };
+    img.onerror = () => {
+      resolve({ width: 0, height: 0 });
+    };
+    img.src = base64;
+  });
+}
+
 export async function generateTutorialPDF(): Promise<void> {
   const pdf = new jsPDF({
     orientation: 'portrait',
@@ -43,6 +88,30 @@ export async function generateTutorialPDF(): Promise<void> {
   const margin = 20;
   const contentWidth = pageWidth - 2 * margin;
   let y = margin;
+
+  // Pre-load all images
+  const imageMap = new Map<string, string | null>();
+  const imagesToLoad = [
+    { key: 'gmail-config', url: gmailConfigImg },
+    { key: 'email-sync', url: emailSyncImg },
+    { key: 'analysis-pipeline', url: analysisPipelineImg },
+    { key: 'emails-analyzed', url: emailsAnalyzedImg },
+    { key: 'incidents', url: incidentsImg },
+    { key: 'dashboard', url: dashboardImg },
+    { key: 'attachments', url: attachmentsImg },
+    { key: 'violations', url: violationsImg },
+    { key: 'exports', url: exportsImg },
+    { key: 'ia-auditor', url: iaAuditorImg },
+    { key: 'ia-training', url: iaTrainingImg },
+  ];
+
+  // Load all images in parallel
+  await Promise.all(
+    imagesToLoad.map(async ({ key, url }) => {
+      const base64 = await loadImageAsBase64(url);
+      imageMap.set(key, base64);
+    })
+  );
 
   // Helper functions
   const addNewPage = () => {
@@ -140,6 +209,58 @@ export async function generateTutorialPDF(): Promise<void> {
     y += boxHeight + 5;
   };
 
+  // Add image to PDF with proper scaling
+  const addImage = async (imageKey: string, caption?: string) => {
+    const base64 = imageMap.get(imageKey);
+    if (!base64) {
+      console.warn(`Image not found: ${imageKey}`);
+      return;
+    }
+
+    try {
+      const dimensions = await getImageDimensions(base64);
+      if (dimensions.width === 0) return;
+
+      // Calculate scaled dimensions to fit content width
+      const maxWidth = contentWidth;
+      const maxHeight = 80; // Max height in mm
+      
+      const aspectRatio = dimensions.width / dimensions.height;
+      let imgWidth = maxWidth;
+      let imgHeight = maxWidth / aspectRatio;
+      
+      // If too tall, scale down
+      if (imgHeight > maxHeight) {
+        imgHeight = maxHeight;
+        imgWidth = maxHeight * aspectRatio;
+      }
+
+      // Check if we need a new page
+      checkPageBreak(imgHeight + 15);
+
+      // Add a subtle border around the image
+      pdf.setDrawColor(...COLORS.muted);
+      pdf.setLineWidth(0.3);
+      const imgX = margin + (contentWidth - imgWidth) / 2;
+      pdf.roundedRect(imgX - 1, y - 1, imgWidth + 2, imgHeight + 2, 1, 1, 'S');
+
+      // Add the image
+      pdf.addImage(base64, 'PNG', imgX, y, imgWidth, imgHeight);
+      y += imgHeight + 3;
+
+      // Add caption if provided
+      if (caption) {
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'italic');
+        pdf.setTextColor(...COLORS.muted);
+        pdf.text(caption, pageWidth / 2, y, { align: 'center' });
+        y += 6;
+      }
+    } catch (error) {
+      console.error('Error adding image:', imageKey, error);
+    }
+  };
+
   // ==================== COVER PAGE ====================
   pdf.setFillColor(...COLORS.primary);
   pdf.rect(0, 0, pageWidth, 80, 'F');
@@ -179,7 +300,7 @@ export async function generateTutorialPDF(): Promise<void> {
   pdf.setFontSize(10);
   pdf.setFont('helvetica', 'normal');
   pdf.setTextColor(...COLORS.text);
-  const overviewText = 'Ce document est conçu pour surveiller, analyser et documenter les dysfonctionnements institutionnels à travers l\'analyse automatisée des emails, la détection d\'incidents et la génération de rapports juridiques.';
+  const overviewText = 'Ce document est conçu pour surveiller, analyser et documenter les dysfonctionnements institutionnels à travers l\'analyse automatisée des emails, la détection d\'incidents et la génération de rapports juridiques. Ce guide contient des captures d\'écran réelles de l\'application.';
   const overviewLines = pdf.splitTextToSize(overviewText, contentWidth - 10);
   pdf.text(overviewLines, margin + 5, y + 20);
 
@@ -207,7 +328,7 @@ export async function generateTutorialPDF(): Promise<void> {
     '16. Glossaire',
   ];
 
-  tocItems.forEach((item, index) => {
+  tocItems.forEach((item) => {
     pdf.setFontSize(11);
     pdf.setTextColor(...COLORS.text);
     pdf.setFont('helvetica', 'normal');
@@ -234,8 +355,12 @@ export async function generateTutorialPDF(): Promise<void> {
     addBulletPoint(`${feature.title}: ${feature.desc}`);
   });
 
+  // Add dashboard screenshot to overview
+  y += 5;
+  await addImage('dashboard', 'Figure 1: Dashboard principal - Vue d\'ensemble du système');
+
   // ==================== WORKFLOW ====================
-  addSeparator();
+  addNewPage();
   addTitle('2. FLUX DE TRAVAIL RECOMMANDÉ', 16, COLORS.primary);
   y += 5;
   
@@ -273,7 +398,9 @@ export async function generateTutorialPDF(): Promise<void> {
         'Utilisez des domaines spécifiques pour filtrer uniquement les emails institutionnels',
         'Les mots-clés peuvent inclure: "convocation", "décision", "notification"',
         'La synchronisation récupère les emails de tous les dossiers'
-      ]
+      ],
+      imageUrl: 'gmail-config',
+      imageCaption: 'Figure 2: Interface de configuration Gmail'
     },
     {
       title: '4. SYNCHRONISATION DES EMAILS',
@@ -290,7 +417,9 @@ export async function generateTutorialPDF(): Promise<void> {
         'La première synchronisation peut prendre du temps',
         'Les pièces jointes sont téléchargées automatiquement',
         'Les emails déjà importés ne sont pas dupliqués'
-      ]
+      ],
+      imageUrl: 'email-sync',
+      imageCaption: 'Figure 3: Interface de synchronisation des emails'
     },
     {
       title: '5. PIPELINE D\'ANALYSE IA',
@@ -308,7 +437,9 @@ export async function generateTutorialPDF(): Promise<void> {
         'L\'analyse par batch permet de traiter plusieurs emails à la fois',
         'Les threads regroupent les emails d\'une même conversation',
         'La corroboration croise les informations pour détecter contradictions'
-      ]
+      ],
+      imageUrl: 'analysis-pipeline',
+      imageCaption: 'Figure 4: Pipeline d\'analyse avec prévisualisation'
     },
     {
       title: '6. EMAILS ANALYSÉS',
@@ -326,7 +457,9 @@ export async function generateTutorialPDF(): Promise<void> {
         'Filtrez par sentiment (négatif, neutre, positif)',
         'Le niveau d\'urgence aide à prioriser les actions',
         'Les personnes et institutions sont automatiquement identifiées'
-      ]
+      ],
+      imageUrl: 'emails-analyzed',
+      imageCaption: 'Figure 5: Liste des emails analysés avec filtres'
     },
     {
       title: '7. GESTION DES INCIDENTS',
@@ -345,7 +478,9 @@ export async function generateTutorialPDF(): Promise<void> {
         'Utilisez la gravité pour prioriser',
         'Le score de l\'incident reflète son impact cumulé',
         'La timeline permet de voir tous les incidents chronologiquement'
-      ]
+      ],
+      imageUrl: 'incidents',
+      imageCaption: 'Figure 6: Tableau de gestion des incidents'
     },
     {
       title: '8. DASHBOARD D\'AUDIT',
@@ -363,7 +498,9 @@ export async function generateTutorialPDF(): Promise<void> {
         'Les alertes non résolues sont affichées en rouge',
         'Le score cumulatif reflète l\'impact total',
         'Les graphiques permettent d\'identifier les tendances'
-      ]
+      ],
+      imageUrl: 'dashboard',
+      imageCaption: 'Figure 7: Dashboard d\'audit avec statistiques'
     },
     {
       title: '9. PIÈCES JOINTES',
@@ -381,7 +518,9 @@ export async function generateTutorialPDF(): Promise<void> {
         'L\'OCR permet d\'extraire le texte des images et PDF scannés',
         'Les documents analysés peuvent révéler des preuves supplémentaires',
         'Le stockage sécurisé préserve les originaux'
-      ]
+      ],
+      imageUrl: 'attachments',
+      imageCaption: 'Figure 8: Gestionnaire de pièces jointes'
     },
     {
       title: '10. DASHBOARD VIOLATIONS',
@@ -398,7 +537,9 @@ export async function generateTutorialPDF(): Promise<void> {
         'Les récurrences renforcent la valeur probatoire',
         'Les implications légales citent les articles de loi violés',
         'Utilisez ces données pour construire un dossier solide'
-      ]
+      ],
+      imageUrl: 'violations',
+      imageCaption: 'Figure 9: Dashboard des violations'
     },
     {
       title: '11. EXPORTS ET RAPPORTS',
@@ -416,7 +557,9 @@ export async function generateTutorialPDF(): Promise<void> {
         'Le rapport mensuel inclut un résumé, incidents et références légales',
         'Les exports Google Sheets permettent un suivi collaboratif',
         'Conservez une copie de chaque rapport généré'
-      ]
+      ],
+      imageUrl: 'exports',
+      imageCaption: 'Figure 10: Interface d\'exports et rapports'
     },
     {
       title: '12. IA AUDITEUR',
@@ -433,7 +576,9 @@ export async function generateTutorialPDF(): Promise<void> {
         'L\'analyse quotidienne s\'exécute automatiquement',
         'Les alertes critiques sont mises en évidence',
         'Chaque alerte contient une référence légale'
-      ]
+      ],
+      imageUrl: 'ia-auditor',
+      imageCaption: 'Figure 11: Interface de l\'IA Auditeur'
     },
     {
       title: '13. ENTRAÎNEMENT IA',
@@ -450,7 +595,9 @@ export async function generateTutorialPDF(): Promise<void> {
         'Plus vous validez, plus l\'IA devient précise',
         'Les corrections sont utilisées pour améliorer les modèles',
         'Consultez les scores de confiance des acteurs'
-      ]
+      ],
+      imageUrl: 'ia-training',
+      imageCaption: 'Figure 12: Interface d\'entraînement de l\'IA'
     },
   ];
 
@@ -461,6 +608,12 @@ export async function generateTutorialPDF(): Promise<void> {
     
     addText(section.description, 11, COLORS.muted);
     y += 5;
+
+    // Add screenshot at the beginning of the section
+    if (section.imageUrl) {
+      await addImage(section.imageUrl, section.imageCaption);
+      y += 5;
+    }
 
     addTitle('Étapes à suivre', 12, COLORS.text);
     y += 3;
