@@ -33,6 +33,7 @@ const navItems = [
   { to: '/violations', icon: Scale, label: 'Violations' },
   { to: '/journal', icon: BookOpen, label: 'Journal' },
   { to: '/incidents', icon: AlertTriangle, label: 'Incidents' },
+  { to: '/incidents-timeline', icon: Scale, label: 'Timeline Incidents' },
   { to: '/nouveau', icon: Plus, label: 'Nouvel incident' },
   { to: '/ia-auditeur', icon: Brain, label: 'IA Auditeur' },
   { to: '/gmail-config', icon: Mail, label: 'Config Gmail' },

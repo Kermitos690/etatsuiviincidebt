@@ -6,6 +6,357 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Prompt OCR ultra-précis pour documents juridiques suisses
+const OCR_SYSTEM_PROMPT = `Tu es un EXPERT OCR JURIDIQUE spécialisé dans l'extraction exhaustive de texte depuis des documents.
+
+===== MISSION OCR EXHAUSTIVE =====
+
+1. EXTRAIS CHAQUE MOT visible sur ce document, caractère par caractère
+2. PRÉSERVE LA STRUCTURE EXACTE :
+   - Numérotation (1., 1.1, a), b))
+   - Tableaux avec colonnes alignées
+   - En-têtes et pieds de page
+   - Marges et indentations
+3. IDENTIFIE ET TRANSCRIS :
+   - Dates (format JJ.MM.AAAA ou DD/MM/YYYY)
+   - Références (N° dossier, Art. XX, § X)
+   - Montants (CHF X'XXX.XX, EUR, etc.)
+   - Noms propres et institutions
+   - Numéros de téléphone, emails
+4. ANNOTATIONS ET MARQUES :
+   - Tampons officiels (date, nom, institution)
+   - Signatures (décris emplacement et type)
+   - Notes manuscrites (même partielles)
+   - Surlignages ou marques
+5. QUALITÉ :
+   - [?] pour caractères illisibles
+   - [ILLISIBLE] pour sections impossibles à lire
+   - Précise si document est incliné, taché, ou partiellement visible
+
+===== FORMAT DE SORTIE =====
+Retourne un JSON structuré:
+{
+  "full_text": "TEXTE INTÉGRAL préservant structure et sauts de ligne",
+  "pages_count": 1,
+  "dates": ["date1", "date2"],
+  "persons": ["nom complet 1", "nom complet 2"],
+  "institutions": ["institution1", "institution2"],
+  "amounts": ["CHF X.XX"],
+  "references": ["N° 123", "Art. 394 CC"],
+  "emails_found": ["email@domain.ch"],
+  "phones_found": ["+41 XX XXX XX XX"],
+  "annotations": ["tampon: date X", "signature manuscrite"],
+  "quality_score": 0-100,
+  "issues": ["coin inférieur droit illisible"]
+}`;
+
+// Prompt d'analyse juridique pour curatelle
+const LEGAL_ANALYSIS_PROMPT = `Tu es un AUDITEUR JURIDIQUE EXPERT analysant une pièce jointe dans le contexte d'une CURATELLE VOLONTAIRE DE GESTION ET DE REPRÉSENTATION (droit suisse).
+
+===== CONTEXTE ESSENTIEL =====
+- Le pupille a DEMANDÉ cette curatelle lui-même
+- Le curateur N'A PAS TOUS LES DROITS, il doit COLLABORER avec le pupille
+- Les décisions DOIVENT être prises AVEC le pupille
+- Tout échange d'info avec tiers nécessite le CONSENTEMENT explicite
+- La violation de ces principes est une FAUTE GRAVE
+
+===== ÉLÉMENTS CRITIQUES À RECHERCHER =====
+
+DOCUMENTS HAUTEMENT SENSIBLES:
+- Décisions de justice / tribunal de protection
+- Courriers recommandés (surtout si "perdus" ou non transmis)
+- Documents signés SANS la présence/accord du pupille
+- Échanges d'informations confidentielles avec tiers
+- Preuves d'exclusion du pupille des décisions
+- Rapports médicaux transmis sans consentement
+
+VIOLATIONS POTENTIELLES (avec articles):
+- Art. 394 CC : Décisions sans consultation du pupille
+- Art. 413 CC : Manque de diligence dans la gestion
+- Art. 416 CC : Actes sans autorisation requise
+- Art. 419 CC : Défaut de reddition de comptes
+- Art. 13 Cst. : Violation de la vie privée
+- Art. 28 CC : Atteinte à la personnalité
+- Art. 6 LPD : Transmission de données sans consentement
+
+===== ANALYSE REQUISE =====
+
+À partir du texte OCR extrait, identifie:
+1. TYPE de document et caractère officiel
+2. ÉLÉMENTS CLÉS (dates, noms, institutions, montants, signatures)
+3. PREUVES de dysfonctionnement ou violation
+4. IMPLICATIONS JURIDIQUES avec articles précis
+5. Le pupille était-il IMPLIQUÉ/INFORMÉ ?
+6. Y a-t-il eu CONSENTEMENT pour les actions décrites ?
+
+===== FORMAT DE SORTIE =====
+{
+  "document_type": "type précis de document",
+  "is_official": boolean,
+  "is_registered_mail": boolean,
+  "key_elements": ["élément1", "élément2"],
+  "institutions_mentioned": ["institution1"],
+  "persons_mentioned": ["nom1", "nom2"],
+  "dates_found": ["JJ.MM.AAAA"],
+  "amounts_found": ["CHF X.XX"],
+  "references_found": ["réf1"],
+  "signatures_present": boolean,
+  "pupille_involved": boolean,
+  "pupille_informed": boolean,
+  "pupille_signature_present": boolean,
+  "consent_given": boolean,
+  "consent_issues": boolean,
+  "unauthorized_disclosure": boolean,
+  "problems_detected": [
+    {
+      "issue": "description du problème",
+      "evidence": "citation EXACTE du document",
+      "legal_article": "Art. X CC/Cst./LPD"
+    }
+  ],
+  "legal_violations": ["Art. X CC - description précise"],
+  "legal_implications": "implications juridiques détaillées",
+  "exact_citations": ["citation exacte 1", "citation exacte 2"],
+  "summary": "résumé factuel en 3-4 phrases",
+  "severity": "none" | "low" | "medium" | "high" | "critical",
+  "confidence": 0-100,
+  "recommended_actions": ["action recommandée 1"]
+}`;
+
+// Convertir ArrayBuffer en base64
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.slice(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
+// Analyser une image avec OCR puis analyse juridique
+async function analyzeImageWithOCR(
+  imageBase64: string, 
+  mimeType: string, 
+  filename: string,
+  emailSubject: string,
+  apiKey: string
+): Promise<{ ocr: any; analysis: any }> {
+  
+  const imageUrl = `data:${mimeType};base64,${imageBase64}`;
+  
+  // Étape 1: OCR exhaustif
+  console.log(`OCR extraction for image: ${filename}`);
+  const ocrResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        { role: "system", content: OCR_SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: `Extrais TOUT le texte de cette image de manière exhaustive. Fichier: ${filename}` },
+            { type: "image_url", image_url: { url: imageUrl } }
+          ]
+        }
+      ],
+    }),
+  });
+
+  if (!ocrResponse.ok) {
+    console.error("OCR error:", await ocrResponse.text());
+    throw new Error(`OCR error: ${ocrResponse.status}`);
+  }
+
+  const ocrData = await ocrResponse.json();
+  const ocrContent = ocrData.choices?.[0]?.message?.content || "";
+  
+  let ocrResult: any = { full_text: "", quality_score: 0 };
+  const ocrJsonMatch = ocrContent.match(/\{[\s\S]*\}/);
+  if (ocrJsonMatch) {
+    try {
+      ocrResult = JSON.parse(ocrJsonMatch[0]);
+    } catch (e) {
+      ocrResult.full_text = ocrContent;
+    }
+  } else {
+    ocrResult.full_text = ocrContent;
+  }
+
+  console.log(`OCR extracted ${ocrResult.full_text?.length || 0} characters`);
+
+  // Étape 2: Analyse juridique basée sur le texte OCR
+  console.log(`Legal analysis for: ${filename}`);
+  const analysisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        { role: "system", content: LEGAL_ANALYSIS_PROMPT },
+        {
+          role: "user",
+          content: [
+            { 
+              type: "text", 
+              text: `Analyse ce document juridiquement.\n\nFichier: ${filename}\nEmail source: ${emailSubject}\n\nTEXTE OCR EXTRAIT:\n${ocrResult.full_text}\n\nÉléments OCR identifiés:\n- Dates: ${JSON.stringify(ocrResult.dates || [])}\n- Personnes: ${JSON.stringify(ocrResult.persons || [])}\n- Institutions: ${JSON.stringify(ocrResult.institutions || [])}\n- Montants: ${JSON.stringify(ocrResult.amounts || [])}`
+            },
+            { type: "image_url", image_url: { url: imageUrl } }
+          ]
+        }
+      ],
+    }),
+  });
+
+  if (!analysisResponse.ok) {
+    console.error("Analysis error:", await analysisResponse.text());
+    throw new Error(`Analysis error: ${analysisResponse.status}`);
+  }
+
+  const analysisData = await analysisResponse.json();
+  const analysisContent = analysisData.choices?.[0]?.message?.content || "";
+  
+  let analysisResult: any = {};
+  const analysisJsonMatch = analysisContent.match(/\{[\s\S]*\}/);
+  if (analysisJsonMatch) {
+    try {
+      analysisResult = JSON.parse(analysisJsonMatch[0]);
+    } catch (e) {
+      analysisResult = { summary: analysisContent, confidence: 50 };
+    }
+  }
+
+  return { ocr: ocrResult, analysis: analysisResult };
+}
+
+// Analyser un PDF en envoyant chaque représentation comme image
+async function analyzePDFWithOCR(
+  pdfBase64: string,
+  filename: string,
+  emailSubject: string,
+  apiKey: string
+): Promise<{ ocr: any; analysis: any }> {
+  
+  console.log(`Analyzing PDF: ${filename} (${pdfBase64.length} base64 chars)`);
+  
+  // Pour les PDFs, on utilise le modèle vision avec le PDF encodé
+  // Note: Gemini peut analyser les PDFs directement via base64
+  const pdfDataUrl = `data:application/pdf;base64,${pdfBase64}`;
+  
+  // Étape 1: OCR du PDF complet
+  console.log(`OCR extraction for PDF: ${filename}`);
+  const ocrResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        { role: "system", content: OCR_SYSTEM_PROMPT + "\n\nCe document est un PDF. Extrais le texte de TOUTES les pages visibles." },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: `Extrais TOUT le texte de ce PDF, page par page. Fichier: ${filename}` },
+            { type: "image_url", image_url: { url: pdfDataUrl } }
+          ]
+        }
+      ],
+    }),
+  });
+
+  if (!ocrResponse.ok) {
+    const errorText = await ocrResponse.text();
+    console.error("PDF OCR error:", errorText);
+    
+    // Fallback: essayer sans l'image si le PDF est trop gros
+    if (ocrResponse.status === 400 || ocrResponse.status === 413) {
+      console.log("PDF too large for vision, using text extraction fallback");
+      return {
+        ocr: { 
+          full_text: `[PDF trop volumineux pour OCR direct: ${filename}]`,
+          quality_score: 10,
+          issues: ["PDF trop volumineux pour extraction OCR directe"]
+        },
+        analysis: {
+          document_type: "PDF non analysable",
+          summary: `Le fichier ${filename} est trop volumineux pour être analysé directement.`,
+          severity: "low",
+          confidence: 10
+        }
+      };
+    }
+    throw new Error(`PDF OCR error: ${ocrResponse.status}`);
+  }
+
+  const ocrData = await ocrResponse.json();
+  const ocrContent = ocrData.choices?.[0]?.message?.content || "";
+  
+  let ocrResult: any = { full_text: "", quality_score: 0 };
+  const ocrJsonMatch = ocrContent.match(/\{[\s\S]*\}/);
+  if (ocrJsonMatch) {
+    try {
+      ocrResult = JSON.parse(ocrJsonMatch[0]);
+    } catch (e) {
+      ocrResult.full_text = ocrContent;
+    }
+  } else {
+    ocrResult.full_text = ocrContent;
+  }
+
+  console.log(`PDF OCR extracted ${ocrResult.full_text?.length || 0} characters`);
+
+  // Étape 2: Analyse juridique
+  console.log(`Legal analysis for PDF: ${filename}`);
+  const analysisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        { role: "system", content: LEGAL_ANALYSIS_PROMPT },
+        {
+          role: "user",
+          content: `Analyse ce document juridiquement.\n\nFichier: ${filename}\nEmail source: ${emailSubject}\n\nTEXTE OCR EXTRAIT DU PDF:\n${ocrResult.full_text}\n\nÉléments OCR identifiés:\n- Dates: ${JSON.stringify(ocrResult.dates || [])}\n- Personnes: ${JSON.stringify(ocrResult.persons || [])}\n- Institutions: ${JSON.stringify(ocrResult.institutions || [])}\n- Montants: ${JSON.stringify(ocrResult.amounts || [])}\n- Références: ${JSON.stringify(ocrResult.references || [])}`
+        }
+      ],
+    }),
+  });
+
+  if (!analysisResponse.ok) {
+    console.error("PDF Analysis error:", await analysisResponse.text());
+    throw new Error(`PDF Analysis error: ${analysisResponse.status}`);
+  }
+
+  const analysisData = await analysisResponse.json();
+  const analysisContent = analysisData.choices?.[0]?.message?.content || "";
+  
+  let analysisResult: any = {};
+  const analysisJsonMatch = analysisContent.match(/\{[\s\S]*\}/);
+  if (analysisJsonMatch) {
+    try {
+      analysisResult = JSON.parse(analysisJsonMatch[0]);
+    } catch (e) {
+      analysisResult = { summary: analysisContent, confidence: 50 };
+    }
+  }
+
+  return { ocr: ocrResult, analysis: analysisResult };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -14,7 +365,7 @@ serve(async (req) => {
   try {
     const { attachmentId } = await req.json();
     
-    console.log(`Analyzing attachment: ${attachmentId}`);
+    console.log(`=== ANALYZING ATTACHMENT: ${attachmentId} ===`);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -30,8 +381,10 @@ serve(async (req) => {
       .single();
 
     if (attachmentError || !attachment) {
-      throw new Error("Attachment not found");
+      throw new Error(`Attachment not found: ${attachmentId}`);
     }
+
+    console.log(`Attachment: ${attachment.filename} (${attachment.mime_type})`);
 
     // Download file from storage
     const { data: fileData, error: downloadError } = await supabase.storage
@@ -39,21 +392,44 @@ serve(async (req) => {
       .download(attachment.storage_path);
 
     if (downloadError || !fileData) {
-      throw new Error("Failed to download file from storage");
+      console.error("Download error:", downloadError);
+      throw new Error(`Failed to download file: ${attachment.storage_path}`);
     }
 
-    let extractedText = "";
-    let analysisPrompt = "";
+    const emailSubject = attachment.emails?.subject || 'Sans sujet';
+    let result: { ocr: any; analysis: any };
 
-    // Handle different file types
+    // Route by file type
     if (attachment.mime_type.startsWith("image/")) {
-      // For images, use vision model
-      const base64Data = await fileData.arrayBuffer()
-        .then(buffer => btoa(String.fromCharCode(...new Uint8Array(buffer))));
+      // Images: OCR + Analyse
+      console.log("Processing as IMAGE");
+      const base64Data = arrayBufferToBase64(await fileData.arrayBuffer());
+      result = await analyzeImageWithOCR(
+        base64Data,
+        attachment.mime_type,
+        attachment.filename,
+        emailSubject,
+        LOVABLE_API_KEY
+      );
+    } else if (attachment.mime_type === "application/pdf") {
+      // PDF: OCR multi-pages + Analyse
+      console.log("Processing as PDF");
+      const base64Data = arrayBufferToBase64(await fileData.arrayBuffer());
+      result = await analyzePDFWithOCR(
+        base64Data,
+        attachment.filename,
+        emailSubject,
+        LOVABLE_API_KEY
+      );
+    } else if (attachment.mime_type.includes("text/") || 
+               attachment.mime_type.includes("plain") ||
+               attachment.filename.endsWith(".txt") ||
+               attachment.filename.endsWith(".csv")) {
+      // Text files: Direct extraction + Analyse
+      console.log("Processing as TEXT");
+      const textContent = await fileData.text();
       
-      const imageUrl = `data:${attachment.mime_type};base64,${base64Data}`;
-      
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const analysisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${LOVABLE_API_KEY}`,
@@ -62,236 +438,106 @@ serve(async (req) => {
         body: JSON.stringify({
           model: "google/gemini-2.5-flash",
           messages: [
-            {
-              role: "system",
-              content: `Tu es un AUDITEUR JURIDIQUE EXPERT analysant une pièce jointe dans le contexte d'une CURATELLE VOLONTAIRE DE GESTION ET DE REPRÉSENTATION (droit suisse).
-
-===== CONTEXTE ESSENTIEL =====
-- Le pupille a DEMANDÉ cette curatelle lui-même
-- Le curateur N'A PAS TOUS LES DROITS, il doit COLLABORER
-- Les décisions doivent être prises AVEC le pupille
-- Tout échange d'info avec tiers nécessite le CONSENTEMENT
-
-===== ÉLÉMENTS À RECHERCHER =====
-
-DOCUMENTS CRITIQUES:
-- Décisions de justice / tribunal
-- Courriers recommandés (surtout si perdus)
-- Documents signés sans le pupille
-- Échanges d'informations confidentielles
-- Preuves d'exclusion du pupille
-
-VIOLATIONS POTENTIELLES:
-- Décisions prises sans consultation du pupille
-- Échanges avec tiers sans consentement
-- Documents importants non transmis
-- Signatures ou décisions unilatérales
-- Dates dépassées / délais non respectés
-
-Analyse cette image et identifie:
-1. Type de document (courrier officiel, formulaire, décision, recommandé, etc.)
-2. Éléments clés (dates, noms, institutions, montants, signatures)
-3. Preuves de dysfonctionnement ou violation
-4. Implications juridiques (art. CC, Cst., PA, LPD)
-5. Le pupille était-il impliqué/informé?
-
-Retourne un JSON structuré:
-{
-  "document_type": "type précis de document",
-  "is_official": boolean,
-  "is_registered_mail": boolean,
-  "key_elements": ["élément1", "élément2"],
-  "institutions_mentioned": ["institution1"],
-  "persons_mentioned": ["nom1"],
-  "dates_found": ["date1"],
-  "amounts_found": ["montant1"],
-  "signatures_present": boolean,
-  "pupille_involved": boolean | null,
-  "pupille_signature_present": boolean | null,
-  "problems_detected": ["problème détecté"],
-  "consent_issues": boolean,
-  "unauthorized_disclosure": boolean,
-  "legal_violations": ["Art. X CC - description"],
-  "legal_implications": "implications juridiques détaillées",
-  "summary": "résumé factuel en 3-4 phrases",
-  "severity": "none" | "low" | "medium" | "high" | "critical",
-  "confidence": 0-100,
-  "recommended_actions": ["action recommandée"]
-}`
-            },
+            { role: "system", content: LEGAL_ANALYSIS_PROMPT },
             {
               role: "user",
-              content: [
-                { type: "text", text: `Analyse cette pièce jointe de l'email "${attachment.emails?.subject || 'Sans sujet'}"` },
-                { type: "image_url", image_url: { url: imageUrl } }
-              ]
+              content: `Analyse ce document texte juridiquement.\n\nFichier: ${attachment.filename}\nEmail source: ${emailSubject}\n\nCONTENU:\n${textContent.slice(0, 50000)}`
             }
           ],
         }),
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("AI Vision error:", errorText);
-        throw new Error(`AI Vision error: ${response.status}`);
+      if (!analysisResponse.ok) {
+        throw new Error(`Text analysis error: ${analysisResponse.status}`);
       }
 
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content || "";
+      const analysisData = await analysisResponse.json();
+      const analysisContent = analysisData.choices?.[0]?.message?.content || "";
       
-      // Parse JSON from response
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const analysis = JSON.parse(jsonMatch[0]);
-        extractedText = analysis.summary || "";
-        
-        // Update attachment with analysis
-        await supabase
-          .from("email_attachments")
-          .update({
-            ai_analysis: analysis,
-            extracted_text: extractedText,
-            analyzed_at: new Date().toISOString(),
-          })
-          .eq("id", attachmentId);
-
-        return new Response(
-          JSON.stringify({ success: true, analysis }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-    } else if (attachment.mime_type === "application/pdf" || 
-               attachment.mime_type.includes("text/") ||
-               attachment.mime_type.includes("document")) {
-      // For text-based documents
-      if (attachment.mime_type.includes("text/")) {
-        extractedText = await fileData.text();
-      } else {
-        // For PDF and other documents, we'll use the AI to analyze the base64
-        const base64Data = await fileData.arrayBuffer()
-          .then(buffer => btoa(String.fromCharCode(...new Uint8Array(buffer))));
-        
-        // Truncate if too large
-        const truncatedBase64 = base64Data.slice(0, 50000);
-        
-        analysisPrompt = `Document binaire (${attachment.mime_type}), premiers caractères base64: ${truncatedBase64.slice(0, 1000)}...`;
-      }
-
-      if (extractedText || analysisPrompt) {
-        const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
-            messages: [
-              {
-                role: "system",
-                content: `Tu es un AUDITEUR JURIDIQUE EXPERT analysant un document dans le contexte d'une CURATELLE VOLONTAIRE DE GESTION ET DE REPRÉSENTATION (droit suisse).
-
-===== CONTEXTE ESSENTIEL =====
-- Le pupille a DEMANDÉ cette curatelle lui-même
-- Le curateur N'A PAS TOUS LES DROITS, il doit COLLABORER
-- Les décisions doivent être prises AVEC le pupille
-- Tout échange d'info avec tiers nécessite le CONSENTEMENT
-
-===== RECHERCHE =====
-
-DOCUMENTS CRITIQUES À IDENTIFIER:
-- Décisions de justice perdues ou non transmises
-- Courriers recommandés non reçus
-- Échanges confidentiels avec tiers sans accord
-- Documents signés sans le pupille
-
-Analyse ce document et identifie:
-1. Type de document et caractère officiel
-2. Éléments clés (dates, noms, institutions, montants, signatures)
-3. Preuves de dysfonctionnement
-4. Implications juridiques (art. CC, Cst., PA, LPD)
-5. Le pupille était-il impliqué/informé?
-
-Retourne un JSON structuré:
-{
-  "document_type": "type précis",
-  "is_official": boolean,
-  "key_elements": ["élément1", "élément2"],
-  "institutions_mentioned": ["institution1"],
-  "dates_found": ["date1"],
-  "amounts_found": ["montant"],
-  "pupille_involved": boolean | null,
-  "problems_detected": ["problème"],
-  "consent_issues": boolean,
-  "legal_violations": ["Art. X CC - description"],
-  "legal_implications": "implications détaillées",
-  "summary": "résumé factuel en 3-4 phrases",
-  "severity": "none" | "low" | "medium" | "high" | "critical",
-  "confidence": 0-100,
-  "recommended_actions": ["action"]
-}`
-              },
-              {
-                role: "user",
-                content: `Fichier: ${attachment.filename}\nType: ${attachment.mime_type}\n\nContenu:\n${extractedText || analysisPrompt}`
-              }
-            ],
-          }),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error("AI analysis error:", errorText);
-          throw new Error(`AI analysis error: ${response.status}`);
-        }
-
-        const data = await response.json();
-        const content = data.choices?.[0]?.message?.content || "";
-        
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const analysis = JSON.parse(jsonMatch[0]);
-          
-          await supabase
-            .from("email_attachments")
-            .update({
-              ai_analysis: analysis,
-              extracted_text: extractedText.slice(0, 10000), // Limit stored text
-              analyzed_at: new Date().toISOString(),
-            })
-            .eq("id", attachmentId);
-
-          return new Response(
-            JSON.stringify({ success: true, analysis }),
-            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
+      let analysisResult: any = {};
+      const analysisJsonMatch = analysisContent.match(/\{[\s\S]*\}/);
+      if (analysisJsonMatch) {
+        try {
+          analysisResult = JSON.parse(analysisJsonMatch[0]);
+        } catch (e) {
+          analysisResult = { summary: analysisContent, confidence: 50 };
         }
       }
+
+      result = {
+        ocr: { full_text: textContent, quality_score: 100 },
+        analysis: analysisResult
+      };
+    } else if (attachment.mime_type.includes("word") || 
+               attachment.mime_type.includes("document") ||
+               attachment.filename.endsWith(".docx") ||
+               attachment.filename.endsWith(".doc")) {
+      // Word documents: traiter comme PDF (vision)
+      console.log("Processing as WORD DOCUMENT");
+      const base64Data = arrayBufferToBase64(await fileData.arrayBuffer());
+      
+      // Tenter l'analyse vision
+      result = await analyzePDFWithOCR(
+        base64Data,
+        attachment.filename,
+        emailSubject,
+        LOVABLE_API_KEY
+      );
+    } else {
+      // Unsupported types
+      console.log(`Unsupported type: ${attachment.mime_type}`);
+      result = {
+        ocr: { 
+          full_text: `[Type non supporté: ${attachment.mime_type}]`,
+          quality_score: 0 
+        },
+        analysis: {
+          document_type: "Non supporté",
+          summary: `Le fichier ${attachment.filename} de type ${attachment.mime_type} ne peut pas être analysé automatiquement.`,
+          severity: "none",
+          confidence: 0
+        }
+      };
     }
 
-    // Default response for unsupported types
-    const defaultAnalysis = {
-      document_type: "unknown",
-      key_elements: [],
-      institutions_mentioned: [],
-      dates_found: [],
-      problems_detected: [],
-      legal_implications: "Non analysable automatiquement",
-      summary: `Fichier ${attachment.filename} de type ${attachment.mime_type}`,
-      severity: "none",
-      confidence: 0
+    // Combine OCR and analysis results
+    const combinedAnalysis = {
+      ...result.analysis,
+      ocr_data: {
+        full_text: result.ocr.full_text?.slice(0, 20000), // Limit stored text
+        quality_score: result.ocr.quality_score,
+        dates: result.ocr.dates,
+        persons: result.ocr.persons,
+        institutions: result.ocr.institutions,
+        amounts: result.ocr.amounts,
+        references: result.ocr.references,
+        issues: result.ocr.issues
+      }
     };
 
-    await supabase
+    // Update attachment with analysis
+    const { error: updateError } = await supabase
       .from("email_attachments")
       .update({
-        ai_analysis: defaultAnalysis,
+        ai_analysis: combinedAnalysis,
+        extracted_text: result.ocr.full_text?.slice(0, 50000),
         analyzed_at: new Date().toISOString(),
       })
       .eq("id", attachmentId);
 
+    if (updateError) {
+      console.error("Update error:", updateError);
+    }
+
+    console.log(`=== ANALYSIS COMPLETE: ${attachment.filename} ===`);
+    console.log(`Severity: ${combinedAnalysis.severity}, Confidence: ${combinedAnalysis.confidence}`);
+
     return new Response(
-      JSON.stringify({ success: true, analysis: defaultAnalysis }),
+      JSON.stringify({ 
+        success: true, 
+        analysis: combinedAnalysis,
+        ocr_quality: result.ocr.quality_score 
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {

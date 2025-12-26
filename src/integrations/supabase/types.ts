@@ -403,12 +403,15 @@ export type Database = {
           numero: number
           preuves: Json | null
           priorite: string
+          rejection_reason: string | null
           score: number
           statut: string
           titre: string
           transmis_jp: boolean
           type: string
           updated_at: string
+          validated_at: string | null
+          validated_by: string | null
         }
         Insert: {
           confidence_level?: string | null
@@ -426,12 +429,15 @@ export type Database = {
           numero?: number
           preuves?: Json | null
           priorite?: string
+          rejection_reason?: string | null
           score?: number
           statut?: string
           titre: string
           transmis_jp?: boolean
           type: string
           updated_at?: string
+          validated_at?: string | null
+          validated_by?: string | null
         }
         Update: {
           confidence_level?: string | null
@@ -449,12 +455,15 @@ export type Database = {
           numero?: number
           preuves?: Json | null
           priorite?: string
+          rejection_reason?: string | null
           score?: number
           statut?: string
           titre?: string
           transmis_jp?: boolean
           type?: string
           updated_at?: string
+          validated_at?: string | null
+          validated_by?: string | null
         }
         Relationships: [
           {

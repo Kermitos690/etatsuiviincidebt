@@ -22,6 +22,7 @@ import EmailsAnalyzed from "./pages/EmailsAnalyzed";
 import ViolationsDashboard from "./pages/ViolationsDashboard";
 import Attachments from "./pages/Attachments";
 import AnalysisPipeline from "./pages/AnalysisPipeline";
+import IncidentsTimeline from "./pages/IncidentsTimeline";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -43,6 +44,7 @@ const App = () => (
             <Route path="/journal" element={<AuthGuard><Journal /></AuthGuard>} />
             <Route path="/incidents" element={<AuthGuard><Incidents /></AuthGuard>} />
             <Route path="/incidents/:id" element={<AuthGuard><IncidentDetail /></AuthGuard>} />
+            <Route path="/incidents-timeline" element={<AuthGuard><IncidentsTimeline /></AuthGuard>} />
             <Route path="/incidents/:id/edit" element={<AuthGuard><EditIncident /></AuthGuard>} />
             <Route path="/nouveau" element={<AuthGuard><NewIncident /></AuthGuard>} />
             <Route path="/ia-auditeur" element={<AuthGuard><IAAuditeur /></AuthGuard>} />
