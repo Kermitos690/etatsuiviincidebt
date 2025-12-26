@@ -63,7 +63,7 @@ function NavContent({ onItemClick }: { onItemClick?: () => void }) {
   };
 
   return (
-    <nav className="flex-1 p-3 space-y-1.5 flex flex-col">
+    <nav className="flex-1 p-3 space-y-1.5 flex flex-col overflow-y-auto">
       <div className="flex-1 space-y-1.5">
         {navItems.map((item, index) => {
           const isActive = location.pathname === item.to || 
@@ -154,9 +154,9 @@ export function MobileHeader() {
         </SheetTrigger>
         <SheetContent 
           side="left" 
-          className="w-80 p-0 bg-glass backdrop-blur-glass border-r border-glass"
+          className="w-80 p-0 bg-glass backdrop-blur-glass border-r border-glass overflow-y-auto"
         >
-          <div className="flex flex-col h-full">
+          <div className="flex flex-col min-h-full">
             {/* Header */}
             <div className="p-5 border-b border-glass">
               <div className="flex items-center gap-3">
@@ -196,7 +196,7 @@ export function MobileHeader() {
 // Desktop sidebar
 export function DesktopSidebar() {
   return (
-    <aside className="hidden lg:flex h-screen w-72 sidebar-glass flex-col sticky top-0">
+    <aside className="hidden lg:flex h-screen w-72 sidebar-glass flex-col sticky top-0 overflow-hidden">
       {/* Decorative orbs */}
       <div className="absolute -top-20 -left-20 w-40 h-40 rounded-full bg-gradient-to-br from-primary/20 to-accent/10 blur-3xl animate-orb-float" />
       <div className="absolute -bottom-20 -right-20 w-40 h-40 rounded-full bg-gradient-to-br from-accent/20 to-primary/10 blur-3xl animate-orb-float" style={{ animationDelay: '-10s' }} />
