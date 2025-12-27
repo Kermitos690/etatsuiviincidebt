@@ -26,6 +26,8 @@ import {
   Cog,
   User,
   Target,
+  Network,
+  Zap,
   LucideIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -90,13 +92,22 @@ const navCategories: NavCategory[] = [
     ]
   },
   {
+    id: 'ai-training',
+    label: 'IA & Entraînement',
+    icon: Brain,
+    items: [
+      { to: '/ia-auditeur', icon: Brain, label: 'IA Auditeur' },
+      { to: '/ia-training', icon: GraduationCap, label: 'Entraînement Base' },
+      { to: '/advanced-training', icon: Zap, label: 'Entraînement Avancé' },
+      { to: '/relationship-graph', icon: Network, label: 'Graphe Relations' },
+    ]
+  },
+  {
     id: 'settings',
     label: 'Paramètres',
     icon: Cog,
     items: [
       { to: '/plan-6-mois', icon: Target, label: 'Plan 6 Mois' },
-      { to: '/ia-auditeur', icon: Brain, label: 'IA Auditeur' },
-      { to: '/ia-training', icon: GraduationCap, label: 'Entraînement' },
       { to: '/gmail-config', icon: Mail, label: 'Intégrations' },
       { to: '/exports', icon: FileText, label: 'Exports' },
       { to: '/admin', icon: Settings, label: 'Admin' },
