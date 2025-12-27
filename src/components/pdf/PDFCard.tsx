@@ -150,22 +150,26 @@ export const PDFCard = memo(function PDFCard({
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t opacity-0 group-hover:opacity-100 transition-opacity">
+      {/* Actions - always visible */}
+      <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t">
         <Button
           variant="ghost"
           size="sm"
           onClick={(e) => { e.stopPropagation(); onDownload(); }}
+          title="Télécharger"
         >
           <Download className="h-4 w-4" />
         </Button>
         
         <Button
-          variant="ghost"
+          variant="secondary"
           size="sm"
           onClick={(e) => { e.stopPropagation(); onSelect(); }}
+          title="Voir les détails"
+          className="bg-primary/10 hover:bg-primary/20 text-primary"
         >
-          <Eye className="h-4 w-4" />
+          <Eye className="h-4 w-4 mr-1" />
+          Voir
         </Button>
 
         <Button
@@ -173,6 +177,7 @@ export const PDFCard = memo(function PDFCard({
           size="sm"
           onClick={(e) => { e.stopPropagation(); onAnalyze(); }}
           disabled={isAnalyzing || document.extraction_status !== 'completed'}
+          title={document.extraction_status !== 'completed' ? "Extrayez d'abord le texte" : "Analyser avec l'IA"}
         >
           {isAnalyzing ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -184,8 +189,9 @@ export const PDFCard = memo(function PDFCard({
         <Button
           variant="ghost"
           size="sm"
-          className="text-destructive hover:text-destructive"
+          className="text-destructive hover:text-destructive hover:bg-destructive/10"
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          title="Supprimer"
         >
           <Trash2 className="h-4 w-4" />
         </Button>
