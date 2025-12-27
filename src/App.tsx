@@ -42,6 +42,7 @@ const AnomalyDetection = lazy(() => import("./pages/AnomalyDetection"));
 const RICalculator = lazy(() => import("./pages/RICalculator"));
 const LegalRepository = lazy(() => import("./pages/LegalRepository"));
 const ComplianceDashboard = lazy(() => import("./pages/ComplianceDashboard"));
+const PDFDocuments = lazy(() => import("./pages/PDFDocuments"));
 const Auth = lazy(() => import("./pages/Auth"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -115,6 +116,7 @@ const App = () => (
               <Route path="/ri-calculator" element={<AuthGuard><RICalculator /></AuthGuard>} />
               <Route path="/legal-repository" element={<AuthGuard><LegalRepository /></AuthGuard>} />
               <Route path="/compliance" element={<AuthGuard><ComplianceDashboard /></AuthGuard>} />
+              <Route path="/pdf-documents" element={<AuthGuard><PDFDocuments /></AuthGuard>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
