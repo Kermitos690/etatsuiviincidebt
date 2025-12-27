@@ -23,7 +23,66 @@ interface ReanalyzeProgress {
     factsExtracted: number;
     threadsAnalyzed: number;
     incidentsCreated: number;
+    emailsSkippedByFilter: number;
   };
+}
+
+// ===== Email Relevance Filtering =====
+function normalize(v: string): string {
+  return v.trim().toLowerCase();
+}
+
+function normalizeDomain(input: string): string {
+  const d = normalize(input);
+  const at = d.lastIndexOf("@");
+  const domain = at >= 0 ? d.slice(at + 1) : d;
+  return domain.replace(/^\.+|\.+$/g, "");
+}
+
+function emailHasDomain(
+  email: { sender?: string | null; recipient?: string | null },
+  domain: string
+): boolean {
+  const d = normalizeDomain(domain);
+  if (!d) return false;
+  const s = normalize(email.sender || "");
+  const r = normalize(email.recipient || "");
+  return s.includes(`@${d}`) || s.endsWith(d) || r.includes(`@${d}`) || r.endsWith(d);
+}
+
+function emailHasKeyword(
+  email: { subject?: string | null; body?: string | null },
+  keyword: string
+): boolean {
+  const k = normalize(keyword);
+  if (!k) return false;
+  const subject = normalize(email.subject || "");
+  const body = normalize(email.body || "");
+  return subject.includes(k) || body.includes(k);
+}
+
+interface EmailFilters {
+  domains: string[];
+  keywords: string[];
+}
+
+function isEmailRelevant(
+  email: { sender?: string | null; recipient?: string | null; subject?: string | null; body?: string | null },
+  filters: EmailFilters
+): boolean {
+  const domains = (filters.domains || []).map(normalizeDomain).filter(Boolean);
+  const keywords = (filters.keywords || []).map(normalize).filter(Boolean);
+
+  const hasDomains = domains.length > 0;
+  const hasKeywords = keywords.length > 0;
+
+  // No filters => treat everything as relevant
+  if (!hasDomains && !hasKeywords) return true;
+
+  const domainMatch = hasDomains ? domains.some((d) => emailHasDomain(email, d)) : true;
+  const keywordMatch = hasKeywords ? keywords.some((k) => emailHasKeyword(email, k)) : true;
+
+  return domainMatch && keywordMatch;
 }
 
 // Verify JWT and get user
@@ -142,6 +201,7 @@ serve(async (req) => {
         factsExtracted: 0,
         threadsAnalyzed: 0,
         incidentsCreated: 0,
+        emailsSkippedByFilter: 0,
       },
     };
 
@@ -175,28 +235,40 @@ serve(async (req) => {
     };
 
     // ===== STEP 1: Sync Gmail =====
+    // Fetch Gmail config first (needed for filters)
+    const { data: gmailConfig } = await supabase
+      .from("gmail_config")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const filters: EmailFilters = {
+      domains: gmailConfig?.domains || [],
+      keywords: gmailConfig?.keywords || [],
+    };
+    
+    console.log(`[Filters] Domains: ${filters.domains.length}, Keywords: ${filters.keywords.length}`);
+
     if (syncGmail) {
       await updateProgress({ step: "Synchronisation Gmail", stepNumber: 1 });
 
-      // Get Gmail config
-      const { data: gmailConfig } = await supabase
-        .from("gmail_config")
-        .select("*")
-        .eq("user_id", userId)
-        .maybeSingle();
-
       if (gmailConfig && gmailConfig.sync_enabled && gmailConfig.access_token) {
-        console.log("[Step 1] Gmail config found, syncing...");
+        console.log("[Step 1] Gmail config found, syncing with filters...");
         
         try {
-          // Call gmail-sync function
+          // Call gmail-sync function with filters
           const syncResponse = await fetch(`${SUPABASE_URL}/functions/v1/gmail-sync`, {
             method: "POST",
             headers: {
               "Authorization": req.headers.get("authorization") || "",
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ maxEmails: 100 }),
+            body: JSON.stringify({ 
+              maxEmails: 100,
+              syncMode: "filtered",
+              domains: filters.domains,
+              keywords: filters.keywords,
+            }),
           });
 
           if (syncResponse.ok) {
@@ -248,6 +320,13 @@ serve(async (req) => {
     for (let i = 0; i < emailsToAnalyze.length; i++) {
       const email = emailsToAnalyze[i];
       await updateProgress({ current: i + 1 });
+
+      // ===== FILTER CHECK: Skip irrelevant emails =====
+      if (!isEmailRelevant(email, filters)) {
+        console.log(`[Step 2] Skipping email ${email.id} - not relevant to filters`);
+        progress.stats.emailsSkippedByFilter++;
+        continue;
+      }
 
       try {
         const emailContent = `
