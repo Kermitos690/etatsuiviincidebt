@@ -1453,6 +1453,208 @@ export type Database = {
         }
         Relationships: []
       }
+      pdf_analyses: {
+        Row: {
+          ai_analysis: Json | null
+          analysis_type: string | null
+          analyzed_at: string | null
+          confidence_score: number | null
+          created_at: string
+          document_id: string
+          id: string
+          legal_references: Json | null
+          model: string | null
+          participants: Json | null
+          problem_score: number | null
+          recommendations: Json | null
+          severity: string | null
+          summary: string | null
+          thread_analysis: Json | null
+          timeline: Json | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ai_analysis?: Json | null
+          analysis_type?: string | null
+          analyzed_at?: string | null
+          confidence_score?: number | null
+          created_at?: string
+          document_id: string
+          id?: string
+          legal_references?: Json | null
+          model?: string | null
+          participants?: Json | null
+          problem_score?: number | null
+          recommendations?: Json | null
+          severity?: string | null
+          summary?: string | null
+          thread_analysis?: Json | null
+          timeline?: Json | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ai_analysis?: Json | null
+          analysis_type?: string | null
+          analyzed_at?: string | null
+          confidence_score?: number | null
+          created_at?: string
+          document_id?: string
+          id?: string
+          legal_references?: Json | null
+          model?: string | null
+          participants?: Json | null
+          problem_score?: number | null
+          recommendations?: Json | null
+          severity?: string | null
+          summary?: string | null
+          thread_analysis?: Json | null
+          timeline?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_analyses_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pdf_documents: {
+        Row: {
+          created_at: string
+          document_type: string | null
+          extracted_text: string | null
+          extraction_status: string | null
+          file_size: number
+          filename: string
+          folder_id: string | null
+          id: string
+          metadata: Json | null
+          original_filename: string
+          page_count: number | null
+          storage_path: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          document_type?: string | null
+          extracted_text?: string | null
+          extraction_status?: string | null
+          file_size?: number
+          filename: string
+          folder_id?: string | null
+          id?: string
+          metadata?: Json | null
+          original_filename: string
+          page_count?: number | null
+          storage_path: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          document_type?: string | null
+          extracted_text?: string | null
+          extraction_status?: string | null
+          file_size?: number
+          filename?: string
+          folder_id?: string | null
+          id?: string
+          metadata?: Json | null
+          original_filename?: string
+          page_count?: number | null
+          storage_path?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_documents_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_folders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pdf_folders: {
+        Row: {
+          color: string | null
+          created_at: string
+          description: string | null
+          icon: string | null
+          id: string
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      pdf_incidents: {
+        Row: {
+          created_at: string
+          document_id: string
+          id: string
+          incident_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          document_id: string
+          id?: string
+          incident_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          document_id?: string
+          id?: string
+          incident_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_incidents_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdf_incidents_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "incidents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null

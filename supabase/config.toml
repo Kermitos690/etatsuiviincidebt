@@ -122,3 +122,9 @@ verify_jwt = false
 
 [functions.cleanup-emails]
 verify_jwt = false
+
+[functions.analyze-pdf]
+verify_jwt = false
+
+[functions.extract-pdf-text]
+verify_jwt = false
