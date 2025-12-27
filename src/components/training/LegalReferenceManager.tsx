@@ -48,31 +48,69 @@ interface LegalReference {
 }
 
 const COMMON_CODES = [
-  'Code Civil',
-  'Code Pénal',
-  'Code de Procédure Civile',
-  'Code de Procédure Pénale',
-  'Code du Travail',
-  'Code de la Famille',
-  'Code de l\'Éducation',
-  'Convention Européenne des Droits de l\'Homme (CEDH)',
-  'Déclaration des Droits de l\'Homme et du Citoyen',
-  'Code de l\'Action Sociale et des Familles',
-  'Code de la Santé Publique',
-  'Code Administratif',
+  // Droit fédéral suisse - Assurances sociales
+  'LAI (Assurance-invalidité)',
+  'LAVS (Assurance vieillesse et survivants)',
+  'LPC (Prestations complémentaires)',
+  'LPP (Prévoyance professionnelle)',
+  'LAMal (Assurance-maladie)',
+  'LPGA (Partie générale assurances sociales)',
+  'LAFam (Allocations familiales)',
+  'LACI (Assurance-chômage)',
+  // Droit fédéral suisse - Protection adulte et autres
+  'Code Civil suisse (CC)',
+  'Code des Obligations (CO)',
+  'Code Pénal suisse (CP)',
+  'LPD (Protection des données)',
+  'Constitution fédérale (Cst.)',
+  'Procédure administrative (PA)',
+  'CPC (Procédure civile)',
+  // Droit cantonal vaudois
+  'LASV (Action sociale VD)',
+  'RLASV (Règlement LASV)',
+  'Normes RI (Revenu d\'insertion)',
+  'Normes CSIAS',
+  'CISP (Contrat insertion)',
+  'LVPAE (Protection adulte VD)',
+  'LPA-VD (Procédure administrative VD)',
+  'LSP (Santé publique VD)',
+  'LVLAFam (Allocations familiales VD)',
+  'RAM (Administration mandats VD)',
+  // Institutions
+  'Previva LPP (Caisse de pension Paudex)',
+  'CCAVS (Caisse compensation AVS VD)',
+  'OCAI (Office AI Vaud)',
+  // Standards
+  'Directives COPMA/KOKES',
 ];
 
 const DOMAINS = [
-  'Responsabilité civile',
+  // Assurances sociales
+  'Assurance-invalidité (AI)',
+  'Assurance vieillesse (AVS)',
+  'Prestations complémentaires (PC)',
+  'Prévoyance professionnelle (LPP)',
+  'Assurance-maladie (LAMal)',
+  'Assurance-chômage (AC)',
+  'Allocations familiales',
+  // Aide sociale
+  'Revenu d\'insertion (RI)',
+  'Minimum vital',
+  'Aide sociale',
+  'Insertion professionnelle',
+  // Protection adulte
+  'Protection de l\'adulte',
+  'Curatelle',
+  'Mandat pour cause d\'inaptitude',
+  // Droits et procédures
   'Droits fondamentaux',
+  'Procédure administrative',
+  'Responsabilité civile',
   'Droit pénal',
-  'Droit de la famille',
-  'Protection de l\'enfance',
-  'Droit du travail',
-  'Droit administratif',
-  'Procédure',
-  'Discrimination',
-  'Abus de pouvoir',
+  'Protection des données',
+  // Autres
+  'Subsidiarité des prestations',
+  'Recours et voies de droit',
 ];
 
 export function LegalReferenceManager() {
