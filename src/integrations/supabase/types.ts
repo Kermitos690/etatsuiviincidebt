@@ -116,6 +116,78 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_output_validations: {
+        Row: {
+          confidence_after: number | null
+          confidence_before: number | null
+          created_at: string
+          edge_function_name: string
+          hallucination_details: Json | null
+          hallucination_detected: boolean | null
+          id: string
+          input_hash: string
+          legal_refs_claimed: string[] | null
+          legal_refs_rejected: string[] | null
+          legal_refs_verified: string[] | null
+          model_used: string | null
+          output_hash: string
+          processing_time_ms: number | null
+          prompt_version: string | null
+          raw_output: Json
+          user_id: string | null
+          validated_at: string | null
+          validated_output: Json | null
+          validation_rules_applied: string[] | null
+          validation_status: string
+        }
+        Insert: {
+          confidence_after?: number | null
+          confidence_before?: number | null
+          created_at?: string
+          edge_function_name: string
+          hallucination_details?: Json | null
+          hallucination_detected?: boolean | null
+          id?: string
+          input_hash: string
+          legal_refs_claimed?: string[] | null
+          legal_refs_rejected?: string[] | null
+          legal_refs_verified?: string[] | null
+          model_used?: string | null
+          output_hash: string
+          processing_time_ms?: number | null
+          prompt_version?: string | null
+          raw_output: Json
+          user_id?: string | null
+          validated_at?: string | null
+          validated_output?: Json | null
+          validation_rules_applied?: string[] | null
+          validation_status?: string
+        }
+        Update: {
+          confidence_after?: number | null
+          confidence_before?: number | null
+          created_at?: string
+          edge_function_name?: string
+          hallucination_details?: Json | null
+          hallucination_detected?: boolean | null
+          id?: string
+          input_hash?: string
+          legal_refs_claimed?: string[] | null
+          legal_refs_rejected?: string[] | null
+          legal_refs_verified?: string[] | null
+          model_used?: string | null
+          output_hash?: string
+          processing_time_ms?: number | null
+          prompt_version?: string | null
+          raw_output?: Json
+          user_id?: string | null
+          validated_at?: string | null
+          validated_output?: Json | null
+          validation_rules_applied?: string[] | null
+          validation_status?: string
+        }
+        Relationships: []
+      }
       ai_situation_training: {
         Row: {
           ai_confidence: number | null
@@ -382,6 +454,54 @@ export type Database = {
           },
         ]
       }
+      audit_log: {
+        Row: {
+          changed_fields: string[] | null
+          context: Json | null
+          id: string
+          ip_address: string | null
+          new_values: Json | null
+          old_values: Json | null
+          operation: string
+          performed_at: string
+          performed_by: string | null
+          record_id: string
+          session_id: string | null
+          table_name: string
+          user_agent: string | null
+        }
+        Insert: {
+          changed_fields?: string[] | null
+          context?: Json | null
+          id?: string
+          ip_address?: string | null
+          new_values?: Json | null
+          old_values?: Json | null
+          operation: string
+          performed_at?: string
+          performed_by?: string | null
+          record_id: string
+          session_id?: string | null
+          table_name: string
+          user_agent?: string | null
+        }
+        Update: {
+          changed_fields?: string[] | null
+          context?: Json | null
+          id?: string
+          ip_address?: string | null
+          new_values?: Json | null
+          old_values?: Json | null
+          operation?: string
+          performed_at?: string
+          performed_by?: string | null
+          record_id?: string
+          session_id?: string | null
+          table_name?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       behavior_baselines: {
         Row: {
           avg_emails_per_day: number | null
@@ -492,6 +612,102 @@ export type Database = {
           verified_by?: string | null
         }
         Relationships: []
+      }
+      compliance_assessments: {
+        Row: {
+          ai_validation_id: string | null
+          assessed_by: string
+          assessment_date: string
+          compliance_status: string
+          created_at: string
+          data_protection_score: number | null
+          documentation_score: number | null
+          entity_id: string
+          entity_type: string
+          id: string
+          issues_detected: Json | null
+          legal_basis_score: number | null
+          legal_mappings_used: string[] | null
+          overall_score: number | null
+          procedural_score: number | null
+          proof_chain_id: string | null
+          recommendations: Json | null
+          red_zones: Json | null
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          risk_level: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          ai_validation_id?: string | null
+          assessed_by?: string
+          assessment_date?: string
+          compliance_status?: string
+          created_at?: string
+          data_protection_score?: number | null
+          documentation_score?: number | null
+          entity_id: string
+          entity_type: string
+          id?: string
+          issues_detected?: Json | null
+          legal_basis_score?: number | null
+          legal_mappings_used?: string[] | null
+          overall_score?: number | null
+          procedural_score?: number | null
+          proof_chain_id?: string | null
+          recommendations?: Json | null
+          red_zones?: Json | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          risk_level?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          ai_validation_id?: string | null
+          assessed_by?: string
+          assessment_date?: string
+          compliance_status?: string
+          created_at?: string
+          data_protection_score?: number | null
+          documentation_score?: number | null
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          issues_detected?: Json | null
+          legal_basis_score?: number | null
+          legal_mappings_used?: string[] | null
+          overall_score?: number | null
+          procedural_score?: number | null
+          proof_chain_id?: string | null
+          recommendations?: Json | null
+          red_zones?: Json | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          risk_level?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "compliance_assessments_ai_validation_id_fkey"
+            columns: ["ai_validation_id"]
+            isOneToOne: false
+            referencedRelation: "ai_output_validations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "compliance_assessments_proof_chain_id_fkey"
+            columns: ["proof_chain_id"]
+            isOneToOne: false
+            referencedRelation: "proof_chain"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       corroborations: {
         Row: {
@@ -853,6 +1069,71 @@ export type Database = {
         }
         Relationships: []
       }
+      fact_law_mappings: {
+        Row: {
+          ai_confidence: number | null
+          ai_generated: boolean | null
+          created_at: string
+          fact_id: string | null
+          fact_text: string
+          fact_type: string
+          id: string
+          legal_article_id: string
+          mapping_reason: string | null
+          mapping_type: string
+          relevance_score: number | null
+          updated_at: string
+          user_id: string | null
+          validated_at: string | null
+          validated_by: string | null
+          validation_notes: string | null
+        }
+        Insert: {
+          ai_confidence?: number | null
+          ai_generated?: boolean | null
+          created_at?: string
+          fact_id?: string | null
+          fact_text: string
+          fact_type: string
+          id?: string
+          legal_article_id: string
+          mapping_reason?: string | null
+          mapping_type?: string
+          relevance_score?: number | null
+          updated_at?: string
+          user_id?: string | null
+          validated_at?: string | null
+          validated_by?: string | null
+          validation_notes?: string | null
+        }
+        Update: {
+          ai_confidence?: number | null
+          ai_generated?: boolean | null
+          created_at?: string
+          fact_id?: string | null
+          fact_text?: string
+          fact_type?: string
+          id?: string
+          legal_article_id?: string
+          mapping_reason?: string | null
+          mapping_type?: string
+          relevance_score?: number | null
+          updated_at?: string
+          user_id?: string | null
+          validated_at?: string | null
+          validated_by?: string | null
+          validation_notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fact_law_mappings_legal_article_id_fkey"
+            columns: ["legal_article_id"]
+            isOneToOne: false
+            referencedRelation: "legal_articles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       gmail_config: {
         Row: {
           access_token: string | null
@@ -1002,6 +1283,74 @@ export type Database = {
           },
         ]
       }
+      legal_articles: {
+        Row: {
+          article_number: string
+          article_text: string
+          article_title: string | null
+          code_name: string
+          content_hash: string
+          created_at: string
+          domain: string | null
+          id: string
+          is_current: boolean | null
+          keywords: string[] | null
+          previous_version_id: string | null
+          source_document: string | null
+          source_url: string | null
+          updated_at: string
+          user_id: string | null
+          version_date: string
+          version_number: number
+        }
+        Insert: {
+          article_number: string
+          article_text: string
+          article_title?: string | null
+          code_name: string
+          content_hash: string
+          created_at?: string
+          domain?: string | null
+          id?: string
+          is_current?: boolean | null
+          keywords?: string[] | null
+          previous_version_id?: string | null
+          source_document?: string | null
+          source_url?: string | null
+          updated_at?: string
+          user_id?: string | null
+          version_date?: string
+          version_number?: number
+        }
+        Update: {
+          article_number?: string
+          article_text?: string
+          article_title?: string | null
+          code_name?: string
+          content_hash?: string
+          created_at?: string
+          domain?: string | null
+          id?: string
+          is_current?: boolean | null
+          keywords?: string[] | null
+          previous_version_id?: string | null
+          source_document?: string | null
+          source_url?: string | null
+          updated_at?: string
+          user_id?: string | null
+          version_date?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_articles_previous_version_id_fkey"
+            columns: ["previous_version_id"]
+            isOneToOne: false
+            referencedRelation: "legal_articles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       legal_references: {
         Row: {
           article_number: string
@@ -1136,6 +1485,74 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      proof_chain: {
+        Row: {
+          chain_position: number
+          combined_hash: string
+          content_hash: string
+          created_at: string
+          entity_id: string
+          entity_type: string
+          id: string
+          last_verified_at: string | null
+          metadata_hash: string | null
+          previous_proof_id: string | null
+          seal_reason: string | null
+          sealed_at: string
+          sealed_by: string
+          source_ip: string | null
+          user_agent: string | null
+          user_id: string | null
+          verification_status: string | null
+        }
+        Insert: {
+          chain_position?: number
+          combined_hash: string
+          content_hash: string
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          last_verified_at?: string | null
+          metadata_hash?: string | null
+          previous_proof_id?: string | null
+          seal_reason?: string | null
+          sealed_at?: string
+          sealed_by: string
+          source_ip?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+          verification_status?: string | null
+        }
+        Update: {
+          chain_position?: number
+          combined_hash?: string
+          content_hash?: string
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          last_verified_at?: string | null
+          metadata_hash?: string | null
+          previous_proof_id?: string | null
+          seal_reason?: string | null
+          sealed_at?: string
+          sealed_by?: string
+          source_ip?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+          verification_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proof_chain_previous_proof_id_fkey"
+            columns: ["previous_proof_id"]
+            isOneToOne: false
+            referencedRelation: "proof_chain"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       recurrence_tracking: {
         Row: {
