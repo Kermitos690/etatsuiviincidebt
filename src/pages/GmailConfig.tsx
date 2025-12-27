@@ -649,6 +649,66 @@ export default function GmailConfig() {
                 </p>
               </div>
               <Separator />
+              
+              {/* Filter Summary Before Sync */}
+              <div className="p-4 rounded-xl bg-muted/50 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-primary" />
+                  <p className="font-medium text-sm">Résumé des filtres actifs</p>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Domaines:</span>
+                    <Badge variant={config.domains.length > 0 ? "default" : "destructive"} className="text-xs">
+                      {config.domains.length > 0 ? `${config.domains.length} configurés` : "Aucun ⚠️"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Mots-clés:</span>
+                    <Badge variant={config.keywords.length > 0 ? "default" : "secondary"} className="text-xs">
+                      {config.keywords.length > 0 ? `${config.keywords.length} configurés` : "Aucun"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Depuis:</span>
+                    <Badge variant="outline" className="text-xs">
+                      {syncFromDate ? format(syncFromDate, "dd/MM/yyyy", { locale: fr }) : "Toujours"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Estimation:</span>
+                    <Badge variant="outline" className="text-xs bg-cyan-500/10 text-cyan-600 border-cyan-500/20">
+                      {config.domains.length > 0 || config.keywords.length > 0 
+                        ? "~100-500 emails" 
+                        : "⚠️ Tous les emails"}
+                    </Badge>
+                  </div>
+                </div>
+                
+                {config.domains.length === 0 && config.keywords.length === 0 && (
+                  <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs">
+                      <strong>Attention:</strong> Sans filtres, tous vos emails seront téléchargés. 
+                      Cela peut prendre beaucoup de temps et de ressources. 
+                      Configurez des domaines et/ou mots-clés pour cibler les emails pertinents.
+                    </p>
+                  </div>
+                )}
+                
+                {(config.domains.length > 0 || config.keywords.length > 0) && (
+                  <div className="flex items-start gap-2 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300">
+                    <CheckCircle2 className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs">
+                      <strong>Filtres API actifs:</strong> Seuls les emails correspondant à vos critères seront téléchargés depuis Gmail.
+                      {config.domains.length > 0 && ` Domaines: ${config.domains.slice(0, 3).join(', ')}${config.domains.length > 3 ? '...' : ''}.`}
+                      {config.keywords.length > 0 && ` Mots-clés: ${config.keywords.slice(0, 3).join(', ')}${config.keywords.length > 3 ? '...' : ''}.`}
+                    </p>
+                  </div>
+                )}
+              </div>
+              
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
                   <p className="font-medium">Dernière synchronisation</p>
