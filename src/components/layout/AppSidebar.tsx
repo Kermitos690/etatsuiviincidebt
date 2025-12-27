@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -29,7 +29,8 @@ import {
   Target,
   Network,
   Zap,
-  LucideIcon
+  LucideIcon,
+  FileStack
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -42,6 +43,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 // ============= Types =============
 interface NavItem {
@@ -57,78 +60,196 @@ interface NavCategory {
   items: NavItem[];
 }
 
-// ============= Navigation Structure (Simplified to 4 categories) =============
-const navCategories: NavCategory[] = [
-  {
-    id: 'dashboard',
-    label: 'Tableau de Bord',
-    icon: LayoutDashboard,
-    items: [
-      { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-      { to: '/control-center', icon: Activity, label: 'Centre de Contrôle' },
-      { to: '/compliance', icon: Shield, label: 'Conformité' },
-      { to: '/violations', icon: Scale, label: 'Violations' },
-    ]
-  },
-  {
-    id: 'emails',
-    label: 'Messagerie',
-    icon: Mail,
-    items: [
-      { to: '/emails', icon: Inbox, label: 'Boîte de réception' },
-      { to: '/emails-analyzed', icon: BarChart3, label: 'Emails Analysés' },
-      { to: '/email-cleanup', icon: Layers, label: 'Nettoyage' },
-      { to: '/attachments', icon: Paperclip, label: 'Pièces Jointes' },
-      { to: '/analysis-pipeline', icon: Brain, label: 'Analyse IA' },
-    ]
-  },
-  {
-    id: 'incidents',
-    label: 'Incidents',
-    icon: AlertTriangle,
-    items: [
-      { to: '/journal', icon: BookOpen, label: 'Journal' },
-      { to: '/incidents', icon: AlertTriangle, label: 'Liste' },
-      { to: '/incidents-timeline', icon: Activity, label: 'Timeline' },
-      { to: '/nouveau', icon: Plus, label: 'Nouveau' },
-    ]
-  },
-  {
-    id: 'ai-training',
-    label: 'IA & Entraînement',
-    icon: Brain,
-    items: [
-      { to: '/ia-auditeur', icon: Brain, label: 'IA Auditeur' },
-      { to: '/ia-training', icon: GraduationCap, label: 'Entraînement Base' },
-      { to: '/advanced-training', icon: Zap, label: 'Entraînement Avancé' },
-      { to: '/relationship-graph', icon: Network, label: 'Graphe Relations' },
-      { to: '/anomaly-detection', icon: AlertTriangle, label: 'Détection Anomalies' },
-    ]
-  },
-  {
-    id: 'tools',
-    label: 'Outils Juridiques',
-    icon: Scale,
-    items: [
-      { to: '/legal-repository', icon: BookOpen, label: 'Référentiel Légal' },
-      { to: '/ri-calculator', icon: Scale, label: 'Calculateur Budget' },
-    ]
-  },
-  {
-    id: 'settings',
-    label: 'Paramètres',
-    icon: Cog,
-    items: [
-      { to: '/plan-6-mois', icon: Target, label: 'Plan 6 Mois' },
-      { to: '/gmail-config', icon: Mail, label: 'Intégrations' },
-      { to: '/exports', icon: FileText, label: 'Exports' },
-      { to: '/admin', icon: Settings, label: 'Admin' },
-      { to: '/tutorial', icon: HelpCircle, label: 'Aide' },
-    ]
-  },
-];
+// ============= Data Source Mode Context =============
+type DataSourceMode = 'gmail' | 'pdf';
+
+const useDataSourceMode = () => {
+  const [mode, setMode] = useState<DataSourceMode>(() => {
+    const saved = localStorage.getItem('aqua-data-source-mode');
+    return (saved === 'pdf' ? 'pdf' : 'gmail') as DataSourceMode;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('aqua-data-source-mode', mode);
+  }, [mode]);
+
+  return { mode, setMode };
+};
+
+// ============= Navigation Structure based on mode =============
+const getNavCategories = (mode: DataSourceMode): NavCategory[] => {
+  const gmailCategories: NavCategory[] = [
+    {
+      id: 'dashboard',
+      label: 'Tableau de Bord',
+      icon: LayoutDashboard,
+      items: [
+        { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+        { to: '/control-center', icon: Activity, label: 'Centre de Contrôle' },
+        { to: '/compliance', icon: Shield, label: 'Conformité' },
+        { to: '/violations', icon: Scale, label: 'Violations' },
+      ]
+    },
+    {
+      id: 'emails',
+      label: 'Messagerie',
+      icon: Mail,
+      items: [
+        { to: '/emails', icon: Inbox, label: 'Boîte de réception' },
+        { to: '/emails-analyzed', icon: BarChart3, label: 'Emails Analysés' },
+        { to: '/email-cleanup', icon: Layers, label: 'Nettoyage' },
+        { to: '/attachments', icon: Paperclip, label: 'Pièces Jointes' },
+        { to: '/analysis-pipeline', icon: Brain, label: 'Analyse IA' },
+      ]
+    },
+    {
+      id: 'incidents',
+      label: 'Incidents',
+      icon: AlertTriangle,
+      items: [
+        { to: '/journal', icon: BookOpen, label: 'Journal' },
+        { to: '/incidents', icon: AlertTriangle, label: 'Liste' },
+        { to: '/incidents-timeline', icon: Activity, label: 'Timeline' },
+        { to: '/nouveau', icon: Plus, label: 'Nouveau' },
+      ]
+    },
+    {
+      id: 'ai-training',
+      label: 'IA & Entraînement',
+      icon: Brain,
+      items: [
+        { to: '/ia-auditeur', icon: Brain, label: 'IA Auditeur' },
+        { to: '/ia-training', icon: GraduationCap, label: 'Entraînement Base' },
+        { to: '/advanced-training', icon: Zap, label: 'Entraînement Avancé' },
+        { to: '/relationship-graph', icon: Network, label: 'Graphe Relations' },
+        { to: '/anomaly-detection', icon: AlertTriangle, label: 'Détection Anomalies' },
+      ]
+    },
+    {
+      id: 'tools',
+      label: 'Outils Juridiques',
+      icon: Scale,
+      items: [
+        { to: '/legal-repository', icon: BookOpen, label: 'Référentiel Légal' },
+        { to: '/ri-calculator', icon: Scale, label: 'Calculateur Budget' },
+      ]
+    },
+    {
+      id: 'settings',
+      label: 'Paramètres',
+      icon: Cog,
+      items: [
+        { to: '/plan-6-mois', icon: Target, label: 'Plan 6 Mois' },
+        { to: '/gmail-config', icon: Mail, label: 'Intégrations' },
+        { to: '/exports', icon: FileText, label: 'Exports' },
+        { to: '/admin', icon: Settings, label: 'Admin' },
+        { to: '/tutorial', icon: HelpCircle, label: 'Aide' },
+      ]
+    },
+  ];
+
+  const pdfCategories: NavCategory[] = [
+    {
+      id: 'dashboard',
+      label: 'Tableau de Bord',
+      icon: LayoutDashboard,
+      items: [
+        { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+        { to: '/control-center', icon: Activity, label: 'Centre de Contrôle' },
+        { to: '/compliance', icon: Shield, label: 'Conformité' },
+        { to: '/violations', icon: Scale, label: 'Violations' },
+      ]
+    },
+    {
+      id: 'pdf-docs',
+      label: 'Documents PDF',
+      icon: FileStack,
+      items: [
+        { to: '/pdf-documents', icon: FileStack, label: 'Tous les Documents' },
+        { to: '/attachments', icon: Paperclip, label: 'Pièces Jointes' },
+        { to: '/analysis-pipeline', icon: Brain, label: 'Analyse IA' },
+      ]
+    },
+    {
+      id: 'incidents',
+      label: 'Incidents',
+      icon: AlertTriangle,
+      items: [
+        { to: '/journal', icon: BookOpen, label: 'Journal' },
+        { to: '/incidents', icon: AlertTriangle, label: 'Liste' },
+        { to: '/incidents-timeline', icon: Activity, label: 'Timeline' },
+        { to: '/nouveau', icon: Plus, label: 'Nouveau' },
+      ]
+    },
+    {
+      id: 'ai-training',
+      label: 'IA & Entraînement',
+      icon: Brain,
+      items: [
+        { to: '/ia-auditeur', icon: Brain, label: 'IA Auditeur' },
+        { to: '/ia-training', icon: GraduationCap, label: 'Entraînement Base' },
+        { to: '/advanced-training', icon: Zap, label: 'Entraînement Avancé' },
+        { to: '/relationship-graph', icon: Network, label: 'Graphe Relations' },
+        { to: '/anomaly-detection', icon: AlertTriangle, label: 'Détection Anomalies' },
+      ]
+    },
+    {
+      id: 'tools',
+      label: 'Outils Juridiques',
+      icon: Scale,
+      items: [
+        { to: '/legal-repository', icon: BookOpen, label: 'Référentiel Légal' },
+        { to: '/ri-calculator', icon: Scale, label: 'Calculateur Budget' },
+      ]
+    },
+    {
+      id: 'settings',
+      label: 'Paramètres',
+      icon: Cog,
+      items: [
+        { to: '/plan-6-mois', icon: Target, label: 'Plan 6 Mois' },
+        { to: '/exports', icon: FileText, label: 'Exports' },
+        { to: '/admin', icon: Settings, label: 'Admin' },
+        { to: '/tutorial', icon: HelpCircle, label: 'Aide' },
+      ]
+    },
+  ];
+
+  return mode === 'gmail' ? gmailCategories : pdfCategories;
+};
 
 // ============= Components =============
+// ============= Mode Switch Component =============
+function DataSourceSwitch({ mode, setMode }: { mode: DataSourceMode; setMode: (mode: DataSourceMode) => void }) {
+  return (
+    <div className="glass-card p-3 mb-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          {mode === 'gmail' ? (
+            <Mail className="h-4 w-4 text-primary" />
+          ) : (
+            <FileStack className="h-4 w-4 text-primary" />
+          )}
+          <Label htmlFor="data-source-mode" className="text-xs font-medium cursor-pointer">
+            {mode === 'gmail' ? 'Mode Gmail' : 'Mode PDF'}
+          </Label>
+        </div>
+        <Switch
+          id="data-source-mode"
+          checked={mode === 'pdf'}
+          onCheckedChange={(checked) => setMode(checked ? 'pdf' : 'gmail')}
+          className="data-[state=checked]:bg-primary"
+        />
+      </div>
+      <p className="text-[10px] text-muted-foreground mt-2">
+        {mode === 'gmail' 
+          ? 'Analyse des emails Gmail en temps réel' 
+          : 'Analyse de documents PDF importés'}
+      </p>
+    </div>
+  );
+}
+
 function NavCategorySection({ 
   category, 
   isOpen, 
@@ -200,6 +321,9 @@ function NavContent({ onItemClick }: { onItemClick?: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { signOut, user, profile, roles } = useAuth();
+  const { mode, setMode } = useDataSourceMode();
+  
+  const navCategories = getNavCategories(mode);
   
   // Auto-open categories with active items
   const getInitialOpenState = () => {
@@ -218,6 +342,11 @@ function NavContent({ onItemClick }: { onItemClick?: () => void }) {
   };
 
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>(getInitialOpenState);
+  
+  // Update open state when mode changes
+  useEffect(() => {
+    setOpenCategories(getInitialOpenState());
+  }, [mode]);
 
   const toggleCategory = (id: string) => {
     setOpenCategories(prev => ({ ...prev, [id]: !prev[id] }));
@@ -236,6 +365,9 @@ function NavContent({ onItemClick }: { onItemClick?: () => void }) {
 
   return (
     <nav className="flex-1 p-3 space-y-2 flex flex-col overflow-y-auto">
+      {/* Mode Switch */}
+      <DataSourceSwitch mode={mode} setMode={setMode} />
+      
       <div className="flex-1 space-y-1">
         {navCategories.map((category) => (
           <NavCategorySection
