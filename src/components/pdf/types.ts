@@ -8,6 +8,148 @@ export interface PDFFolder {
   created_at: string;
   updated_at: string;
   documentsCount?: number;
+  
+  // Situation fields
+  situation_status?: 'ouvert' | 'en_cours' | 'analysé' | 'résolu' | 'archivé' | string;
+  situation_type?: string;
+  institution_concerned?: string;
+  priority?: 'faible' | 'moyenne' | 'haute' | 'critique' | string;
+  problem_score?: number;
+  last_analysis_at?: string;
+  summary?: string;
+  participants?: SituationParticipant[];
+  timeline?: SituationTimelineEvent[];
+  violations_detected?: SituationViolation[];
+  recommendations?: SituationRecommendation[];
+  linked_incident_ids?: string[];
+}
+
+export interface SituationParticipant {
+  name: string;
+  role?: string;
+  institution?: string;
+  documents_mentioned?: string[];
+  first_mention?: {
+    citation: string;
+    source: string;
+  };
+  actions?: string[];
+  trust_indicators?: {
+    positive: string[];
+    negative: string[];
+  };
+}
+
+export interface SituationTimelineEvent {
+  date: string;
+  event: string;
+  source: string;
+  citation?: string;
+  actors_involved?: string[];
+  importance?: 'critique' | 'haute' | 'moyenne' | 'faible' | string;
+}
+
+export interface SituationViolation {
+  type: string;
+  description: string;
+  severity: 'critique' | 'élevée' | 'moyenne' | 'faible' | string;
+  confidence: 'CERTAIN' | 'PROBABLE' | 'POSSIBLE' | string;
+  citations?: Array<{
+    text: string;
+    source: string;
+  }>;
+  legal_references?: Array<{
+    article: string;
+    law: string;
+    description: string;
+  }>;
+  actors_responsible?: string[];
+  evidence_strength?: string;
+}
+
+export interface SituationRecommendation {
+  priority: 'critique' | 'haute' | 'moyenne' | 'faible' | string;
+  action: string;
+  legal_basis?: string;
+  evidence?: string[];
+}
+
+export interface SituationContradiction {
+  type: string;
+  description: string;
+  document_1: {
+    source: string;
+    citation: string;
+    date?: string;
+  };
+  document_2: {
+    source: string;
+    citation: string;
+    date?: string;
+  };
+  severity: string;
+  analysis?: string;
+}
+
+export interface SituationJPAction {
+  action: string;
+  urgency: 'immédiate' | 'court_terme' | 'moyen_terme' | string;
+  legal_basis?: string;
+  documents_to_attach?: string[];
+}
+
+export interface SituationAnalysis {
+  id: string;
+  folder_id: string;
+  user_id: string;
+  analyzed_at: string;
+  model?: string;
+  prompt_version?: string;
+  
+  // Analysis results
+  summary?: string;
+  chronological_summary?: string;
+  problem_score: number;
+  confidence_score: number;
+  severity: string;
+  
+  // Extracted data
+  participants: SituationParticipant[];
+  timeline: SituationTimelineEvent[];
+  
+  // Problems detected
+  contradictions: SituationContradiction[];
+  violations_detected: SituationViolation[];
+  unanswered_questions: Array<{
+    question: string;
+    source: string;
+    citation?: string;
+    importance?: string;
+  }>;
+  deadline_violations: Array<{
+    deadline: string;
+    context: string;
+    source: string;
+    citation?: string;
+    days_exceeded?: number;
+  }>;
+  
+  // Recommendations
+  recommendations: SituationRecommendation[];
+  legal_references?: Array<{
+    article: string;
+    law: string;
+    description: string;
+  }>;
+  jp_actions: SituationJPAction[];
+  
+  // Metadata
+  documents_analyzed: number;
+  total_pages: number;
+  analysis_json?: any;
+  
+  created_at: string;
+  updated_at: string;
 }
 
 export interface PDFDocument {
