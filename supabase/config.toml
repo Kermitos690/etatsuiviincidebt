@@ -143,3 +143,6 @@ verify_jwt = false
 
 [functions.extract-legal-content]
 verify_jwt = false
+
+[functions.analyze-situation]
+verify_jwt = false

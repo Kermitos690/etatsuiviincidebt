@@ -1,28 +1,35 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { FileText, Upload, Brain, Loader2, RefreshCw, Columns2 } from 'lucide-react';
+import { FileText, Upload, Loader2, RefreshCw, Columns2, FolderOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { AppLayout } from '@/components/layout';
 import { 
-  PDFUploader, PDFCard, FolderManager, PDFDetail, PDFDocument, PDFFolder,
-  PDFSearchFilters, filterDocuments, PDFFilters, PDFCompareView
+  PDFUploader, PDFCard, PDFDetail, PDFDocument, PDFFolder,
+  PDFSearchFilters, filterDocuments, PDFFilters, PDFCompareView,
+  SituationParticipant, SituationTimelineEvent, SituationViolation, SituationRecommendation
 } from '@/components/pdf';
+import { SituationManager } from '@/components/pdf/SituationManager';
+import { SituationDetail } from '@/components/pdf/SituationDetail';
 
 export default function PDFDocuments() {
   const isMobile = useIsMobile();
   const [folders, setFolders] = useState<PDFFolder[]>([]);
   const [documents, setDocuments] = useState<PDFDocument[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [selectedFolder, setSelectedFolder] = useState<PDFFolder | null>(null);
   const [selectedDocument, setSelectedDocument] = useState<PDFDocument | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAnalyzingSituation, setIsAnalyzingSituation] = useState(false);
   const [analyzingIds, setAnalyzingIds] = useState<Set<string>>(new Set());
   const [extractingIds, setExtractingIds] = useState<Set<string>>(new Set());
   const [showUploader, setShowUploader] = useState(false);
   const [compareMode, setCompareMode] = useState(false);
   const [compareIds, setCompareIds] = useState<[string | null, string | null]>([null, null]);
+  const [activeTab, setActiveTab] = useState<'situations' | 'documents'>('situations');
   
   // Filters
   const [filters, setFilters] = useState<PDFFilters>({
@@ -56,10 +63,23 @@ export default function PDFDocuments() {
     return filterDocuments(documents, filters);
   }, [documents, filters]);
 
+  // Helper pour convertir les JSON en types typés
+  const parseFolderData = (folder: any): PDFFolder => {
+    return {
+      ...folder,
+      participants: Array.isArray(folder.participants) ? folder.participants as SituationParticipant[] : [],
+      timeline: Array.isArray(folder.timeline) ? folder.timeline as SituationTimelineEvent[] : [],
+      violations_detected: Array.isArray(folder.violations_detected) ? folder.violations_detected as SituationViolation[] : [],
+      recommendations: Array.isArray(folder.recommendations) ? folder.recommendations as SituationRecommendation[] : [],
+    };
+  };
+
   const fetchFolders = useCallback(async () => {
     const { data, error } = await supabase
       .from('pdf_folders')
       .select('*')
+      .order('priority', { ascending: false })
+      .order('problem_score', { ascending: false })
       .order('name');
     
     if (!error && data) {
@@ -75,7 +95,7 @@ export default function PDFDocuments() {
         }
       });
       
-      const foldersWithCount = data.map(folder => ({
+      const foldersWithCount = data.map(folder => parseFolderData({
         ...folder,
         documentsCount: countMap.get(folder.id) || 0,
       }));
@@ -83,6 +103,29 @@ export default function PDFDocuments() {
       setFolders(foldersWithCount);
     }
   }, []);
+
+  // Analyser une situation complète
+  const handleAnalyzeSituation = useCallback(async (folderId: string) => {
+    setIsAnalyzingSituation(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Non authentifié');
+
+      const { data, error } = await supabase.functions.invoke('analyze-situation', {
+        body: { folderId },
+      });
+
+      if (error) throw new Error(error.message);
+
+      toast.success(`Analyse terminée - Score: ${data.analysis?.problem_score || 0}/100`);
+      fetchFolders();
+    } catch (error) {
+      console.error('Error analyzing situation:', error);
+      toast.error(error instanceof Error ? error.message : 'Erreur lors de l\'analyse');
+    } finally {
+      setIsAnalyzingSituation(false);
+    }
+  }, [fetchFolders]);
 
   const fetchDocuments = useCallback(async () => {
     setIsLoading(true);
@@ -129,13 +172,23 @@ export default function PDFDocuments() {
     fetchDocuments();
   }, [fetchFolders, fetchDocuments]);
 
+  // Quand on sélectionne un dossier, charger ses détails
+  useEffect(() => {
+    if (selectedFolderId) {
+      const folder = folders.find(f => f.id === selectedFolderId);
+      setSelectedFolder(folder || null);
+    } else {
+      setSelectedFolder(null);
+    }
+  }, [selectedFolderId, folders]);
+
   const handleExtractText = async (doc: PDFDocument) => {
     setExtractingIds(prev => new Set(prev).add(doc.id));
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Non authentifié');
 
-      const { data: result, error } = await supabase.functions.invoke('extract-pdf-text', {
+      const { error } = await supabase.functions.invoke('extract-pdf-text', {
         body: { documentId: doc.id },
       });
 
@@ -160,7 +213,7 @@ export default function PDFDocuments() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Non authentifié');
 
-      const { data: result, error } = await supabase.functions.invoke('analyze-pdf', {
+      const { error } = await supabase.functions.invoke('analyze-pdf', {
         body: { documentId: doc.id },
       });
 
@@ -189,6 +242,7 @@ export default function PDFDocuments() {
       toast.success('Document supprimé');
       if (selectedDocument?.id === doc.id) setSelectedDocument(null);
       fetchDocuments();
+      fetchFolders(); // Refresh folder counts
     } catch (error) {
       toast.error('Erreur lors de la suppression');
     }
@@ -233,22 +287,31 @@ export default function PDFDocuments() {
     }
   };
 
+  const handleSelectFolder = (folderId: string | null) => {
+    setSelectedFolderId(folderId);
+    setSelectedDocument(null);
+    if (folderId) {
+      setActiveTab('documents');
+    }
+  };
+
   return (
     <AppLayout>
       <div className="flex flex-col lg:flex-row h-full min-h-0 gap-4 p-4">
-        {/* Sidebar - Folders */}
+        {/* Sidebar - Actions */}
         <div className="w-full lg:w-64 flex-shrink-0 space-y-4">
           <Card className="p-4">
             <h2 className="font-semibold mb-4 flex items-center gap-2">
-              <FileText className="h-5 w-5 text-primary" />
-              Documents PDF
+              <FolderOpen className="h-5 w-5 text-primary" />
+              Gestion Situations
             </h2>
-            <FolderManager
-              folders={folders}
-              selectedFolderId={selectedFolderId}
-              onSelectFolder={setSelectedFolderId}
-              onFoldersChange={fetchFolders}
-            />
+            
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+              <TabsList className="w-full mb-4">
+                <TabsTrigger value="situations" className="flex-1">Situations</TabsTrigger>
+                <TabsTrigger value="documents" className="flex-1">Documents</TabsTrigger>
+              </TabsList>
+            </Tabs>
           </Card>
           
           <Button className="w-full gap-2" onClick={() => setShowUploader(!showUploader)}>
@@ -256,14 +319,16 @@ export default function PDFDocuments() {
             {showUploader ? 'Masquer upload' : 'Importer des PDFs'}
           </Button>
 
-          <Button 
-            variant={compareMode ? "secondary" : "outline"} 
-            className="w-full gap-2" 
-            onClick={toggleCompareMode}
-          >
-            <Columns2 className="h-4 w-4" />
-            {compareMode ? 'Quitter comparaison' : 'Comparer'}
-          </Button>
+          {activeTab === 'documents' && (
+            <Button 
+              variant={compareMode ? "secondary" : "outline"} 
+              className="w-full gap-2" 
+              onClick={toggleCompareMode}
+            >
+              <Columns2 className="h-4 w-4" />
+              {compareMode ? 'Quitter comparaison' : 'Comparer'}
+            </Button>
+          )}
         </div>
 
         {/* Main content */}
@@ -273,75 +338,123 @@ export default function PDFDocuments() {
             <Card className="p-4">
               <PDFUploader
                 folders={folders}
-                onUploadComplete={() => { fetchDocuments(); setShowUploader(false); }}
+                onUploadComplete={() => { 
+                  fetchDocuments(); 
+                  fetchFolders();
+                  setShowUploader(false); 
+                }}
                 onCreateFolder={() => {}}
               />
             </Card>
           )}
 
-          {/* Search & Filters */}
-          <div>
-            <PDFSearchFilters
-              filters={filters}
-              onFiltersChange={setFilters}
-              allTags={allTags}
-              documentTypes={documentTypes}
+          {activeTab === 'situations' && (
+            <SituationManager
+              folders={folders}
+              selectedFolderId={selectedFolderId}
+              onSelectFolder={handleSelectFolder}
+              onFoldersChange={fetchFolders}
+              onAnalyzeSituation={handleAnalyzeSituation}
+              isAnalyzing={isAnalyzingSituation}
             />
-          </div>
+          )}
 
-          <div className="flex items-center justify-between">
-            <h3 className="font-medium">
-              {filteredDocuments.length} document(s)
-              {filteredDocuments.length !== documents.length && (
-                <span className="text-muted-foreground"> sur {documents.length}</span>
+          {activeTab === 'documents' && (
+            <>
+              {/* Breadcrumb si dossier sélectionné */}
+              {selectedFolderId && selectedFolder && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => handleSelectFolder(null)}
+                  >
+                    ← Toutes les situations
+                  </Button>
+                  <span className="text-muted-foreground">/</span>
+                  <span className="font-medium">{selectedFolder.name}</span>
+                  <span className="text-muted-foreground">
+                    ({filteredDocuments.length} documents)
+                  </span>
+                </div>
               )}
-            </h3>
-            <Button variant="ghost" size="sm" onClick={fetchDocuments}>
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-          </div>
 
-          {isLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          ) : filteredDocuments.length === 0 ? (
-            <Card className="p-8 text-center">
-              <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">
-                {documents.length === 0 ? 'Aucun document' : 'Aucun résultat'}
-              </p>
-              {documents.length === 0 && (
-                <Button className="mt-4" onClick={() => setShowUploader(true)}>
-                  <Upload className="h-4 w-4 mr-2" />
-                  Importer
-                </Button>
-              )}
-            </Card>
-          ) : (
-            <div className="space-y-3 pb-4">
-              {filteredDocuments.map(doc => (
-                <PDFCard
-                  key={doc.id}
-                  document={doc}
-                  isSelected={
-                    compareMode 
-                      ? compareIds.includes(doc.id)
-                      : selectedDocument?.id === doc.id
-                  }
-                  onSelect={() => handleCompareSelect(doc)}
-                  onAnalyze={() => handleAnalyze(doc)}
-                  onDelete={() => handleDelete(doc)}
-                  onDownload={() => handleDownload(doc)}
-                  isAnalyzing={analyzingIds.has(doc.id)}
+              {/* Search & Filters */}
+              <div>
+                <PDFSearchFilters
+                  filters={filters}
+                  onFiltersChange={setFilters}
+                  allTags={allTags}
+                  documentTypes={documentTypes}
                 />
-              ))}
-            </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <h3 className="font-medium">
+                  {filteredDocuments.length} document(s)
+                  {filteredDocuments.length !== documents.length && (
+                    <span className="text-muted-foreground"> sur {documents.length}</span>
+                  )}
+                </h3>
+                <Button variant="ghost" size="sm" onClick={fetchDocuments}>
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {isLoading ? (
+                <div className="flex items-center justify-center py-16">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : filteredDocuments.length === 0 ? (
+                <Card className="p-8 text-center">
+                  <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">
+                    {documents.length === 0 ? 'Aucun document dans cette situation' : 'Aucun résultat'}
+                  </p>
+                  {documents.length === 0 && (
+                    <Button className="mt-4" onClick={() => setShowUploader(true)}>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Importer
+                    </Button>
+                  )}
+                </Card>
+              ) : (
+                <div className="space-y-3 pb-4">
+                  {filteredDocuments.map(doc => (
+                    <PDFCard
+                      key={doc.id}
+                      document={doc}
+                      isSelected={
+                        compareMode 
+                          ? compareIds.includes(doc.id)
+                          : selectedDocument?.id === doc.id
+                      }
+                      onSelect={() => handleCompareSelect(doc)}
+                      onAnalyze={() => handleAnalyze(doc)}
+                      onDelete={() => handleDelete(doc)}
+                      onDownload={() => handleDownload(doc)}
+                      isAnalyzing={analyzingIds.has(doc.id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
 
-        {/* Detail/Compare panel - Desktop only */}
-        {!isMobile && selectedDocument && !compareMode && (
+        {/* Detail panel - Desktop only */}
+        {!isMobile && activeTab === 'situations' && selectedFolder && (
+          <Card className="w-[500px] flex-shrink-0 overflow-y-auto max-h-full animate-slide-in-right">
+            <SituationDetail
+              folder={selectedFolder}
+              onClose={() => setSelectedFolderId(null)}
+              onAnalyze={() => handleAnalyzeSituation(selectedFolder.id)}
+              isAnalyzing={isAnalyzingSituation}
+            />
+          </Card>
+        )}
+
+        {!isMobile && activeTab === 'documents' && selectedDocument && !compareMode && (
           <Card className="w-96 flex-shrink-0 overflow-y-auto max-h-full animate-slide-in-right">
             <PDFDetail
               document={selectedDocument}
@@ -373,8 +486,22 @@ export default function PDFDocuments() {
         )}
       </div>
 
-      {/* Mobile bottom sheet for document detail */}
-      {isMobile && selectedDocument && !compareMode && (
+      {/* Mobile bottom sheet */}
+      {isMobile && activeTab === 'situations' && selectedFolder && (
+        <div className="fixed inset-x-0 bottom-0 z-50 bg-background border-t rounded-t-2xl shadow-2xl max-h-[70vh] overflow-auto animate-slide-in-right">
+          <div className="p-1 flex justify-center">
+            <div className="w-12 h-1 rounded-full bg-muted-foreground/30" />
+          </div>
+          <SituationDetail
+            folder={selectedFolder}
+            onClose={() => setSelectedFolderId(null)}
+            onAnalyze={() => handleAnalyzeSituation(selectedFolder.id)}
+            isAnalyzing={isAnalyzingSituation}
+          />
+        </div>
+      )}
+
+      {isMobile && activeTab === 'documents' && selectedDocument && !compareMode && (
         <div className="fixed inset-x-0 bottom-0 z-50 bg-background border-t rounded-t-2xl shadow-2xl max-h-[70vh] overflow-auto animate-slide-in-right">
           <div className="p-1 flex justify-center">
             <div className="w-12 h-1 rounded-full bg-muted-foreground/30" />

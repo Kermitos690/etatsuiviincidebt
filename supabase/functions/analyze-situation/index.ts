@@ -481,18 +481,29 @@ serve(async (req) => {
       console.error('Error updating folder:', updateError);
     }
 
-    console.log(`Situation analyzed successfully. Problem score: ${analysis.problem_score}`);
+    // Enregistrer les violations pour l'entraînement IA
+    if (analysis.violations_detected?.length > 0) {
+      for (const violation of analysis.violations_detected) {
+        const { error: trainErr } = await supabase.from('ai_situation_training').insert({
+          user_id: user.id,
+          situation_summary: `[PDF] ${folder.name}: ${violation.description}`,
+          detected_violation_type: violation.type,
+          detected_legal_refs: violation.legal_references || [],
+          ai_confidence: violation.confidence === 'CERTAIN' ? 0.95 : 0.7,
+          validation_status: 'pending',
+          training_priority: violation.severity === 'critique' ? 100 : 50
+        });
+        if (trainErr) console.error('Training insert error:', trainErr);
+      }
+    }
+
+    console.log(`Situation analyzed. Score: ${analysis.problem_score}, Violations: ${analysis.violations_detected?.length || 0}`);
 
     return new Response(
       JSON.stringify({
         success: true,
         analysis: savedAnalysis || analysis,
-        folder: {
-          ...folder,
-          situation_status: 'analysé',
-          priority,
-          problem_score: analysis.problem_score
-        }
+        folder: { ...folder, situation_status: 'analysé', priority, problem_score: analysis.problem_score }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
