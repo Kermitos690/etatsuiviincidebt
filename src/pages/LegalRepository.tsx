@@ -13,9 +13,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import { 
   Search, BookOpen, Shield, Scale, FileText, ExternalLink, 
-  Save, Loader2, Gavel, BookMarked, Trash2, RefreshCw 
+  Save, Loader2, Gavel, BookMarked, Trash2, RefreshCw, Download 
 } from "lucide-react";
 import { legalSearchApi, LegalSearchResult } from "@/lib/api/legalSearch";
+import { ATFImporter } from "@/components/legal/ATFImporter";
 
 interface LegalArticle {
   id: string;
@@ -268,8 +269,12 @@ export default function LegalRepository() {
         </div>
 
         {/* Main Tabs */}
-        <Tabs defaultValue="search" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-2">
+        <Tabs defaultValue="atf-import" className="space-y-4">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="atf-import" className="flex items-center gap-2">
+              <Download className="h-4 w-4" />
+              Import ATF
+            </TabsTrigger>
             <TabsTrigger value="search" className="flex items-center gap-2">
               <Search className="h-4 w-4" />
               Recherche
@@ -279,6 +284,16 @@ export default function LegalRepository() {
               Mes références ({articles.length})
             </TabsTrigger>
           </TabsList>
+
+          {/* ATF Import Tab */}
+          <TabsContent value="atf-import" className="space-y-4">
+            {userId && (
+              <ATFImporter 
+                userId={userId} 
+                onImportComplete={() => loadSavedData(userId)} 
+              />
+            )}
+          </TabsContent>
 
           {/* Search Tab */}
           <TabsContent value="search" className="space-y-4">
