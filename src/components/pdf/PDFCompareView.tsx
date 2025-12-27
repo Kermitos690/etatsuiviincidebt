@@ -30,6 +30,38 @@ interface Inconsistency {
   severity: 'low' | 'medium' | 'high';
 }
 
+interface AIComparisonResult {
+  overallAssessment: string;
+  similarityScore: number;
+  contradictions: Array<{
+    type: string;
+    description: string;
+    severity: 'low' | 'medium' | 'high' | 'critical';
+    doc1Reference: string;
+    doc2Reference: string;
+    implications: string;
+  }>;
+  discrepancies: Array<{
+    field: string;
+    doc1Value: string;
+    doc2Value: string;
+    significance: string;
+  }>;
+  commonElements: Array<{
+    type: string;
+    content: string;
+    confidence: number;
+  }>;
+  timeline: Array<{
+    date: string;
+    source: 'doc1' | 'doc2' | 'both';
+    event: string;
+    significance: string;
+  }>;
+  recommendations: string[];
+  riskLevel: 'low' | 'medium' | 'high' | 'critical';
+}
+
 function getSeverityBadge(severity: string) {
   const colors: Record<string, string> = {
     critical: 'bg-red-500/20 text-red-500',
@@ -41,6 +73,16 @@ function getSeverityBadge(severity: string) {
   return colors[severity] || colors.none;
 }
 
+function getRiskLevelLabel(level: string) {
+  const labels: Record<string, string> = {
+    critical: 'Critique',
+    high: 'Élevé',
+    medium: 'Moyen',
+    low: 'Faible',
+  };
+  return labels[level] || level;
+}
+
 export function PDFCompareView({
   documents,
   selectedIds,
@@ -49,8 +91,10 @@ export function PDFCompareView({
 }: PDFCompareViewProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [inconsistencies, setInconsistencies] = useState<Inconsistency[]>([]);
+  const [aiComparison, setAiComparison] = useState<AIComparisonResult | null>(null);
   const [expandedSections, setExpandedSections] = useState({
     inconsistencies: true,
+    aiResults: true,
     timeline: true,
     participants: true,
   });
@@ -153,15 +197,20 @@ export function PDFCompareView({
     if (!doc1 || !doc2) return;
 
     setIsAnalyzing(true);
+    setAiComparison(null);
+    
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Non authentifié');
+      const { data, error } = await supabase.functions.invoke('compare-pdfs', {
+        body: { documentId1: doc1.id, documentId2: doc2.id }
+      });
 
-      // This would call a new edge function for deep comparison
-      // For now, we'll use the auto-detected inconsistencies
-      toast.success('Analyse comparative terminée');
+      if (error) throw error;
+      
+      setAiComparison(data);
+      toast.success(`Analyse IA terminée: ${data.contradictions?.length || 0} contradictions détectées`);
     } catch (error) {
-      toast.error('Erreur lors de l\'analyse comparative');
+      console.error('Error in AI comparison:', error);
+      toast.error('Erreur lors de l\'analyse comparative IA');
     } finally {
       setIsAnalyzing(false);
     }
@@ -295,6 +344,140 @@ export function PDFCompareView({
                         </div>
                       </div>
                     ))}
+                  </div>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
+          )}
+
+          {/* AI Comparison Results */}
+          {aiComparison && (
+            <Collapsible 
+              open={expandedSections.aiResults} 
+              onOpenChange={() => toggleSection('aiResults')}
+            >
+              <Card className="overflow-hidden border-primary/30">
+                <CollapsibleTrigger className="flex items-center justify-between w-full p-4 hover:bg-muted/50 transition-colors">
+                  <div className="flex items-center gap-2">
+                    <RefreshCw className="h-4 w-4 text-primary" />
+                    <h4 className="font-medium">Analyse IA approfondie</h4>
+                    <Badge className={getSeverityBadge(aiComparison.riskLevel)}>
+                      Risque: {getRiskLevelLabel(aiComparison.riskLevel)}
+                    </Badge>
+                  </div>
+                  {expandedSections.aiResults ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
+                  )}
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="p-4 pt-0 space-y-4">
+                    {/* Overall assessment */}
+                    <div className="p-3 rounded-lg bg-muted/50">
+                      <h5 className="font-medium text-sm mb-2">Évaluation globale</h5>
+                      <p className="text-sm text-muted-foreground">{aiComparison.overallAssessment}</p>
+                      <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                        <span>Similarité: {Math.round(aiComparison.similarityScore * 100)}%</span>
+                      </div>
+                    </div>
+
+                    {/* AI Contradictions */}
+                    {aiComparison.contradictions.length > 0 && (
+                      <div className="space-y-2">
+                        <h5 className="font-medium text-sm flex items-center gap-2">
+                          <AlertTriangle className="h-4 w-4 text-destructive" />
+                          Contradictions IA ({aiComparison.contradictions.length})
+                        </h5>
+                        {aiComparison.contradictions.map((c, i) => (
+                          <div 
+                            key={i} 
+                            className={cn(
+                              "p-3 rounded-lg border-l-4",
+                              c.severity === 'critical' ? "border-l-red-600 bg-red-500/10" :
+                              c.severity === 'high' ? "border-l-red-500 bg-red-500/5" :
+                              c.severity === 'medium' ? "border-l-orange-500 bg-orange-500/5" :
+                              "border-l-yellow-500 bg-yellow-500/5"
+                            )}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-medium text-sm">{c.type}</span>
+                              <Badge variant="outline" className={getSeverityBadge(c.severity)}>
+                                {getRiskLevelLabel(c.severity)}
+                              </Badge>
+                            </div>
+                            <p className="text-sm mb-2">{c.description}</p>
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div className="p-2 rounded bg-blue-500/10">
+                                <span className="text-muted-foreground block mb-1">Doc A</span>
+                                {c.doc1Reference}
+                              </div>
+                              <div className="p-2 rounded bg-purple-500/10">
+                                <span className="text-muted-foreground block mb-1">Doc B</span>
+                                {c.doc2Reference}
+                              </div>
+                            </div>
+                            {c.implications && (
+                              <p className="text-xs text-muted-foreground mt-2 italic">
+                                Implications: {c.implications}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* AI Discrepancies */}
+                    {aiComparison.discrepancies.length > 0 && (
+                      <div className="space-y-2">
+                        <h5 className="font-medium text-sm">Divergences ({aiComparison.discrepancies.length})</h5>
+                        <div className="grid gap-2">
+                          {aiComparison.discrepancies.map((d, i) => (
+                            <div key={i} className="p-2 rounded bg-muted/50 text-sm">
+                              <span className="font-medium">{d.field}:</span>
+                              <div className="flex gap-2 mt-1 text-xs">
+                                <span className="text-blue-500">A: {d.doc1Value}</span>
+                                <span className="text-muted-foreground">vs</span>
+                                <span className="text-purple-500">B: {d.doc2Value}</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1">{d.significance}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Common Elements */}
+                    {aiComparison.commonElements.length > 0 && (
+                      <div className="space-y-2">
+                        <h5 className="font-medium text-sm flex items-center gap-2">
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                          Éléments communs ({aiComparison.commonElements.length})
+                        </h5>
+                        <div className="flex flex-wrap gap-1.5">
+                          {aiComparison.commonElements.map((e, i) => (
+                            <Badge key={i} variant="secondary" className="text-xs">
+                              {e.type}: {e.content}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Recommendations */}
+                    {aiComparison.recommendations.length > 0 && (
+                      <div className="p-3 rounded-lg border border-primary/30 bg-primary/5">
+                        <h5 className="font-medium text-sm mb-2">Recommandations</h5>
+                        <ul className="space-y-1">
+                          {aiComparison.recommendations.map((r, i) => (
+                            <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                              <span className="text-primary">•</span>
+                              {r}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 </CollapsibleContent>
               </Card>

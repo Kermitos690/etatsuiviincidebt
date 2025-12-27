@@ -3,3 +3,8 @@ export { PDFUploader } from './PDFUploader';
 export { PDFCard } from './PDFCard';
 export { FolderManager } from './FolderManager';
 export { PDFDetail } from './PDFDetail';
+export { PDFSearchFilters, filterDocuments } from './PDFSearchFilters';
+export type { PDFFilters } from './PDFSearchFilters';
+export { PDFTagManager } from './PDFTagManager';
+export { PDFCompareView } from './PDFCompareView';
+export { PDFIncidentLinker } from './PDFIncidentLinker';
