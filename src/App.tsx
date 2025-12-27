@@ -35,6 +35,7 @@ const SystemAdmin = lazy(() => import("./pages/SystemAdmin"));
 const Profile = lazy(() => import("./pages/Profile"));
 const SixMonthPlan = lazy(() => import("./pages/SixMonthPlan"));
 const WeeklyDashboard = lazy(() => import("./pages/WeeklyDashboard"));
+const EmailCleanup = lazy(() => import("./pages/EmailCleanup"));
 const Auth = lazy(() => import("./pages/Auth"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -85,6 +86,7 @@ const App = () => (
               <Route path="/nouveau" element={<AuthGuard><NewIncident /></AuthGuard>} />
               <Route path="/ia-auditeur" element={<AuthGuard><IAAuditeur /></AuthGuard>} />
               <Route path="/emails" element={<AuthGuard><EmailsInbox /></AuthGuard>} />
+              <Route path="/email-cleanup" element={<AuthGuard><EmailCleanup /></AuthGuard>} />
               <Route path="/exports" element={<AuthGuard><Exports /></AuthGuard>} />
               <Route path="/admin" element={<AuthGuard><Admin /></AuthGuard>} />
               <Route path="/gmail-config" element={<AuthGuard><GmailConfig /></AuthGuard>} />

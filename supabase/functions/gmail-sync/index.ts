@@ -279,6 +279,35 @@ function isEmailRelevant(
   return domainMatch && keywordMatch;
 }
 
+// Check if email is blacklisted
+async function isEmailBlacklisted(
+  email: { sender?: string | null; recipient?: string | null },
+  userId: string,
+  supabase: any
+): Promise<boolean> {
+  const senderEmail = normalize(email.sender || "");
+  const senderDomain = normalizeDomain(email.sender || "");
+  
+  // Check blacklist
+  const { data: blacklist } = await supabase
+    .from("email_blacklist")
+    .select("domain, sender_email")
+    .eq("user_id", userId);
+  
+  if (!blacklist || blacklist.length === 0) return false;
+  
+  for (const entry of blacklist) {
+    if (entry.sender_email && senderEmail.includes(entry.sender_email.toLowerCase())) {
+      return true;
+    }
+    if (entry.domain && senderDomain === entry.domain.toLowerCase()) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
 // Background task for processing emails
 async function processEmailsInBackground(
   syncId: string,
@@ -295,7 +324,8 @@ async function processEmailsInBackground(
   const stats = { 
     received: 0, sent: 0, replied: 0, forwarded: 0, attachments: 0, 
     spam: 0, trash: 0, drafts: 0, custom_folders: 0,
-    skippedByFilter: 0  // NEW: track filtered out emails
+    skippedByFilter: 0,
+    skippedByBlacklist: 0  // NEW: track blacklisted emails
   };
   let processedCount = 0;
   let newEmailsCount = 0;
@@ -381,7 +411,13 @@ async function processEmailsInBackground(
           const emailForFilter = { sender, recipient, subject, body };
           if (!isEmailRelevant(emailForFilter, filters)) {
             console.log(`[Filter] Skipping email ${msg.id} - not relevant (subject: ${subject.substring(0, 50)}...)`);
-            return { success: true, skipped: true };
+            return { success: true, skipped: true, skipReason: 'filter' };
+          }
+
+          // ===== BLACKLIST CHECK: Skip blacklisted emails =====
+          if (await isEmailBlacklisted({ sender, recipient }, userId, supabase)) {
+            console.log(`[Blacklist] Skipping email ${msg.id} - sender/domain is blacklisted`);
+            return { success: true, skipped: true, skipReason: 'blacklist' };
           }
 
           // Check if email already exists (scoped to this user)
@@ -457,7 +493,11 @@ async function processEmailsInBackground(
       for (const result of results) {
         if (result.success) {
           if (result.skipped) {
-            stats.skippedByFilter++;
+            if (result.skipReason === 'blacklist') {
+              stats.skippedByBlacklist++;
+            } else {
+              stats.skippedByFilter++;
+            }
             continue;
           }
           processedCount++;

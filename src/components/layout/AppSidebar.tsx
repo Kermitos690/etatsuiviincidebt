@@ -73,6 +73,7 @@ const navCategories: NavCategory[] = [
     items: [
       { to: '/emails', icon: Inbox, label: 'Boîte de réception' },
       { to: '/emails-analyzed', icon: BarChart3, label: 'Emails Analysés' },
+      { to: '/email-cleanup', icon: Layers, label: 'Nettoyage' },
       { to: '/attachments', icon: Paperclip, label: 'Pièces Jointes' },
       { to: '/analysis-pipeline', icon: Brain, label: 'Analyse IA' },
     ]
