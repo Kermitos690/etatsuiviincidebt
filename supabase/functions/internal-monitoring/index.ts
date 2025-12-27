@@ -26,6 +26,7 @@ interface HealthMetrics {
   checks: Record<string, HealthCheck>;
   lastSync?: unknown;
   unresolvedAlerts?: number;
+  alertsCreated?: number;
 }
 
 interface SystemStats {
@@ -35,10 +36,19 @@ interface SystemStats {
   analyses: number;
 }
 
+// ============= Alert Thresholds =============
+const ALERT_THRESHOLDS = {
+  unresolvedAlerts: 10,       // Alert if more than 10 unresolved alerts
+  syncAgeHours: 24,           // Alert if no sync in 24 hours
+  errorRatePercent: 20,       // Alert if error rate exceeds 20%
+  pendingEmails: 100,         // Alert if more than 100 unprocessed emails
+};
+
 // ============= Handlers =============
 async function handleHealthCheck(supabase: ReturnType<typeof createServiceClient>): Promise<HealthMetrics> {
   const timestamp = new Date().toISOString();
   const checks: Record<string, HealthCheck> = {};
+  let alertsCreated = 0;
 
   // Check main tables
   const tables = ["emails", "incidents", "thread_analyses", "email_attachments"];
@@ -68,18 +78,61 @@ async function handleHealthCheck(supabase: ReturnType<typeof createServiceClient
     .select("*", { count: "exact", head: true })
     .eq("is_resolved", false);
 
-  // Determine overall status
+  // Check pending (unprocessed) emails
+  const { count: pendingEmails } = await supabase
+    .from("emails")
+    .select("*", { count: "exact", head: true })
+    .eq("processed", false);
+
+  // Determine overall status and create alerts if needed
   const hasErrors = Object.values(checks).some((c) => c.status === "error");
   let status: HealthMetrics["status"] = "healthy";
 
   if (hasErrors) {
     status = "degraded";
+    // Create system alert
+    await createSystemAlert(supabase, {
+      title: "Dégradation système détectée",
+      description: `Des erreurs ont été détectées dans les tables: ${Object.entries(checks).filter(([_, c]) => c.status === "error").map(([t]) => t).join(", ")}`,
+      severity: "warning",
+      alertType: "system_degraded"
+    });
+    alertsCreated++;
   }
-  if ((unresolvedAlerts || 0) > 10) {
+
+  if ((unresolvedAlerts || 0) > ALERT_THRESHOLDS.unresolvedAlerts) {
     status = "warning";
   }
 
-  log("info", "Health check completed", { status, unresolvedAlerts });
+  if ((pendingEmails || 0) > ALERT_THRESHOLDS.pendingEmails) {
+    status = status === "healthy" ? "warning" : status;
+    await createSystemAlert(supabase, {
+      title: "Backlog d'emails non traités",
+      description: `${pendingEmails} emails en attente de traitement. Vérifiez l'analyse IA.`,
+      severity: "warning",
+      alertType: "backlog_high"
+    });
+    alertsCreated++;
+  }
+
+  // Check sync age
+  if (recentSync) {
+    const syncAge = Date.now() - new Date(recentSync.created_at).getTime();
+    const syncAgeHours = syncAge / (1000 * 60 * 60);
+    
+    if (syncAgeHours > ALERT_THRESHOLDS.syncAgeHours) {
+      status = status === "healthy" ? "warning" : status;
+      await createSystemAlert(supabase, {
+        title: "Synchronisation Gmail inactive",
+        description: `Dernière synchronisation il y a ${Math.round(syncAgeHours)} heures. Vérifiez la configuration Gmail.`,
+        severity: "warning",
+        alertType: "sync_stale"
+      });
+      alertsCreated++;
+    }
+  }
+
+  log("info", "Health check completed", { status, unresolvedAlerts, alertsCreated });
 
   return {
     timestamp,
@@ -87,7 +140,42 @@ async function handleHealthCheck(supabase: ReturnType<typeof createServiceClient
     checks,
     lastSync: recentSync || null,
     unresolvedAlerts: unresolvedAlerts || 0,
+    alertsCreated,
   };
+}
+
+// Create system alert if not already exists recently
+async function createSystemAlert(
+  supabase: ReturnType<typeof createServiceClient>,
+  params: { title: string; description: string; severity: string; alertType: string }
+) {
+  // Check if similar alert exists in last 4 hours
+  const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+  
+  const { data: existing } = await supabase
+    .from("audit_alerts")
+    .select("id")
+    .eq("alert_type", params.alertType)
+    .eq("is_resolved", false)
+    .gte("created_at", fourHoursAgo)
+    .limit(1);
+
+  if (existing && existing.length > 0) {
+    log("info", "Alert already exists, skipping", { alertType: params.alertType });
+    return;
+  }
+
+  await supabase
+    .from("audit_alerts")
+    .insert({
+      title: params.title,
+      description: params.description,
+      severity: params.severity,
+      alert_type: params.alertType,
+      user_id: null, // System alert, no specific user
+    });
+
+  log("info", "System alert created", { alertType: params.alertType });
 }
 
 async function handleStats(supabase: ReturnType<typeof createServiceClient>): Promise<SystemStats> {
