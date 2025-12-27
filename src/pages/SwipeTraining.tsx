@@ -65,6 +65,7 @@ export default function SwipeTraining() {
       const { data: pairsData, error: pairsError } = await supabase
         .from('swipe_training_pairs')
         .select('*')
+        .eq('user_id', user.id)
         .eq('is_processed', false)
         .order('priority_score', { ascending: false })
         .limit(20);
@@ -215,7 +216,8 @@ export default function SwipeTraining() {
       await supabase
         .from('swipe_training_pairs')
         .update({ is_processed: true })
-        .eq('id', currentPair.id);
+        .eq('id', currentPair.id)
+        .eq('user_id', user.id);
 
       // Mettre à jour les stats
       const isCorrect = currentPair.ai_prediction === relationship;

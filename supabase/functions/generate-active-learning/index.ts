@@ -37,7 +37,17 @@ Deno.serve(async (req) => {
     }
 
     const userId = authResult.user.id;
-    const { action, limit = 10 } = await req.json();
+
+    const body = await req.json().catch(() => ({}));
+    const action = body.action as string | undefined;
+    const limit = (body.limit ?? 10) as number;
+
+    if (!action) {
+      return new Response(JSON.stringify({ error: 'Missing required parameter: action' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -250,8 +260,14 @@ Réponds en JSON avec cette structure:
     }
 
     if (action === 'validate-situation') {
-      const { situationId, validationStatus, userCorrection, correctLegalRefs, correctionNotes } = await req.json();
+      const { situationId, validationStatus, userCorrection, correctLegalRefs, correctionNotes } = body as any;
 
+      if (!situationId || !validationStatus) {
+        return new Response(JSON.stringify({ error: 'Missing required parameters: situationId, validationStatus' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
       const { data, error } = await supabase
         .from('ai_situation_training')
         .update({

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { verifyAuth } from "../_shared/auth.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,19 +13,30 @@ serve(async (req) => {
   }
 
   try {
+    const authResult = await verifyAuth(req);
+    if (authResult.error || !authResult.user) {
+      return new Response(JSON.stringify({ error: authResult.error || 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const userId = authResult.user.id;
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { limit = 50, regenerate = false } = await req.json().catch(() => ({}));
 
-    console.log(`Generating training pairs, limit: ${limit}, regenerate: ${regenerate}`);
+    console.log(`Generating training pairs for user ${userId}, limit: ${limit}, regenerate: ${regenerate}`);
 
     // Si regenerate, marquer les anciennes paires comme traitées
     if (regenerate) {
       await supabase
         .from('swipe_training_pairs')
         .update({ is_processed: true })
+        .eq('user_id', userId)
         .eq('is_processed', false);
     }
 
@@ -48,6 +60,7 @@ serve(async (req) => {
           urgency_level
         )
       `)
+      .eq('user_id', userId)
       .order('received_at', { ascending: false })
       .limit(200);
 
@@ -71,7 +84,8 @@ serve(async (req) => {
     // Récupérer les paires existantes pour éviter les doublons
     const { data: existingPairs } = await supabase
       .from('swipe_training_pairs')
-      .select('email_1_id, email_2_id');
+      .select('email_1_id, email_2_id')
+      .eq('user_id', userId);
 
     const existingSet = new Set(
       (existingPairs || []).map(p => `${p.email_1_id}-${p.email_2_id}`)
@@ -191,6 +205,7 @@ serve(async (req) => {
           }
 
           pairsToInsert.push({
+            user_id: userId,
             email_1_id: email1.id,
             email_2_id: email2.id,
             pair_type: type,
