@@ -400,11 +400,19 @@ export default function Incidents() {
   const deleteIncident = async (incident: Incident) => {
     setIsDeleting(true);
     try {
+      // Récupérer l'utilisateur courant
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error('Vous devez être connecté');
+        return;
+      }
+
       // Enregistrer le feedback pour l'IA (incident non pertinent)
-      await supabase.from('ai_training_feedback').insert({
+      const { error: feedbackError } = await supabase.from('ai_training_feedback').insert({
         entity_id: incident.id,
         entity_type: 'incident',
         feedback_type: 'rejected',
+        user_id: user.id,
         original_detection: {
           titre: incident.titre,
           institution: incident.institution,
@@ -415,6 +423,11 @@ export default function Incidents() {
         notes: 'Incident supprimé manuellement - hors périmètre'
       });
 
+      if (feedbackError) {
+        console.error('Feedback error:', feedbackError);
+        // Continuer même si le feedback échoue
+      }
+
       // Supprimer l'incident
       const { error } = await supabase
         .from('incidents')
@@ -423,7 +436,7 @@ export default function Incidents() {
 
       if (error) throw error;
 
-      // Recharger les données
+      // Recharger les données pour mettre à jour l'affichage
       await loadFromSupabase();
       toast.success(`Incident #${incident.numero} supprimé et enregistré comme feedback IA`);
     } catch (error) {
