@@ -104,7 +104,7 @@ export default function SwipeTraining() {
         .from('swipe_training_stats')
         .select('*')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
       if (statsData) {
         setStats({

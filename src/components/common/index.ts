@@ -15,3 +15,4 @@ export { LoadingState } from './LoadingState';
 export { EmptyState } from './EmptyState';
 export { ErrorState } from './ErrorState';
 export { QuickActions } from './QuickActions';
+export { ErrorBoundary } from './ErrorBoundary';

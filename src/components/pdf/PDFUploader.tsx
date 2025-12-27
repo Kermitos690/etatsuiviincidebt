@@ -94,7 +94,7 @@ export function PDFUploader({ folders, onUploadComplete, onCreateFolder }: PDFUp
     }
   };
 
-  const handleFiles = async (files: FileList | File[]) => {
+  const handleFiles = useCallback(async (files: FileList | File[]) => {
     const pdfFiles = Array.from(files).filter(f => f.type === 'application/pdf');
     
     if (pdfFiles.length === 0) {
@@ -108,23 +108,21 @@ export function PDFUploader({ folders, onUploadComplete, onCreateFolder }: PDFUp
       status: 'uploading' as const,
     }));
 
-    setUploadingFiles(prev => [...prev, ...newUploads]);
-
-    // Upload files in parallel (max 3 at a time)
-    const startIndex = uploadingFiles.length;
-    const uploadPromises = pdfFiles.map((file, i) => uploadFile(file, startIndex + i));
+    setUploadingFiles(prev => {
+      const startIndex = prev.length;
+      // Upload files in parallel (max 3 at a time)
+      pdfFiles.forEach((file, i) => uploadFile(file, startIndex + i));
+      return [...prev, ...newUploads];
+    });
     
-    await Promise.all(uploadPromises);
-    
-    toast.success(`${pdfFiles.length} fichier(s) uploadé(s)`);
-    onUploadComplete();
-  };
+    // Note: Toast and callback will be triggered by individual file completions
+  }, [selectedFolderId]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     handleFiles(e.dataTransfer.files);
-  }, [selectedFolderId]);
+  }, [handleFiles]);
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {

@@ -134,20 +134,11 @@ export default function PDFDocuments() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Non authentifié');
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-pdf-text`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ documentId: doc.id }),
-        }
-      );
+      const { data: result, error } = await supabase.functions.invoke('extract-pdf-text', {
+        body: { documentId: doc.id },
+      });
 
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
+      if (error) throw new Error(error.message);
 
       toast.success('Texte extrait avec succès');
       fetchDocuments();
@@ -168,20 +159,11 @@ export default function PDFDocuments() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Non authentifié');
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-pdf`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ documentId: doc.id }),
-        }
-      );
+      const { data: result, error } = await supabase.functions.invoke('analyze-pdf', {
+        body: { documentId: doc.id },
+      });
 
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
+      if (error) throw new Error(error.message);
 
       toast.success('Analyse terminée');
       fetchDocuments();

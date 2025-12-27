@@ -76,7 +76,7 @@ export function FullReanalyzeDialog({
         .from('sync_status')
         .select('stats, status')
         .eq('id', syncId)
-        .single();
+        .maybeSingle();
 
       if (data?.stats) {
         setProgress(data.stats as unknown as ReanalyzeProgress);
@@ -113,22 +113,12 @@ export function FullReanalyzeDialog({
         return;
       }
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/full-reanalyze`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ syncGmail, forceReanalyze }),
-        }
-      );
+      const { data: result, error } = await supabase.functions.invoke('full-reanalyze', {
+        body: { syncGmail, forceReanalyze },
+      });
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Erreur lors de la réanalyse');
+      if (error) {
+        throw new Error(error.message || 'Erreur lors de la réanalyse');
       }
 
       if (result.syncId) {
