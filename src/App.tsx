@@ -38,6 +38,7 @@ const WeeklyDashboard = lazy(() => import("./pages/WeeklyDashboard"));
 const EmailCleanup = lazy(() => import("./pages/EmailCleanup"));
 const AdvancedTraining = lazy(() => import("./pages/AdvancedTraining"));
 const RelationshipGraph = lazy(() => import("./pages/RelationshipGraph"));
+const AnomalyDetection = lazy(() => import("./pages/AnomalyDetection"));
 const Auth = lazy(() => import("./pages/Auth"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -107,6 +108,7 @@ const App = () => (
               <Route path="/weekly-dashboard" element={<AuthGuard><WeeklyDashboard /></AuthGuard>} />
               <Route path="/advanced-training" element={<AuthGuard><AdvancedTraining /></AuthGuard>} />
               <Route path="/relationship-graph" element={<AuthGuard><RelationshipGraph /></AuthGuard>} />
+              <Route path="/anomaly-detection" element={<AuthGuard><AnomalyDetection /></AuthGuard>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

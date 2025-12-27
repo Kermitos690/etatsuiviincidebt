@@ -233,6 +233,95 @@ export type Database = {
         }
         Relationships: []
       }
+      anomaly_detections: {
+        Row: {
+          ai_explanation: string | null
+          ai_recommendations: Json | null
+          anomaly_type: string
+          baseline_data: Json | null
+          confidence: number | null
+          created_at: string
+          description: string
+          detected_at: string
+          deviation_score: number | null
+          id: string
+          investigated_at: string | null
+          pattern_data: Json | null
+          related_actor_id: string | null
+          related_email_ids: string[] | null
+          related_incident_ids: string[] | null
+          resolution_notes: string | null
+          resolved_at: string | null
+          severity: string
+          status: string
+          time_window_end: string | null
+          time_window_start: string | null
+          title: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          ai_explanation?: string | null
+          ai_recommendations?: Json | null
+          anomaly_type: string
+          baseline_data?: Json | null
+          confidence?: number | null
+          created_at?: string
+          description: string
+          detected_at?: string
+          deviation_score?: number | null
+          id?: string
+          investigated_at?: string | null
+          pattern_data?: Json | null
+          related_actor_id?: string | null
+          related_email_ids?: string[] | null
+          related_incident_ids?: string[] | null
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          severity?: string
+          status?: string
+          time_window_end?: string | null
+          time_window_start?: string | null
+          title: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          ai_explanation?: string | null
+          ai_recommendations?: Json | null
+          anomaly_type?: string
+          baseline_data?: Json | null
+          confidence?: number | null
+          created_at?: string
+          description?: string
+          detected_at?: string
+          deviation_score?: number | null
+          id?: string
+          investigated_at?: string | null
+          pattern_data?: Json | null
+          related_actor_id?: string | null
+          related_email_ids?: string[] | null
+          related_incident_ids?: string[] | null
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          severity?: string
+          status?: string
+          time_window_end?: string | null
+          time_window_start?: string | null
+          title?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "anomaly_detections_related_actor_id_fkey"
+            columns: ["related_actor_id"]
+            isOneToOne: false
+            referencedRelation: "actor_trust_scores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_alerts: {
         Row: {
           alert_type: string
@@ -292,6 +381,66 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      behavior_baselines: {
+        Row: {
+          avg_emails_per_day: number | null
+          avg_response_time_hours: number | null
+          calculated_at: string | null
+          communication_frequency: Json | null
+          created_at: string
+          entity_id: string
+          entity_label: string | null
+          entity_type: string
+          id: string
+          recipient_patterns: Json | null
+          sample_size: number | null
+          topic_distribution: Json | null
+          typical_days: Json | null
+          typical_hours: Json | null
+          typical_sentiment: number | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          avg_emails_per_day?: number | null
+          avg_response_time_hours?: number | null
+          calculated_at?: string | null
+          communication_frequency?: Json | null
+          created_at?: string
+          entity_id: string
+          entity_label?: string | null
+          entity_type: string
+          id?: string
+          recipient_patterns?: Json | null
+          sample_size?: number | null
+          topic_distribution?: Json | null
+          typical_days?: Json | null
+          typical_hours?: Json | null
+          typical_sentiment?: number | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          avg_emails_per_day?: number | null
+          avg_response_time_hours?: number | null
+          calculated_at?: string | null
+          communication_frequency?: Json | null
+          created_at?: string
+          entity_id?: string
+          entity_label?: string | null
+          entity_type?: string
+          id?: string
+          recipient_patterns?: Json | null
+          sample_size?: number | null
+          topic_distribution?: Json | null
+          typical_days?: Json | null
+          typical_hours?: Json | null
+          typical_sentiment?: number | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
       }
       betrayal_detections: {
         Row: {
