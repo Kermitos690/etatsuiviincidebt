@@ -101,12 +101,21 @@ export default function IATraining() {
   // Submit feedback mutation
   const submitFeedback = useMutation({
     mutationFn: async ({ entityId, entityType, feedbackType, notes }: any) => {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) throw userError;
+      if (!user) throw new Error('Vous devez être connecté pour enregistrer un feedback.');
+
       const { error } = await supabase
         .from('ai_training_feedback')
         .insert({
           entity_id: entityId,
           entity_type: entityType,
           feedback_type: feedbackType,
+          user_id: user.id,
           notes,
           original_detection: selectedThread,
         });
@@ -119,8 +128,9 @@ export default function IATraining() {
       setSelectedThread(null);
       setFeedbackNotes("");
     },
-    onError: () => {
-      toast.error("Erreur lors de l'enregistrement du feedback");
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : 'Erreur inconnue';
+      toast.error("Erreur lors de l'enregistrement du feedback", { description: msg });
     }
   });
 
