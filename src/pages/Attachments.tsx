@@ -527,12 +527,18 @@ export default function Attachments() {
 
                             {analysis.legal_violations && analysis.legal_violations.length > 0 && (
                               <div className="mt-2 flex flex-wrap gap-1">
-                                {analysis.legal_violations.map((violation, i) => (
-                                  <Badge key={i} variant="outline" className="text-xs bg-orange-500/10 text-orange-500 border-orange-500/30">
-                                    <Scale className="h-3 w-3 mr-1" />
-                                    {violation}
-                                  </Badge>
-                                ))}
+                                {analysis.legal_violations.map((violation, i) => {
+                                  // Handle both string and object formats
+                                  const displayText = typeof violation === 'string' 
+                                    ? violation 
+                                    : (violation as any)?.issue || (violation as any)?.legal_article || 'Violation';
+                                  return (
+                                    <Badge key={i} variant="outline" className="text-xs bg-orange-500/10 text-orange-500 border-orange-500/30">
+                                      <Scale className="h-3 w-3 mr-1" />
+                                      {displayText}
+                                    </Badge>
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
@@ -676,12 +682,18 @@ export default function Attachments() {
                               <div>
                                 <p className="text-sm text-muted-foreground mb-1">Violations légales</p>
                                 <div className="flex flex-wrap gap-1">
-                                  {analysis.legal_violations.map((v, i) => (
-                                    <Badge key={i} variant="outline" className="bg-red-500/10 text-red-500 border-red-500/30">
-                                      <Scale className="h-3 w-3 mr-1" />
-                                      {v}
-                                    </Badge>
-                                  ))}
+                                  {analysis.legal_violations.map((v, i) => {
+                                    // Handle both string and object formats
+                                    const displayText = typeof v === 'string' 
+                                      ? v 
+                                      : (v as any)?.issue || (v as any)?.legal_article || 'Violation';
+                                    return (
+                                      <Badge key={i} variant="outline" className="bg-red-500/10 text-red-500 border-red-500/30">
+                                        <Scale className="h-3 w-3 mr-1" />
+                                        {displayText}
+                                      </Badge>
+                                    );
+                                  })}
                                 </div>
                               </div>
                             )}
