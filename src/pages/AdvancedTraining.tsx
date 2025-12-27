@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { SituationCard } from '@/components/training/SituationCard';
 import { TrainingDashboard } from '@/components/training/TrainingDashboard';
 import { LegalReferenceManager } from '@/components/training/LegalReferenceManager';
 import { useActivelearning } from '@/hooks/useActiveLearning';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { 
   Brain, 
   RefreshCw, 
@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 export default function AdvancedTraining() {
+  const isMobile = useIsMobile();
   const { 
     situations, 
     stats, 
@@ -28,7 +29,7 @@ export default function AdvancedTraining() {
   } = useActivelearning();
 
   return (
-    <div className="container mx-auto p-4 space-y-6">
+    <div className="container mx-auto p-4 space-y-6 h-full min-h-0 flex flex-col">
       <PageHeader
         title="Entraînement IA Avancé"
         description="Validez les détections et enrichissez la base de connaissances juridiques"
@@ -81,31 +82,29 @@ export default function AdvancedTraining() {
           </div>
 
           {/* Situations List */}
-          <ScrollArea className="h-[600px]">
-            <div className="space-y-4 pr-4">
-              {isLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : situations.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Brain className="h-16 w-16 mx-auto mb-4 opacity-20" />
-                  <p className="text-lg font-medium">Aucune situation en attente</p>
-                  <p className="text-sm mt-2">
-                    Cliquez sur "Générer des situations" pour analyser vos emails
-                  </p>
-                </div>
-              ) : (
-                situations.map(situation => (
-                  <SituationCard
-                    key={situation.id}
-                    situation={situation}
-                    onValidate={validateSituation}
-                  />
-                ))
-              )}
-            </div>
-          </ScrollArea>
+          <div className={isMobile ? "space-y-4 pb-4" : "flex-1 min-h-0 overflow-y-auto space-y-4 pr-2"}>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : situations.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <Brain className="h-16 w-16 mx-auto mb-4 opacity-20" />
+                <p className="text-lg font-medium">Aucune situation en attente</p>
+                <p className="text-sm mt-2">
+                  Cliquez sur "Générer des situations" pour analyser vos emails
+                </p>
+              </div>
+            ) : (
+              situations.map(situation => (
+                <SituationCard
+                  key={situation.id}
+                  situation={situation}
+                  onValidate={validateSituation}
+                />
+              ))
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="legal">

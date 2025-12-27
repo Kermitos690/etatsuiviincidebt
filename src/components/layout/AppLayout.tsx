@@ -11,7 +11,7 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   return (
-    <div className="min-h-screen w-full mesh-bg relative">
+    <div className="min-h-[100dvh] h-[100dvh] w-full mesh-bg relative flex flex-col overflow-hidden">
       {/* Animated background orbs */}
       <div className="orb-bg orb-1 fixed" />
       <div className="orb-bg orb-2 fixed" />
@@ -35,12 +35,12 @@ export function AppLayout({ children }: AppLayoutProps) {
         <NotificationCenter />
       </div>
       
-      <div className="flex w-full relative z-10">
+      <div className="flex flex-1 min-h-0 w-full relative z-10">
         {/* Desktop sidebar */}
         <DesktopSidebar />
         
-        {/* Main content - add bottom padding on mobile for nav bar */}
-        <main className="flex-1 min-h-screen overflow-y-auto pb-20 lg:pb-0 lg:pt-16">
+        {/* Main content - scrollable area */}
+        <main className="flex-1 min-h-0 overflow-y-auto pb-20 lg:pb-0 lg:pt-16 overscroll-contain touch-pan-y">
           {children}
         </main>
       </div>
