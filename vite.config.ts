@@ -18,4 +18,7 @@ export default defineConfig(({ mode }) => ({
   build: {
     sourcemap: true,
   },
+  optimizeDeps: {
+    include: ['jspdf'],
+  },
 }));
