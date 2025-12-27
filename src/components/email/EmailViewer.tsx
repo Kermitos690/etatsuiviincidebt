@@ -163,9 +163,14 @@ export function EmailViewer({ emailId, open, onOpenChange }: EmailViewerProps) {
   if (!open) return null;
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
-        <DialogHeader>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) handleClose();
+      }}
+    >
+      <DialogContent className="max-w-3xl h-[90dvh] flex flex-col overflow-hidden">
+        <DialogHeader className="flex-none">
           <DialogTitle className="flex items-center gap-2">
             <Mail className="h-5 w-5" />
             {loading ? 'Chargement...' : email?.subject || 'Email'}
@@ -177,7 +182,7 @@ export function EmailViewer({ emailId, open, onOpenChange }: EmailViewerProps) {
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : email ? (
-          <ScrollArea className="flex-1 pr-4">
+          <ScrollArea className="flex-1 min-h-0 pr-4">
             <div className="space-y-4">
               {/* Email Header */}
               <Card>
