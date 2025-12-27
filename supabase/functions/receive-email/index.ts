@@ -3,12 +3,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-webhook-secret',
 };
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+const WEBHOOK_SECRET = Deno.env.get('RECEIVE_EMAIL_WEBHOOK_SECRET');
 
 // Email validation regex
 const isValidEmail = (email: string): boolean => {
@@ -21,9 +22,44 @@ const sanitizeString = (str: string | undefined, maxLength: number): string => {
   return str.substring(0, maxLength).trim();
 };
 
+// Verify webhook secret
+const verifyWebhookAuth = (req: Request): boolean => {
+  if (!WEBHOOK_SECRET) {
+    console.warn('[Auth] RECEIVE_EMAIL_WEBHOOK_SECRET not configured - rejecting request');
+    return false;
+  }
+  
+  const providedSecret = req.headers.get('x-webhook-secret');
+  if (!providedSecret) {
+    console.log('[Auth] Missing x-webhook-secret header');
+    return false;
+  }
+  
+  // Timing-safe comparison
+  if (providedSecret.length !== WEBHOOK_SECRET.length) {
+    return false;
+  }
+  
+  let result = 0;
+  for (let i = 0; i < providedSecret.length; i++) {
+    result |= providedSecret.charCodeAt(i) ^ WEBHOOK_SECRET.charCodeAt(i);
+  }
+  
+  return result === 0;
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Verify webhook authentication
+  if (!verifyWebhookAuth(req)) {
+    console.error('[Auth] Webhook authentication failed');
+    return new Response(
+      JSON.stringify({ error: 'Unauthorized - invalid or missing webhook secret' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
 
   try {
