@@ -139,26 +139,40 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Rate limiting for AI operations
-  const clientId = getClientIdentifier(req, "batch-analyze");
-  const rateCheck = checkRateLimit(clientId, RATE_LIMITS.ai);
-  if (!rateCheck.allowed) {
-    console.log(`[RateLimit] Request blocked for ${clientId}`);
-    return rateLimitResponse(rateCheck.resetAt);
+  // Check for internal cron secret (allows scheduled execution without user auth)
+  const cronSecret = req.headers.get("x-cron-secret");
+  const INTERNAL_CRON_SECRET = Deno.env.get("INTERNAL_CRON_SECRET");
+  const isInternalCall = cronSecret && INTERNAL_CRON_SECRET && cronSecret === `Bearer ${INTERNAL_CRON_SECRET}`;
+
+  // Rate limiting for AI operations (skip for internal calls)
+  if (!isInternalCall) {
+    const clientId = getClientIdentifier(req, "batch-analyze");
+    const rateCheck = checkRateLimit(clientId, RATE_LIMITS.ai);
+    if (!rateCheck.allowed) {
+      console.log(`[RateLimit] Request blocked for ${clientId}`);
+      return rateLimitResponse(rateCheck.resetAt);
+    }
   }
 
   try {
-    const { syncId, batchSize = 10, autoCreateIncidents = true, confidenceThreshold = 75 } = await req.json();
+    const { syncId, batchSize = 50, autoCreateIncidents = true, confidenceThreshold = 75, userId } = await req.json();
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Get unanalyzed emails (new or not processed)
-    const { data: emails, error: fetchError } = await supabase
+    // Build query for unanalyzed emails
+    let query = supabase
       .from("emails")
-      .select("id, subject, sender, recipient, body, received_at, gmail_thread_id, is_sent, email_type")
-      .or("processed.eq.false,ai_analysis.is.null")
+      .select("id, subject, sender, recipient, body, received_at, gmail_thread_id, is_sent, email_type, user_id")
+      .is("ai_analysis", null)
       .eq("is_sent", false) // Only analyze received emails
       .order("received_at", { ascending: false })
       .limit(batchSize);
+
+    // Filter by user_id if provided
+    if (userId) {
+      query = query.eq("user_id", userId);
+    }
+
+    const { data: emails, error: fetchError } = await query;
 
     if (fetchError) throw fetchError;
 
@@ -293,6 +307,7 @@ ${context}
                   confidence_level: `${analysis.confidence}%`,
                   gmail_references: email.gmail_thread_id ? [email.gmail_thread_id] : [],
                   score: analysis.confidence,
+                  user_id: email.user_id, // Important: assign to email owner
                 })
                 .select()
                 .single();
