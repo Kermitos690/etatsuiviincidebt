@@ -5,8 +5,10 @@ import { Loader2, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 // Tutorial mode: bypass authentication when enabled
-// Set VITE_TUTORIAL_MODE=true in .env to enable (for screenshot capture)
-const TUTORIAL_MODE = import.meta.env.VITE_TUTORIAL_MODE === 'true';
+// Add ?tutorial=true to any URL to enable (for screenshot capture)
+// Or set VITE_TUTORIAL_MODE=true in environment
+const TUTORIAL_MODE = import.meta.env.VITE_TUTORIAL_MODE === 'true' || 
+  (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tutorial') === 'true');
 
 interface AuthGuardProps {
   children: ReactNode;
