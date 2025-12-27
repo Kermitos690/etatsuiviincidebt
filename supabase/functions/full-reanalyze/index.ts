@@ -87,7 +87,7 @@ function isEmailRelevant(
 }
 
 // Verify JWT and get user
-async function verifyAuth(req: Request): Promise<{ user: any; supabase: any } | null> {
+async function verifyAuth(req: Request): Promise<{ user: any; token: string } | null> {
   const authHeader = req.headers.get("authorization");
   if (!authHeader) {
     console.error("No authorization header");
@@ -103,7 +103,7 @@ async function verifyAuth(req: Request): Promise<{ user: any; supabase: any } | 
     return null;
   }
 
-  return { user, supabase };
+  return { user, token };
 }
 
 const ANALYSIS_PROMPT = `Tu es un EXPERT JURIDIQUE SUISSE spécialisé dans la protection de l'adulte et les curatelles.
@@ -168,81 +168,45 @@ async function analyzeEmailWithAI(emailContent: string): Promise<any | null> {
   }
 }
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+// Background processing function
+async function processReanalyze(
+  userId: string,
+  authToken: string,
+  syncId: string,
+  options: { syncGmail: boolean; forceReanalyze: boolean }
+) {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const { syncGmail, forceReanalyze } = options;
 
-  // Rate limiting for heavy operations (only 5 per minute)
-  const clientId = getClientIdentifier(req, "full-reanalyze");
-  const rateCheck = checkRateLimit(clientId, { windowMs: 60000, maxRequests: 5 });
-  if (!rateCheck.allowed) {
-    console.log(`[RateLimit] Request blocked for ${clientId}`);
-    return rateLimitResponse(rateCheck.resetAt);
-  }
+  console.log(`[full-reanalyze] Background processing started for user ${userId}, syncId ${syncId}`);
 
-  const auth = await verifyAuth(req);
-  if (!auth) {
-    return new Response(JSON.stringify({ error: "Non autorisé" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
+  const progress: ReanalyzeProgress = {
+    step: "Initialisation",
+    stepNumber: 0,
+    totalSteps: 5,
+    current: 0,
+    total: 0,
+    errors: [],
+    stats: {
+      emailsSynced: 0,
+      emailsAnalyzed: 0,
+      factsExtracted: 0,
+      threadsAnalyzed: 0,
+      incidentsCreated: 0,
+      emailsSkippedByFilter: 0,
+    },
+  };
 
-  const { user, supabase } = auth;
-  const userId = user.id;
-
-  console.log(`[full-reanalyze] Starting for user ${userId}`);
+  const updateProgress = async (updates: Partial<ReanalyzeProgress>) => {
+    Object.assign(progress, updates);
+    await supabase
+      .from("sync_status")
+      .update({ stats: progress })
+      .eq("id", syncId);
+    console.log(`[Progress] Step ${progress.stepNumber}/${progress.totalSteps}: ${progress.step} (${progress.current}/${progress.total})`);
+  };
 
   try {
-    const { forceReanalyze = true, syncGmail = true } = await req.json().catch(() => ({}));
-
-    const progress: ReanalyzeProgress = {
-      step: "Initialisation",
-      stepNumber: 0,
-      totalSteps: 5,
-      current: 0,
-      total: 0,
-      errors: [],
-      stats: {
-        emailsSynced: 0,
-        emailsAnalyzed: 0,
-        factsExtracted: 0,
-        threadsAnalyzed: 0,
-        incidentsCreated: 0,
-        emailsSkippedByFilter: 0,
-      },
-    };
-
-    // Create sync status record
-    const { data: syncStatus, error: syncStatusError } = await supabase
-      .from("sync_status")
-      .insert({
-        user_id: userId,
-        status: "processing",
-        started_at: new Date().toISOString(),
-        stats: progress,
-      })
-      .select()
-      .single();
-
-    if (syncStatusError) {
-      console.error("Failed to create sync status:", syncStatusError);
-    }
-
-    const syncId = syncStatus?.id;
-
-    const updateProgress = async (updates: Partial<ReanalyzeProgress>) => {
-      Object.assign(progress, updates);
-      if (syncId) {
-        await supabase
-          .from("sync_status")
-          .update({ stats: progress })
-          .eq("id", syncId);
-      }
-      console.log(`[Progress] Step ${progress.stepNumber}/${progress.totalSteps}: ${progress.step} (${progress.current}/${progress.total})`);
-    };
-
     // ===== STEP 1: Sync Gmail =====
     // Fetch Gmail config first (needed for filters)
     const { data: gmailConfig } = await supabase
@@ -269,7 +233,7 @@ serve(async (req) => {
           const syncResponse = await fetch(`${SUPABASE_URL}/functions/v1/gmail-sync`, {
             method: "POST",
             headers: {
-              "Authorization": req.headers.get("authorization") || "",
+              "Authorization": `Bearer ${authToken}`,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({ 
@@ -533,24 +497,121 @@ ${email.body || "(Contenu vide)"}
     // ===== STEP 5: Finalize =====
     await updateProgress({ step: "Finalisation", stepNumber: 5, current: 1, total: 1 });
 
-    // Update sync status
-    if (syncId) {
-      await supabase
-        .from("sync_status")
-        .update({
-          status: progress.errors.length > 0 ? "completed_with_errors" : "completed",
-          completed_at: new Date().toISOString(),
-          stats: progress,
-        })
-        .eq("id", syncId);
-    }
+    // Update sync status to completed
+    await supabase
+      .from("sync_status")
+      .update({
+        status: progress.errors.length > 0 ? "completed_with_errors" : "completed",
+        completed_at: new Date().toISOString(),
+        stats: progress,
+      })
+      .eq("id", syncId);
 
     console.log("[full-reanalyze] Complete:", progress.stats);
 
+  } catch (error) {
+    console.error("[full-reanalyze] Background error:", error);
+    
+    // Update sync status with error
+    await supabase
+      .from("sync_status")
+      .update({
+        status: "error",
+        error_message: error instanceof Error ? error.message : "Erreur inconnue",
+        completed_at: new Date().toISOString(),
+        stats: progress,
+      })
+      .eq("id", syncId);
+  }
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  // Rate limiting for heavy operations (only 5 per minute)
+  const clientId = getClientIdentifier(req, "full-reanalyze");
+  const rateCheck = checkRateLimit(clientId, { windowMs: 60000, maxRequests: 5 });
+  if (!rateCheck.allowed) {
+    console.log(`[RateLimit] Request blocked for ${clientId}`);
+    return rateLimitResponse(rateCheck.resetAt);
+  }
+
+  const auth = await verifyAuth(req);
+  if (!auth) {
+    return new Response(JSON.stringify({ error: "Non autorisé" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const { user, token } = auth;
+  const userId = user.id;
+
+  console.log(`[full-reanalyze] Starting for user ${userId}`);
+
+  try {
+    const { forceReanalyze = true, syncGmail = true } = await req.json().catch(() => ({}));
+
+    // Create a Supabase client for initial setup
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Create sync status record FIRST
+    const { data: syncStatus, error: syncStatusError } = await supabase
+      .from("sync_status")
+      .insert({
+        user_id: userId,
+        status: "processing",
+        started_at: new Date().toISOString(),
+        stats: {
+          step: "Initialisation",
+          stepNumber: 0,
+          totalSteps: 5,
+          current: 0,
+          total: 0,
+          errors: [],
+          stats: {
+            emailsSynced: 0,
+            emailsAnalyzed: 0,
+            factsExtracted: 0,
+            threadsAnalyzed: 0,
+            incidentsCreated: 0,
+            emailsSkippedByFilter: 0,
+          },
+        },
+      })
+      .select()
+      .single();
+
+    if (syncStatusError || !syncStatus) {
+      console.error("Failed to create sync status:", syncStatusError);
+      return new Response(JSON.stringify({ error: "Impossible de démarrer le traitement" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const syncId = syncStatus.id;
+    console.log(`[full-reanalyze] Created sync status: ${syncId}`);
+
+    // Start background processing using EdgeRuntime.waitUntil
+    // @ts-ignore - EdgeRuntime is available in Supabase Edge Functions
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+      // @ts-ignore
+      EdgeRuntime.waitUntil(
+        processReanalyze(userId, token, syncId, { syncGmail, forceReanalyze })
+      );
+    } else {
+      // Fallback: run without waitUntil (may timeout for large datasets)
+      processReanalyze(userId, token, syncId, { syncGmail, forceReanalyze });
+    }
+
+    // Return immediately with syncId for polling
     return new Response(JSON.stringify({
       success: true,
       syncId,
-      progress,
+      message: "Traitement démarré en arrière-plan",
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
