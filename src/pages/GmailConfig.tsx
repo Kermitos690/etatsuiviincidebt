@@ -561,33 +561,83 @@ export default function GmailConfig() {
                 <Switch checked={config.syncEnabled} onCheckedChange={handleSyncEnabledChange} />
               </div>
               <Separator />
-              {/* Filter Presets */}
+              {/* Filter Presets - Multi-select */}
               <div className="space-y-3">
                 <Label className="text-base">Filtres prédéfinis</Label>
                 <p className="text-sm text-muted-foreground">
-                  Appliquez rapidement des filtres adaptés à votre cas d'usage
+                  Sélectionnez plusieurs filtres adaptés à votre cas d'usage (les domaines et mots-clés s'ajoutent)
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-                  {FILTER_PRESETS.map((preset) => (
-                    <Button
-                      key={preset.id}
-                      variant="outline"
-                      size="sm"
-                      className="flex flex-col items-center gap-1 h-auto py-3 hover:bg-primary/10 hover:border-primary/50 transition-all"
-                      onClick={async () => {
-                        // Merge preset with existing filters
-                        const newDomains = [...new Set([...config.domains, ...preset.domains])];
-                        const newKeywords = [...new Set([...config.keywords, ...preset.keywords])];
-                        setConfig(prev => ({ ...prev, domains: newDomains, keywords: newKeywords }));
-                        await saveConfigToDb(newDomains, newKeywords, config.syncEnabled);
-                        toast.success(`Filtres "${preset.name}" appliqués`);
-                      }}
-                    >
-                      <span className="text-xl">{preset.icon}</span>
-                      <span className="text-xs font-medium">{preset.name}</span>
-                    </Button>
-                  ))}
+                  {FILTER_PRESETS.map((preset) => {
+                    // Check if this preset is "active" (all its domains AND keywords are in the config)
+                    const hasAllDomains = preset.domains.every(d => config.domains.includes(d));
+                    const hasAllKeywords = preset.keywords.every(k => config.keywords.includes(k));
+                    const isActive = hasAllDomains && hasAllKeywords;
+                    const isPartial = (preset.domains.some(d => config.domains.includes(d)) || 
+                                       preset.keywords.some(k => config.keywords.includes(k))) && !isActive;
+                    
+                    return (
+                      <Button
+                        key={preset.id}
+                        variant={isActive ? "default" : "outline"}
+                        size="sm"
+                        className={cn(
+                          "flex flex-col items-center gap-1 h-auto py-3 transition-all relative",
+                          isActive && "bg-primary text-primary-foreground",
+                          isPartial && "border-primary/50 bg-primary/10",
+                          !isActive && !isPartial && "hover:bg-primary/10 hover:border-primary/50"
+                        )}
+                        onClick={async () => {
+                          if (isActive) {
+                            // Remove this preset's filters
+                            const newDomains = config.domains.filter(d => !preset.domains.includes(d));
+                            const newKeywords = config.keywords.filter(k => !preset.keywords.includes(k));
+                            setConfig(prev => ({ ...prev, domains: newDomains, keywords: newKeywords }));
+                            await saveConfigToDb(newDomains, newKeywords, config.syncEnabled);
+                            toast.success(`Filtres "${preset.name}" retirés`);
+                          } else {
+                            // Add this preset's filters
+                            const newDomains = [...new Set([...config.domains, ...preset.domains])];
+                            const newKeywords = [...new Set([...config.keywords, ...preset.keywords])];
+                            setConfig(prev => ({ ...prev, domains: newDomains, keywords: newKeywords }));
+                            await saveConfigToDb(newDomains, newKeywords, config.syncEnabled);
+                            toast.success(`Filtres "${preset.name}" ajoutés`);
+                          }
+                        }}
+                      >
+                        {isActive && (
+                          <div className="absolute top-1 right-1">
+                            <Check className="h-3 w-3" />
+                          </div>
+                        )}
+                        <span className="text-xl">{preset.icon}</span>
+                        <span className="text-xs font-medium">{preset.name}</span>
+                        {isPartial && (
+                          <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 mt-1">
+                            Partiel
+                          </Badge>
+                        )}
+                      </Button>
+                    );
+                  })}
                 </div>
+                
+                {/* Show active presets count */}
+                {FILTER_PRESETS.filter(p => 
+                  p.domains.every(d => config.domains.includes(d)) && 
+                  p.keywords.every(k => config.keywords.includes(k))
+                ).length > 0 && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Check className="h-4 w-4 text-primary" />
+                    <span>
+                      {FILTER_PRESETS.filter(p => 
+                        p.domains.every(d => config.domains.includes(d)) && 
+                        p.keywords.every(k => config.keywords.includes(k))
+                      ).length} filtre(s) actif(s)
+                    </span>
+                  </div>
+                )}
+                
                 <Accordion type="single" collapsible className="w-full">
                   <AccordionItem value="preset-details" className="border-none">
                     <AccordionTrigger className="text-xs text-muted-foreground hover:no-underline py-2">
@@ -595,25 +645,40 @@ export default function GmailConfig() {
                     </AccordionTrigger>
                     <AccordionContent>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
-                        {FILTER_PRESETS.map((preset) => (
-                          <div key={preset.id} className="p-3 rounded-lg bg-muted/50 space-y-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-lg">{preset.icon}</span>
-                              <span className="font-medium text-sm">{preset.name}</span>
+                        {FILTER_PRESETS.map((preset) => {
+                          const hasAllDomains = preset.domains.every(d => config.domains.includes(d));
+                          const hasAllKeywords = preset.keywords.every(k => config.keywords.includes(k));
+                          const isActive = hasAllDomains && hasAllKeywords;
+                          
+                          return (
+                            <div 
+                              key={preset.id} 
+                              className={cn(
+                                "p-3 rounded-lg space-y-2 border",
+                                isActive ? "bg-primary/10 border-primary/30" : "bg-muted/50 border-transparent"
+                              )}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-lg">{preset.icon}</span>
+                                  <span className="font-medium text-sm">{preset.name}</span>
+                                </div>
+                                {isActive && <Check className="h-4 w-4 text-primary" />}
+                              </div>
+                              <p className="text-xs text-muted-foreground">{preset.description}</p>
+                              <div className="space-y-1">
+                                <p className="text-xs">
+                                  <span className="font-medium">Domaines:</span>{' '}
+                                  <span className="text-muted-foreground">{preset.domains.slice(0, 4).join(', ')}{preset.domains.length > 4 ? ` +${preset.domains.length - 4}` : ''}</span>
+                                </p>
+                                <p className="text-xs">
+                                  <span className="font-medium">Mots-clés:</span>{' '}
+                                  <span className="text-muted-foreground">{preset.keywords.slice(0, 4).join(', ')}{preset.keywords.length > 4 ? ` +${preset.keywords.length - 4}` : ''}</span>
+                                </p>
+                              </div>
                             </div>
-                            <p className="text-xs text-muted-foreground">{preset.description}</p>
-                            <div className="space-y-1">
-                              <p className="text-xs">
-                                <span className="font-medium">Domaines:</span>{' '}
-                                <span className="text-muted-foreground">{preset.domains.slice(0, 4).join(', ')}{preset.domains.length > 4 ? ` +${preset.domains.length - 4}` : ''}</span>
-                              </p>
-                              <p className="text-xs">
-                                <span className="font-medium">Mots-clés:</span>{' '}
-                                <span className="text-muted-foreground">{preset.keywords.slice(0, 4).join(', ')}{preset.keywords.length > 4 ? ` +${preset.keywords.length - 4}` : ''}</span>
-                              </p>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </AccordionContent>
                   </AccordionItem>
