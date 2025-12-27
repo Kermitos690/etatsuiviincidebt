@@ -12,6 +12,10 @@ import violationsImg from '@/assets/tutorial/violations.png';
 import exportsImg from '@/assets/tutorial/exports.png';
 import iaAuditorImg from '@/assets/tutorial/ia-auditor.png';
 import iaTrainingImg from '@/assets/tutorial/ia-training.png';
+import pdfDocumentsImg from '@/assets/tutorial/pdf-documents.png';
+import controlCenterImg from '@/assets/tutorial/control-center.png';
+import anomalyDetectionImg from '@/assets/tutorial/anomaly-detection.png';
+import swipeTrainingImg from '@/assets/tutorial/swipe-training.png';
 
 // Supabase URL for dynamic screenshots
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
@@ -70,6 +74,10 @@ const staticFallbackImages: Record<string, string> = {
   'exports': exportsImg,
   'ia-auditor': iaAuditorImg,
   'ia-training': iaTrainingImg,
+  'pdf-documents': pdfDocumentsImg,
+  'control-center': controlCenterImg,
+  'anomaly-detection': anomalyDetectionImg,
+  'swipe-training': swipeTrainingImg,
 };
 
 // Helper to load image from Supabase Storage with fallback to static assets
@@ -145,7 +153,8 @@ export async function generateTutorialPDF(): Promise<void> {
   const imageKeys = [
     'gmail-config', 'email-sync', 'analysis-pipeline', 'emails-analyzed',
     'incidents', 'dashboard', 'attachments', 'violations', 'exports',
-    'ia-auditor', 'ia-training'
+    'ia-auditor', 'ia-training', 'pdf-documents', 'control-center',
+    'anomaly-detection', 'swipe-training'
   ];
 
   // Load all images in parallel with fallback
@@ -398,9 +407,13 @@ export async function generateTutorialPDF(): Promise<void> {
     '11. Exports et rapports',
     '12. IA Auditeur',
     '13. Entraînement IA',
-    '14. Bonnes pratiques',
-    '15. FAQ',
-    '16. Glossaire',
+    '14. Documents PDF',
+    '15. Centre de Contrôle',
+    '16. Détection d\'anomalies',
+    '17. Entraînement par Swipe',
+    '18. Bonnes pratiques',
+    '19. FAQ',
+    '20. Glossaire',
   ];
 
   tocItems.forEach((item) => {
@@ -679,6 +692,106 @@ export async function generateTutorialPDF(): Promise<void> {
       imageUrl: 'ia-training',
       imageCaption: 'Figure 12: Interface d\'entraînement de l\'IA'
     },
+    {
+      title: '14. DOCUMENTS PDF',
+      description: 'Importez, analysez et comparez des documents PDF',
+      steps: [
+        'Accédez à "Documents PDF" dans le menu',
+        'Créez des dossiers pour organiser vos documents',
+        'Glissez-déposez vos fichiers PDF pour les importer',
+        'Utilisez les filtres et tags pour rechercher des documents',
+        'Lancez l\'analyse IA pour détecter les incidents',
+        'Comparez deux documents côte-à-côte pour détecter les contradictions',
+        'Liez les documents aux incidents correspondants'
+      ],
+      result: 'Vos documents sont analysés, tagués et liés aux incidents avec détection automatique des contradictions.',
+      tips: [
+        'Utilisez les tags pour catégoriser vos documents',
+        'Le mode comparaison détecte automatiquement les incohérences',
+        'L\'extraction de texte permet de rechercher dans le contenu'
+      ],
+      imageUrl: 'pdf-documents',
+      imageCaption: 'Figure 13: Gestionnaire de documents PDF',
+      clickZones: [
+        { label: 'Zone d\'upload', description: 'Glissez-déposez vos PDFs ici' },
+        { label: 'Bouton "Comparer"', description: 'Sélectionnez 2 documents à comparer' },
+        { label: 'Filtres', description: 'Filtrez par tags, type ou date' }
+      ]
+    },
+    {
+      title: '15. CENTRE DE CONTRÔLE',
+      description: 'Tableau de bord centralisé avec alertes en temps réel',
+      steps: [
+        'Accédez au "Centre de Contrôle" dans le menu',
+        'Consultez les alertes en temps réel avec leur priorité',
+        'Analysez les scores de confiance des acteurs',
+        'Visualisez le statut de corroboration des preuves',
+        'Utilisez les actions rapides pour traiter les alertes'
+      ],
+      result: 'Vue unifiée de toutes les alertes, scores de confiance et statuts de corroboration.',
+      tips: [
+        'Les alertes critiques sont mises en évidence en rouge',
+        'Le score de confiance aide à évaluer la fiabilité des acteurs',
+        'Le panneau de corroboration montre les preuves confirmées vs contredites'
+      ],
+      imageUrl: 'control-center',
+      imageCaption: 'Figure 14: Centre de Contrôle',
+      clickZones: [
+        { label: 'Alertes temps réel', description: 'Liste des alertes prioritaires' },
+        { label: 'Scores acteurs', description: 'Graphique de confiance des acteurs' },
+        { label: 'Actions rapides', description: 'Boutons d\'action immédiate' }
+      ]
+    },
+    {
+      title: '16. DÉTECTION D\'ANOMALIES',
+      description: 'Système automatique de détection des comportements anormaux',
+      steps: [
+        'Accédez à "Détection d\'anomalies" dans le menu',
+        'Consultez les anomalies détectées par l\'IA',
+        'Analysez les scores de déviation et de sévérité',
+        'Visualisez les recommandations de l\'IA',
+        'Marquez les anomalies comme investiguées ou résolues',
+        'Liez les anomalies aux incidents correspondants'
+      ],
+      result: 'Les comportements anormaux sont détectés automatiquement avec des recommandations.',
+      tips: [
+        'Les anomalies incluent: pics de communication, changements de ton, contradictions',
+        'Le score de déviation indique l\'écart par rapport au comportement habituel',
+        'Les recommandations IA suggèrent les actions à prendre'
+      ],
+      imageUrl: 'anomaly-detection',
+      imageCaption: 'Figure 15: Détection d\'anomalies',
+      clickZones: [
+        { label: 'Graphique anomalies', description: 'Timeline des anomalies détectées' },
+        { label: 'Score déviation', description: 'Indicateur d\'écart comportemental' },
+        { label: 'Recommandations IA', description: 'Suggestions d\'actions' }
+      ]
+    },
+    {
+      title: '17. ENTRAÎNEMENT PAR SWIPE',
+      description: 'Méthode gamifiée pour entraîner l\'IA en comparant des emails',
+      steps: [
+        'Accédez à "Entraînement Swipe" dans le menu',
+        'Consultez le tutoriel de swipe la première fois',
+        'Comparez deux emails affichés côte-à-côte',
+        'Swipez à droite si les emails sont liés, à gauche sinon',
+        'Gagnez des badges et améliorez votre streak',
+        'Consultez vos statistiques de performance'
+      ],
+      result: 'L\'IA apprend à identifier les relations entre emails grâce à vos décisions.',
+      tips: [
+        'Plus vous swipez, plus l\'IA devient précise',
+        'Les badges récompensent votre progression',
+        'Le streak mesure vos décisions consécutives correctes'
+      ],
+      imageUrl: 'swipe-training',
+      imageCaption: 'Figure 16: Entraînement par Swipe',
+      clickZones: [
+        { label: 'Cartes emails', description: 'Comparez les deux emails affichés' },
+        { label: 'Flèches swipe', description: 'Gauche = non lié, Droite = lié' },
+        { label: 'Badges', description: 'Vos récompenses de progression' }
+      ]
+    },
   ];
 
   for (const section of sections) {
@@ -716,7 +829,7 @@ export async function generateTutorialPDF(): Promise<void> {
 
   // ==================== BEST PRACTICES ====================
   addNewPage();
-  addTitle('14. BONNES PRATIQUES', 16, COLORS.primary);
+  addTitle('18. BONNES PRATIQUES', 16, COLORS.primary);
   y += 5;
 
   addTitle('À faire ✓', 12, COLORS.success);
@@ -746,7 +859,7 @@ export async function generateTutorialPDF(): Promise<void> {
 
   // ==================== FAQ ====================
   addNewPage();
-  addTitle('15. QUESTIONS FRÉQUEMMENT POSÉES', 16, COLORS.primary);
+  addTitle('19. QUESTIONS FRÉQUEMMENT POSÉES', 16, COLORS.primary);
   y += 5;
 
   const faqItems: FAQItem[] = [
@@ -777,7 +890,7 @@ export async function generateTutorialPDF(): Promise<void> {
 
   // ==================== GLOSSARY ====================
   addNewPage();
-  addTitle('16. GLOSSAIRE', 16, COLORS.primary);
+  addTitle('20. GLOSSAIRE', 16, COLORS.primary);
   y += 5;
 
   const glossaryItems: GlossaryItem[] = [
@@ -789,6 +902,9 @@ export async function generateTutorialPDF(): Promise<void> {
     { term: 'OCR', def: 'Reconnaissance optique de caractères pour extraire du texte' },
     { term: 'Pipeline', def: 'Chaîne de traitement automatique des données' },
     { term: 'Transmis JP', def: 'Incident transmis au Juge de Paix' },
+    { term: 'Swipe', def: 'Geste de balayage pour valider ou rejeter des associations' },
+    { term: 'Anomalie', def: 'Comportement déviant de la norme détecté par l\'IA' },
+    { term: 'Tag', def: 'Étiquette permettant de catégoriser les documents' },
   ];
 
   glossaryItems.forEach(item => {

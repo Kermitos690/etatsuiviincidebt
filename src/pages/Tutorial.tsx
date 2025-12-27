@@ -48,6 +48,10 @@ import violationsImg from "@/assets/tutorial/violations.png";
 import exportsImg from "@/assets/tutorial/exports.png";
 import iaAuditorImg from "@/assets/tutorial/ia-auditor.png";
 import iaTrainingImg from "@/assets/tutorial/ia-training.png";
+import pdfDocumentsImg from "@/assets/tutorial/pdf-documents.png";
+import controlCenterImg from "@/assets/tutorial/control-center.png";
+import anomalyDetectionImg from "@/assets/tutorial/anomaly-detection.png";
+import swipeTrainingImg from "@/assets/tutorial/swipe-training.png";
 
 const TutorialSection = ({ 
   icon: Icon, 
@@ -685,6 +689,135 @@ export default function Tutorial() {
                     "Plus vous validez, plus l'IA devient précise",
                     "Les corrections sont utilisées pour améliorer les modèles",
                     "Consultez les scores de confiance des acteurs"
+                  ]}
+                />
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Documents PDF */}
+            <AccordionItem value="pdf-documents" className="border-none">
+              <AccordionTrigger className="glass-card px-6 py-4 rounded-lg hover:no-underline">
+                <div className="flex items-center gap-3">
+                  <FileText className="w-5 h-5 text-primary" />
+                  <span className="font-semibold">12. Documents PDF</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="pt-4">
+                <TutorialSection
+                  icon={FileText}
+                  title="Gestion des documents PDF"
+                  description="Importez, analysez et comparez des documents PDF avec détection automatique des incidents"
+                  image={pdfDocumentsImg}
+                  steps={[
+                    "Accédez à 'Documents PDF' dans le menu",
+                    "Créez des dossiers pour organiser vos documents",
+                    "Glissez-déposez vos fichiers PDF pour les importer",
+                    "Utilisez les filtres et tags pour rechercher des documents",
+                    "Lancez l'analyse IA pour détecter les incidents",
+                    "Comparez deux documents côte-à-côte pour détecter les contradictions",
+                    "Liez les documents aux incidents correspondants"
+                  ]}
+                  result="Vos documents sont analysés, tagués et liés aux incidents avec détection automatique des contradictions."
+                  tips={[
+                    "Utilisez les tags pour catégoriser vos documents (correspondance, décision, convocation)",
+                    "Le mode comparaison détecte automatiquement les incohérences entre documents",
+                    "L'extraction de texte permet de rechercher dans le contenu des PDFs"
+                  ]}
+                />
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Centre de Contrôle */}
+            <AccordionItem value="control-center" className="border-none">
+              <AccordionTrigger className="glass-card px-6 py-4 rounded-lg hover:no-underline">
+                <div className="flex items-center gap-3">
+                  <Shield className="w-5 h-5 text-primary" />
+                  <span className="font-semibold">13. Centre de Contrôle</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="pt-4">
+                <TutorialSection
+                  icon={Shield}
+                  title="Centre de Contrôle"
+                  description="Tableau de bord centralisé avec alertes en temps réel et scores de confiance"
+                  image={controlCenterImg}
+                  steps={[
+                    "Accédez au 'Centre de Contrôle' dans le menu",
+                    "Consultez les alertes en temps réel avec leur priorité",
+                    "Analysez les scores de confiance des acteurs",
+                    "Visualisez le statut de corroboration des preuves",
+                    "Utilisez les actions rapides pour traiter les alertes",
+                    "Surveillez les tendances et patterns détectés"
+                  ]}
+                  result="Vue unifiée de toutes les alertes, scores de confiance et statuts de corroboration."
+                  tips={[
+                    "Les alertes critiques sont mises en évidence en rouge",
+                    "Le score de confiance des acteurs aide à évaluer leur fiabilité",
+                    "Le panneau de corroboration montre les preuves confirmées vs contredites"
+                  ]}
+                />
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Détection d'anomalies */}
+            <AccordionItem value="anomaly-detection" className="border-none">
+              <AccordionTrigger className="glass-card px-6 py-4 rounded-lg hover:no-underline">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="w-5 h-5 text-primary" />
+                  <span className="font-semibold">14. Détection d'anomalies</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="pt-4">
+                <TutorialSection
+                  icon={AlertTriangle}
+                  title="Détection d'anomalies"
+                  description="Système automatique de détection des comportements anormaux et patterns suspects"
+                  image={anomalyDetectionImg}
+                  steps={[
+                    "Accédez à 'Détection d'anomalies' dans le menu",
+                    "Consultez les anomalies détectées par l'IA",
+                    "Analysez les scores de déviation et de sévérité",
+                    "Visualisez les recommandations de l'IA",
+                    "Marquez les anomalies comme investiguées ou résolues",
+                    "Liez les anomalies aux incidents correspondants"
+                  ]}
+                  result="Les comportements anormaux sont détectés automatiquement avec des recommandations d'action."
+                  tips={[
+                    "Les anomalies incluent: pics de communication, changements de ton, contradictions",
+                    "Le score de déviation indique l'écart par rapport au comportement habituel",
+                    "Les recommandations IA suggèrent les actions à prendre"
+                  ]}
+                />
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Swipe Training */}
+            <AccordionItem value="swipe-training" className="border-none">
+              <AccordionTrigger className="glass-card px-6 py-4 rounded-lg hover:no-underline">
+                <div className="flex items-center gap-3">
+                  <Users className="w-5 h-5 text-primary" />
+                  <span className="font-semibold">15. Entraînement par Swipe</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="pt-4">
+                <TutorialSection
+                  icon={Users}
+                  title="Entraînement par Swipe"
+                  description="Méthode gamifiée pour entraîner l'IA en comparant des paires d'emails"
+                  image={swipeTrainingImg}
+                  steps={[
+                    "Accédez à 'Entraînement Swipe' dans le menu",
+                    "Consultez le tutoriel de swipe la première fois",
+                    "Comparez deux emails affichés côte-à-côte",
+                    "Swipez à droite si les emails sont liés, à gauche sinon",
+                    "Gagnez des badges et améliorez votre streak",
+                    "Consultez vos statistiques de performance"
+                  ]}
+                  result="L'IA apprend à identifier les relations entre emails grâce à vos décisions."
+                  tips={[
+                    "Plus vous swipez, plus l'IA devient précise",
+                    "Les badges récompensent votre progression",
+                    "Le streak mesure vos décisions consécutives correctes"
                   ]}
                 />
               </AccordionContent>
