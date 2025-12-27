@@ -1743,9 +1743,21 @@ export type Database = {
           description: string | null
           icon: string | null
           id: string
+          institution_concerned: string | null
+          last_analysis_at: string | null
+          linked_incident_ids: string[] | null
           name: string
+          participants: Json | null
+          priority: string | null
+          problem_score: number | null
+          recommendations: Json | null
+          situation_status: string | null
+          situation_type: string | null
+          summary: string | null
+          timeline: Json | null
           updated_at: string
           user_id: string
+          violations_detected: Json | null
         }
         Insert: {
           color?: string | null
@@ -1753,9 +1765,21 @@ export type Database = {
           description?: string | null
           icon?: string | null
           id?: string
+          institution_concerned?: string | null
+          last_analysis_at?: string | null
+          linked_incident_ids?: string[] | null
           name: string
+          participants?: Json | null
+          priority?: string | null
+          problem_score?: number | null
+          recommendations?: Json | null
+          situation_status?: string | null
+          situation_type?: string | null
+          summary?: string | null
+          timeline?: Json | null
           updated_at?: string
           user_id: string
+          violations_detected?: Json | null
         }
         Update: {
           color?: string | null
@@ -1763,9 +1787,21 @@ export type Database = {
           description?: string | null
           icon?: string | null
           id?: string
+          institution_concerned?: string | null
+          last_analysis_at?: string | null
+          linked_incident_ids?: string[] | null
           name?: string
+          participants?: Json | null
+          priority?: string | null
+          problem_score?: number | null
+          recommendations?: Json | null
+          situation_status?: string | null
+          situation_type?: string | null
+          summary?: string | null
+          timeline?: Json | null
           updated_at?: string
           user_id?: string
+          violations_detected?: Json | null
         }
         Relationships: []
       }
@@ -1986,6 +2022,98 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      situation_analyses: {
+        Row: {
+          analysis_json: Json | null
+          analyzed_at: string | null
+          chronological_summary: string | null
+          confidence_score: number | null
+          contradictions: Json | null
+          created_at: string | null
+          deadline_violations: Json | null
+          documents_analyzed: number | null
+          folder_id: string
+          id: string
+          jp_actions: Json | null
+          legal_references: Json | null
+          model: string | null
+          participants: Json | null
+          problem_score: number | null
+          prompt_version: string | null
+          recommendations: Json | null
+          severity: string | null
+          summary: string | null
+          timeline: Json | null
+          total_pages: number | null
+          unanswered_questions: Json | null
+          updated_at: string | null
+          user_id: string
+          violations_detected: Json | null
+        }
+        Insert: {
+          analysis_json?: Json | null
+          analyzed_at?: string | null
+          chronological_summary?: string | null
+          confidence_score?: number | null
+          contradictions?: Json | null
+          created_at?: string | null
+          deadline_violations?: Json | null
+          documents_analyzed?: number | null
+          folder_id: string
+          id?: string
+          jp_actions?: Json | null
+          legal_references?: Json | null
+          model?: string | null
+          participants?: Json | null
+          problem_score?: number | null
+          prompt_version?: string | null
+          recommendations?: Json | null
+          severity?: string | null
+          summary?: string | null
+          timeline?: Json | null
+          total_pages?: number | null
+          unanswered_questions?: Json | null
+          updated_at?: string | null
+          user_id: string
+          violations_detected?: Json | null
+        }
+        Update: {
+          analysis_json?: Json | null
+          analyzed_at?: string | null
+          chronological_summary?: string | null
+          confidence_score?: number | null
+          contradictions?: Json | null
+          created_at?: string | null
+          deadline_violations?: Json | null
+          documents_analyzed?: number | null
+          folder_id?: string
+          id?: string
+          jp_actions?: Json | null
+          legal_references?: Json | null
+          model?: string | null
+          participants?: Json | null
+          problem_score?: number | null
+          prompt_version?: string | null
+          recommendations?: Json | null
+          severity?: string | null
+          summary?: string | null
+          timeline?: Json | null
+          total_pages?: number | null
+          unanswered_questions?: Json | null
+          updated_at?: string | null
+          user_id?: string
+          violations_detected?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "situation_analyses_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_folders"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       swipe_training_pairs: {
         Row: {
