@@ -146,19 +146,33 @@ export function useActivelearning() {
 
       if (error) throw error;
 
-      toast({
-        title: 'Validation enregistrée',
-        description: 'Merci pour votre contribution à l\'entraînement'
-      });
+      // Message différent selon l'action
+      if (validationStatus === 'incorrect') {
+        toast({
+          title: 'Situation supprimée',
+          description: 'Hors sujet - L\'IA apprendra à ne plus détecter ce type'
+        });
+      } else if (validationStatus === 'correct') {
+        toast({
+          title: 'Détection confirmée',
+          description: 'L\'IA est renforcée sur ce type de détection'
+        });
+      } else {
+        toast({
+          title: 'Validation enregistrée',
+          description: 'Merci pour votre contribution à l\'entraînement'
+        });
+      }
 
-      // Remove from list
+      // Remove from list (la situation est retirée de la vue dans tous les cas)
       setSituations(prev => prev.filter(s => s.id !== situationId));
       await fetchStats();
     } catch (err) {
       console.error('Error validating situation:', err);
+      const msg = err instanceof Error ? err.message : 'Erreur inconnue';
       toast({
         title: 'Erreur',
-        description: 'Impossible de valider la situation',
+        description: `Impossible de valider la situation: ${msg}`,
         variant: 'destructive'
       });
     }

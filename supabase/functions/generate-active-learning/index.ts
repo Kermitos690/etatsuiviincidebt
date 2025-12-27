@@ -268,6 +268,64 @@ Réponds en JSON avec cette structure:
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
+
+      // Récupérer la situation avant modification pour le feedback
+      const { data: situationData } = await supabase
+        .from('ai_situation_training')
+        .select('*')
+        .eq('id', situationId)
+        .eq('user_id', userId)
+        .single();
+
+      if (!situationData) {
+        return new Response(JSON.stringify({ error: 'Situation not found' }), {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Si "incorrect" (hors sujet) : enregistrer le feedback négatif et SUPPRIMER la situation
+      if (validationStatus === 'incorrect') {
+        // Enregistrer dans ai_training_feedback pour entraîner l'IA à NE PAS détecter ce type
+        await supabase.from('ai_training_feedback').insert({
+          user_id: userId,
+          entity_id: situationId,
+          entity_type: 'situation',
+          feedback_type: 'rejected',
+          notes: correctionNotes || 'Situation marquée hors sujet - à ne plus détecter',
+          original_detection: {
+            summary: situationData.situation_summary,
+            violation_type: situationData.detected_violation_type,
+            legal_refs: situationData.detected_legal_refs,
+            confidence: situationData.ai_confidence,
+            reasoning: situationData.ai_reasoning
+          },
+          user_correction: userCorrection ? { correction: userCorrection, correct_refs: correctLegalRefs } : null
+        });
+
+        // Supprimer de active_learning_queue
+        await supabase
+          .from('active_learning_queue')
+          .delete()
+          .eq('entity_id', situationId)
+          .eq('user_id', userId);
+
+        // SUPPRIMER la situation (hors sujet = ne doit pas exister)
+        await supabase
+          .from('ai_situation_training')
+          .delete()
+          .eq('id', situationId)
+          .eq('user_id', userId);
+
+        console.log(`Situation ${situationId} deleted as off-topic and recorded for negative training`);
+
+        return new Response(
+          JSON.stringify({ success: true, deleted: true, message: 'Situation supprimée et feedback enregistré pour entraînement' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Si "correct" ou autre : garder la situation, juste mettre à jour le statut
       const { data, error } = await supabase
         .from('ai_situation_training')
         .update({
@@ -291,6 +349,22 @@ Réponds en JSON avec cette structure:
         .update({ status: 'reviewed', reviewed_at: new Date().toISOString() })
         .eq('entity_id', situationId)
         .eq('user_id', userId);
+
+      // Si correct, enregistrer un feedback positif pour renforcer ce type de détection
+      if (validationStatus === 'correct') {
+        await supabase.from('ai_training_feedback').insert({
+          user_id: userId,
+          entity_id: situationId,
+          entity_type: 'situation',
+          feedback_type: 'correct',
+          notes: correctionNotes || 'Détection confirmée comme correcte',
+          original_detection: {
+            summary: situationData.situation_summary,
+            violation_type: situationData.detected_violation_type,
+            legal_refs: situationData.detected_legal_refs
+          }
+        });
+      }
 
       // Si l'utilisateur a fourni des corrections, créer les références légales
       if (correctLegalRefs && Array.isArray(correctLegalRefs)) {
