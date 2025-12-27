@@ -104,6 +104,14 @@ const navCategories: NavCategory[] = [
     ]
   },
   {
+    id: 'tools',
+    label: 'Outils RI',
+    icon: Scale,
+    items: [
+      { to: '/ri-calculator', icon: Scale, label: 'Calculateur Budget' },
+    ]
+  },
+  {
     id: 'settings',
     label: 'Paramètres',
     icon: Cog,
