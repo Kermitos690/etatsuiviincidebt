@@ -8,6 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
 import { useAnomalyDetection } from '@/hooks/useAnomalyDetection';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { 
@@ -23,10 +25,24 @@ import {
   Eye,
   Filter,
   Activity,
-  BarChart3
+  BarChart3,
+  Mail,
+  GitMerge,
+  Scale,
+  ExternalLink,
+  Calendar
 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { Link } from 'react-router-dom';
+
+interface EmailDetail {
+  id: string;
+  sender: string;
+  subject: string;
+  date: string;
+  body_excerpt: string;
+}
 
 const SEVERITY_CONFIG = {
   critical: { color: 'bg-red-500', textColor: 'text-red-500', label: 'Critique', icon: AlertTriangle },
@@ -39,7 +55,8 @@ const TYPE_CONFIG = {
   frequency_spike: { icon: TrendingUp, label: 'Pic de fréquence', color: 'text-purple-500' },
   timing_anomaly: { icon: Clock, label: 'Anomalie temporelle', color: 'text-blue-500' },
   sentiment_shift: { icon: MessageSquare, label: 'Changement de ton', color: 'text-orange-500' },
-  behavior_change: { icon: Users, label: 'Changement comportemental', color: 'text-red-500' }
+  behavior_change: { icon: Users, label: 'Changement comportemental', color: 'text-red-500' },
+  conversation_mismatch: { icon: GitMerge, label: 'Conversations à lier', color: 'text-teal-500' }
 };
 
 const STATUS_CONFIG = {
@@ -84,6 +101,17 @@ export default function AnomalyDetection() {
     });
     setSelectedAnomaly(null);
     setResolutionNotes('');
+  };
+
+  // Extract senders from pattern_data for display
+  const getSendersFromAnomaly = (anomaly: any): string[] => {
+    const patternData = anomaly.pattern_data || {};
+    if (patternData.sender) return [patternData.sender];
+    if (patternData.senders) return patternData.senders as string[];
+    if (patternData.emails_details) {
+      return [...new Set(patternData.emails_details.map((e: EmailDetail) => e.sender))] as string[];
+    }
+    return [];
   };
 
   return (
@@ -192,6 +220,7 @@ export default function AnomalyDetection() {
                 <SelectItem value="timing_anomaly">Anomalie temporelle</SelectItem>
                 <SelectItem value="sentiment_shift">Changement de ton</SelectItem>
                 <SelectItem value="behavior_change">Comportement</SelectItem>
+                <SelectItem value="conversation_mismatch">Conversations</SelectItem>
               </SelectContent>
             </Select>
 
@@ -250,6 +279,7 @@ export default function AnomalyDetection() {
                       const severityConfig = SEVERITY_CONFIG[anomaly.severity as keyof typeof SEVERITY_CONFIG] || SEVERITY_CONFIG.medium;
                       const statusConfig = STATUS_CONFIG[anomaly.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.new;
                       const TypeIcon = typeConfig.icon;
+                      const senders = getSendersFromAnomaly(anomaly);
 
                       return (
                         <Card 
@@ -275,13 +305,23 @@ export default function AnomalyDetection() {
                                   {anomaly.description}
                                 </p>
 
+                                {/* Show senders involved */}
+                                {senders.length > 0 && (
+                                  <div className="flex items-center gap-2 mt-2">
+                                    <Mail className="h-3 w-3 text-muted-foreground" />
+                                    <span className="text-xs text-muted-foreground truncate">
+                                      {senders.slice(0, 2).join(', ')}
+                                      {senders.length > 2 && ` +${senders.length - 2} autres`}
+                                    </span>
+                                  </div>
+                                )}
+
                                 <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                                   <span className="flex items-center gap-1">
                                     <div className={`w-2 h-2 rounded-full ${severityConfig.color}`} />
                                     {severityConfig.label}
                                   </span>
                                   <span>Confiance: {anomaly.confidence}%</span>
-                                  <span>Déviation: {anomaly.deviation_score}%</span>
                                   <span>
                                     {formatDistanceToNow(new Date(anomaly.detected_at), { 
                                       addSuffix: true, 
@@ -304,7 +344,7 @@ export default function AnomalyDetection() {
             </TabsContent>
 
             <TabsContent value="by-type" className="mt-4">
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {Object.entries(TYPE_CONFIG).map(([type, config]) => {
                   const typeAnomalies = filteredAnomalies.filter(a => a.anomaly_type === type);
                   const Icon = config.icon;
@@ -356,7 +396,7 @@ export default function AnomalyDetection() {
 
       {/* Anomaly Detail Dialog */}
       <Dialog open={!!selectedAnomaly} onOpenChange={() => setSelectedAnomaly(null)}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
           {selectedAnomaly && (
             <>
               <DialogHeader>
@@ -376,66 +416,139 @@ export default function AnomalyDetection() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="space-y-4">
-                <div className="flex flex-wrap gap-2">
-                  <Badge className={SEVERITY_CONFIG[selectedAnomaly.severity as keyof typeof SEVERITY_CONFIG]?.color}>
-                    {SEVERITY_CONFIG[selectedAnomaly.severity as keyof typeof SEVERITY_CONFIG]?.label}
-                  </Badge>
-                  <Badge variant="outline">
-                    Confiance: {selectedAnomaly.confidence}%
-                  </Badge>
-                  <Badge variant="outline">
-                    Déviation: {selectedAnomaly.deviation_score}%
-                  </Badge>
-                  <Badge variant={STATUS_CONFIG[selectedAnomaly.status as keyof typeof STATUS_CONFIG]?.variant}>
-                    {STATUS_CONFIG[selectedAnomaly.status as keyof typeof STATUS_CONFIG]?.label}
-                  </Badge>
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-medium mb-1">Description</h4>
-                  <p className="text-sm text-muted-foreground">{selectedAnomaly.description}</p>
-                </div>
-
-                {selectedAnomaly.ai_explanation && (
-                  <div>
-                    <h4 className="text-sm font-medium mb-1">Analyse IA</h4>
-                    <p className="text-sm text-muted-foreground">{selectedAnomaly.ai_explanation}</p>
+              <ScrollArea className="flex-1 pr-4">
+                <div className="space-y-4">
+                  <div className="flex flex-wrap gap-2">
+                    <Badge className={SEVERITY_CONFIG[selectedAnomaly.severity as keyof typeof SEVERITY_CONFIG]?.color}>
+                      {SEVERITY_CONFIG[selectedAnomaly.severity as keyof typeof SEVERITY_CONFIG]?.label}
+                    </Badge>
+                    <Badge variant="outline">
+                      Confiance: {selectedAnomaly.confidence}%
+                    </Badge>
+                    <Badge variant="outline">
+                      Déviation: {selectedAnomaly.deviation_score}%
+                    </Badge>
+                    <Badge variant={STATUS_CONFIG[selectedAnomaly.status as keyof typeof STATUS_CONFIG]?.variant}>
+                      {STATUS_CONFIG[selectedAnomaly.status as keyof typeof STATUS_CONFIG]?.label}
+                    </Badge>
                   </div>
-                )}
 
-                {selectedAnomaly.ai_recommendations?.length > 0 && (
                   <div>
-                    <h4 className="text-sm font-medium mb-1">Recommandations</h4>
-                    <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                      {selectedAnomaly.ai_recommendations.map((rec: string, i: number) => (
-                        <li key={i}>{rec}</li>
-                      ))}
-                    </ul>
+                    <h4 className="text-sm font-medium mb-1">Description</h4>
+                    <p className="text-sm text-muted-foreground">{selectedAnomaly.description}</p>
                   </div>
-                )}
 
-                <div>
-                  <h4 className="text-sm font-medium mb-1">Données du pattern</h4>
-                  <pre className="text-xs bg-muted p-2 rounded-lg overflow-x-auto">
-                    {JSON.stringify(selectedAnomaly.pattern_data, null, 2)}
-                  </pre>
+                  {/* Emails concernés */}
+                  {selectedAnomaly.pattern_data?.emails_details?.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                        <Mail className="h-4 w-4" />
+                        Emails concernés ({selectedAnomaly.pattern_data.emails_details.length})
+                      </h4>
+                      <div className="space-y-2">
+                        {selectedAnomaly.pattern_data.emails_details.slice(0, 5).map((email: EmailDetail, idx: number) => (
+                          <Card key={idx} className="p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="font-medium text-sm truncate">{email.sender}</span>
+                                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                    <Calendar className="h-3 w-3" />
+                                    {format(new Date(email.date), 'dd/MM/yyyy HH:mm', { locale: fr })}
+                                  </span>
+                                </div>
+                                <p className="text-sm font-medium truncate">{email.subject}</p>
+                                <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                                  {email.body_excerpt}
+                                </p>
+                              </div>
+                              <Link 
+                                to={`/emails-analyzed?emailId=${email.id}`}
+                                className="shrink-0"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <ExternalLink className="h-4 w-4" />
+                                </Button>
+                              </Link>
+                            </div>
+                          </Card>
+                        ))}
+                        {selectedAnomaly.pattern_data.emails_details.length > 5 && (
+                          <p className="text-xs text-muted-foreground text-center">
+                            +{selectedAnomaly.pattern_data.emails_details.length - 5} autres emails
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <Separator />
+
+                  {/* Analyse IA */}
+                  {selectedAnomaly.ai_explanation && (
+                    <div>
+                      <h4 className="text-sm font-medium mb-1 flex items-center gap-2">
+                        <Zap className="h-4 w-4 text-primary" />
+                        Analyse IA
+                      </h4>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                        {selectedAnomaly.ai_explanation}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Violations légales */}
+                  {selectedAnomaly.pattern_data?.legal_violations?.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                        <Scale className="h-4 w-4 text-destructive" />
+                        Violations légales potentielles
+                      </h4>
+                      <div className="space-y-1">
+                        {selectedAnomaly.pattern_data.legal_violations.map((violation: string, i: number) => (
+                          <Badge key={i} variant="destructive" className="mr-1 mb-1">
+                            {violation}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Recommandations */}
+                  {selectedAnomaly.ai_recommendations?.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        Actions recommandées (Justice de Paix)
+                      </h4>
+                      <ul className="space-y-2">
+                        {selectedAnomaly.ai_recommendations.map((rec: string, i: number) => (
+                          <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                            <span className="font-medium text-primary">{i + 1}.</span>
+                            {rec}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Notes de résolution */}
+                  {(selectedAnomaly.status === 'new' || selectedAnomaly.status === 'investigating') && (
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">Notes de résolution</h4>
+                      <Textarea
+                        value={resolutionNotes}
+                        onChange={(e) => setResolutionNotes(e.target.value)}
+                        placeholder="Ajoutez des notes sur cette anomalie..."
+                        rows={3}
+                      />
+                    </div>
+                  )}
                 </div>
+              </ScrollArea>
 
-                {(selectedAnomaly.status === 'new' || selectedAnomaly.status === 'investigating') && (
-                  <div>
-                    <h4 className="text-sm font-medium mb-2">Notes de résolution</h4>
-                    <Textarea
-                      value={resolutionNotes}
-                      onChange={(e) => setResolutionNotes(e.target.value)}
-                      placeholder="Ajoutez des notes sur cette anomalie..."
-                      rows={3}
-                    />
-                  </div>
-                )}
-              </div>
-
-              <DialogFooter className="flex-wrap gap-2">
+              <DialogFooter className="flex-wrap gap-2 pt-4 border-t">
                 {selectedAnomaly.status === 'new' && (
                   <Button 
                     variant="secondary" 
