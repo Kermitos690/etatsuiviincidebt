@@ -988,6 +988,51 @@ export type Database = {
           },
         ]
       }
+      email_templates: {
+        Row: {
+          body_signature: string | null
+          created_at: string | null
+          example_email_ids: string[] | null
+          first_seen_at: string | null
+          id: string
+          is_suspicious: boolean | null
+          last_seen_at: string | null
+          notes: string | null
+          occurrence_count: number | null
+          sender_pattern: string | null
+          subject_pattern: string | null
+          user_id: string
+        }
+        Insert: {
+          body_signature?: string | null
+          created_at?: string | null
+          example_email_ids?: string[] | null
+          first_seen_at?: string | null
+          id?: string
+          is_suspicious?: boolean | null
+          last_seen_at?: string | null
+          notes?: string | null
+          occurrence_count?: number | null
+          sender_pattern?: string | null
+          subject_pattern?: string | null
+          user_id: string
+        }
+        Update: {
+          body_signature?: string | null
+          created_at?: string | null
+          example_email_ids?: string[] | null
+          first_seen_at?: string | null
+          id?: string
+          is_suspicious?: boolean | null
+          last_seen_at?: string | null
+          notes?: string | null
+          occurrence_count?: number | null
+          sender_pattern?: string | null
+          subject_pattern?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       emails: {
         Row: {
           ai_analysis: Json | null
@@ -1383,6 +1428,57 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      legal_deadlines: {
+        Row: {
+          business_days_only: boolean | null
+          completed_at: string | null
+          created_at: string | null
+          deadline_date: string
+          deadline_type: string
+          entity_id: string
+          entity_type: string
+          id: string
+          metadata: Json | null
+          notes: string | null
+          reminder_days: number[] | null
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          business_days_only?: boolean | null
+          completed_at?: string | null
+          created_at?: string | null
+          deadline_date: string
+          deadline_type: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          metadata?: Json | null
+          notes?: string | null
+          reminder_days?: number[] | null
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          business_days_only?: boolean | null
+          completed_at?: string | null
+          created_at?: string | null
+          deadline_date?: string
+          deadline_type?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          metadata?: Json | null
+          notes?: string | null
+          reminder_days?: number[] | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       legal_references: {
         Row: {
@@ -1844,6 +1940,60 @@ export type Database = {
           },
         ]
       }
+      proactive_alerts: {
+        Row: {
+          alert_type: string
+          created_at: string | null
+          description: string | null
+          dismissed_at: string | null
+          due_date: string | null
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          is_dismissed: boolean | null
+          is_read: boolean | null
+          metadata: Json | null
+          priority: string
+          read_at: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          alert_type: string
+          created_at?: string | null
+          description?: string | null
+          dismissed_at?: string | null
+          due_date?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          is_dismissed?: boolean | null
+          is_read?: boolean | null
+          metadata?: Json | null
+          priority?: string
+          read_at?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          alert_type?: string
+          created_at?: string | null
+          description?: string | null
+          dismissed_at?: string | null
+          due_date?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          is_dismissed?: boolean | null
+          is_read?: boolean | null
+          metadata?: Json | null
+          priority?: string
+          read_at?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -2109,6 +2259,66 @@ export type Database = {
           {
             foreignKeyName: "situation_analyses_folder_id_fkey"
             columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "pdf_folders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      situation_comparisons: {
+        Row: {
+          analyzed_at: string | null
+          comparison_type: string
+          contradictions: Json | null
+          created_at: string | null
+          folder_id_1: string
+          folder_id_2: string
+          id: string
+          risk_assessment: string | null
+          shared_actors: Json | null
+          shared_patterns: Json | null
+          similarity_score: number | null
+          user_id: string
+        }
+        Insert: {
+          analyzed_at?: string | null
+          comparison_type: string
+          contradictions?: Json | null
+          created_at?: string | null
+          folder_id_1: string
+          folder_id_2: string
+          id?: string
+          risk_assessment?: string | null
+          shared_actors?: Json | null
+          shared_patterns?: Json | null
+          similarity_score?: number | null
+          user_id: string
+        }
+        Update: {
+          analyzed_at?: string | null
+          comparison_type?: string
+          contradictions?: Json | null
+          created_at?: string | null
+          folder_id_1?: string
+          folder_id_2?: string
+          id?: string
+          risk_assessment?: string | null
+          shared_actors?: Json | null
+          shared_patterns?: Json | null
+          similarity_score?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "situation_comparisons_folder_id_1_fkey"
+            columns: ["folder_id_1"]
+            isOneToOne: false
+            referencedRelation: "pdf_folders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "situation_comparisons_folder_id_2_fkey"
+            columns: ["folder_id_2"]
             isOneToOne: false
             referencedRelation: "pdf_folders"
             referencedColumns: ["id"]
