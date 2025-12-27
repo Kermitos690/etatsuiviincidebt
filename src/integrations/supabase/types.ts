@@ -1518,7 +1518,7 @@ export type Database = {
           {
             foreignKeyName: "pdf_analyses_document_id_fkey"
             columns: ["document_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "pdf_documents"
             referencedColumns: ["id"]
           },

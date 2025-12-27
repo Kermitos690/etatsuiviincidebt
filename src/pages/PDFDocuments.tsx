@@ -62,7 +62,24 @@ export default function PDFDocuments() {
       .order('name');
     
     if (!error && data) {
-      setFolders(data);
+      // Count documents per folder
+      const { data: docCounts } = await supabase
+        .from('pdf_documents')
+        .select('folder_id');
+      
+      const countMap = new Map<string, number>();
+      docCounts?.forEach(d => {
+        if (d.folder_id) {
+          countMap.set(d.folder_id, (countMap.get(d.folder_id) || 0) + 1);
+        }
+      });
+      
+      const foldersWithCount = data.map(folder => ({
+        ...folder,
+        documentsCount: countMap.get(folder.id) || 0,
+      }));
+      
+      setFolders(foldersWithCount);
     }
   }, []);
 
