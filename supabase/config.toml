@@ -95,3 +95,6 @@ verify_jwt = false
 
 [functions.full-reanalyze]
 verify_jwt = false
+
+[functions.migrate-gmail-tokens]
+verify_jwt = false
