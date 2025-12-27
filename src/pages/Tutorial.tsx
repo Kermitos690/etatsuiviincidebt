@@ -53,6 +53,15 @@ import controlCenterImg from "@/assets/tutorial/control-center.png";
 import anomalyDetectionImg from "@/assets/tutorial/anomaly-detection.png";
 import swipeTrainingImg from "@/assets/tutorial/swipe-training.png";
 
+// Import tutorial videos
+import gmailConfigVideo from "@/assets/tutorial/videos/gmail-config.mp4";
+import emailSyncVideo from "@/assets/tutorial/videos/email-sync.mp4";
+import analysisPipelineVideo from "@/assets/tutorial/videos/analysis-pipeline.mp4";
+import swipeTrainingVideo from "@/assets/tutorial/videos/swipe-training.mp4";
+import dashboardVideo from "@/assets/tutorial/videos/dashboard.mp4";
+
+import { TutorialVideoSection } from "@/components/tutorial/TutorialVideoSection";
+
 const TutorialSection = ({ 
   icon: Icon, 
   title, 
