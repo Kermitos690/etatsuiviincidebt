@@ -275,8 +275,8 @@ function NavCategorySection({
             "w-full flex items-center justify-between px-4 py-2.5 rounded-xl transition-all duration-200",
             "text-sm font-medium",
             hasActiveItem 
-              ? "bg-primary/10 text-primary" 
-              : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground"
+              ? "bg-primary/15 text-primary border border-primary/20" 
+              : "text-muted-foreground hover:bg-muted hover:text-foreground"
           )}
         >
           <div className="flex items-center gap-3">
@@ -284,34 +284,36 @@ function NavCategorySection({
             <span>{category.label}</span>
           </div>
           <ChevronDown className={cn(
-            "h-4 w-4 transition-transform duration-200",
+            "h-4 w-4 transition-transform duration-300",
             isOpen && "rotate-180"
           )} />
         </button>
       </CollapsibleTrigger>
-      <CollapsibleContent className="pl-4 mt-1 space-y-0.5">
-        {category.items.map((item) => {
-          const isActive = location.pathname === item.to || 
-            (item.to !== '/' && location.pathname.startsWith(item.to));
-          
-          return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              onClick={onItemClick}
-              className={cn(
-                "group flex items-center gap-3 px-4 py-2 rounded-lg transition-all duration-200",
-                "hover:bg-sidebar-accent/60",
-                isActive 
-                  ? "bg-gradient-primary text-primary-foreground shadow-sm font-medium" 
-                  : "text-sidebar-foreground/80"
-              )}
-            >
-              <item.icon className="h-4 w-4 flex-shrink-0" />
-              <span className="text-sm">{item.label}</span>
-            </NavLink>
-          );
-        })}
+      <CollapsibleContent className="overflow-hidden data-[state=open]:animate-accordion-down data-[state=closed]:animate-accordion-up">
+        <div className="pl-4 mt-1 space-y-0.5 py-1 ml-3 border-l-2 border-muted">
+          {category.items.map((item) => {
+            const isActive = location.pathname === item.to || 
+              (item.to !== '/' && location.pathname.startsWith(item.to));
+            
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                onClick={onItemClick}
+                className={cn(
+                  "group flex items-center gap-3 px-4 py-2 rounded-lg transition-all duration-200",
+                  "hover:bg-muted",
+                  isActive 
+                    ? "bg-primary text-primary-foreground shadow-sm font-medium" 
+                    : "text-foreground/70 hover:text-foreground"
+                )}
+              >
+                <item.icon className="h-4 w-4 flex-shrink-0" />
+                <span className="text-sm">{item.label}</span>
+              </NavLink>
+            );
+          })}
+        </div>
       </CollapsibleContent>
     </Collapsible>
   );
@@ -426,17 +428,8 @@ export function MobileHeader() {
   const [open, setOpen] = useState(false);
 
   return (
-    <header className="lg:hidden sticky top-0 z-50 flex items-center justify-between h-16 px-4 border-b border-glass bg-glass backdrop-blur-glass">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow-sm animate-float">
-          <Sparkles className="h-5 w-5 text-white" />
-        </div>
-        <div>
-          <h1 className="text-lg font-semibold gradient-text">Registre</h1>
-          <p className="text-[10px] text-muted-foreground">Liquid Glass 2026</p>
-        </div>
-      </div>
-      
+    <header className="lg:hidden sticky top-0 z-50 flex items-center justify-between h-16 px-4 border-b border-glass bg-background/95 backdrop-blur-xl">
+      {/* Menu button on LEFT side */}
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
           <Button 
@@ -450,11 +443,11 @@ export function MobileHeader() {
         </SheetTrigger>
         <SheetContent 
           side="left" 
-          className="w-80 p-0 bg-glass backdrop-blur-glass border-r border-glass overflow-y-auto"
+          className="w-80 p-0 bg-background/95 backdrop-blur-xl border-r border-border overflow-y-auto"
         >
           <div className="flex flex-col min-h-full">
             {/* Header */}
-            <div className="p-5 border-b border-glass">
+            <div className="p-5 border-b border-border bg-muted/30">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-glow animate-float">
                   <Sparkles className="h-6 w-6 text-white" />
@@ -472,8 +465,8 @@ export function MobileHeader() {
             <NavContent onItemClick={() => setOpen(false)} />
             
             {/* Footer */}
-            <div className="p-4 border-t border-glass">
-              <div className="glass-card p-3 text-center">
+            <div className="p-4 border-t border-border bg-muted/30">
+              <div className="bg-muted/50 rounded-xl p-3 text-center">
                 <p className="text-xs text-muted-foreground">
                   Apple Liquid Glass 2026
                 </p>
@@ -485,6 +478,20 @@ export function MobileHeader() {
           </div>
         </SheetContent>
       </Sheet>
+      
+      {/* Logo in center */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow-sm animate-float">
+          <Sparkles className="h-5 w-5 text-white" />
+        </div>
+        <div>
+          <h1 className="text-lg font-semibold gradient-text">Registre</h1>
+          <p className="text-[10px] text-muted-foreground">Liquid Glass 2026</p>
+        </div>
+      </div>
+      
+      {/* Theme toggle on right */}
+      <ThemeToggle />
     </header>
   );
 }
