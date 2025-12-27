@@ -89,3 +89,6 @@ verify_jwt = true
 
 [functions.update-training-stats]
 verify_jwt = true
+
+[functions.full-reanalyze]
+verify_jwt = true
