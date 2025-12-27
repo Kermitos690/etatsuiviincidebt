@@ -262,8 +262,9 @@ interface EmailFilters {
 
 function isEmailRelevant(
   email: { sender?: string | null; recipient?: string | null; subject?: string | null; body?: string | null },
-  filters: EmailFilters
-): boolean {
+  filters: EmailFilters,
+  enableLogging = false
+): { relevant: boolean; reason: string; matchedDomain?: string; matchedKeyword?: string } {
   const domains = (filters.domains || []).map(normalizeDomain).filter(Boolean);
   const keywords = (filters.keywords || []).map(normalize).filter(Boolean);
 
@@ -271,13 +272,69 @@ function isEmailRelevant(
   const hasKeywords = keywords.length > 0;
 
   // No filters => treat everything as relevant (fallback)
-  if (!hasDomains && !hasKeywords) return true;
+  if (!hasDomains && !hasKeywords) {
+    return { relevant: true, reason: "no_filters_configured" };
+  }
 
-  const domainMatch = hasDomains ? domains.some((d) => emailHasDomain(email, d)) : true;
-  const keywordMatch = hasKeywords ? keywords.some((k) => emailHasKeyword(email, k)) : true;
+  // Check domain match
+  let domainMatch = false;
+  let matchedDomain: string | undefined;
+  if (hasDomains) {
+    for (const d of domains) {
+      if (emailHasDomain(email, d)) {
+        domainMatch = true;
+        matchedDomain = d;
+        break;
+      }
+    }
+  } else {
+    domainMatch = true; // No domain filter = auto-pass
+  }
 
-  // Require BOTH domain AND keyword match when both are configured
-  return domainMatch && keywordMatch;
+  // Check keyword match
+  let keywordMatch = false;
+  let matchedKeyword: string | undefined;
+  if (hasKeywords) {
+    for (const k of keywords) {
+      if (emailHasKeyword(email, k)) {
+        keywordMatch = true;
+        matchedKeyword = k;
+        break;
+      }
+    }
+  } else {
+    keywordMatch = true; // No keyword filter = auto-pass
+  }
+
+  // Build reason for rejection
+  if (!domainMatch && !keywordMatch) {
+    const senderDomain = normalizeDomain(email.sender || "");
+    return { 
+      relevant: false, 
+      reason: `no_domain_or_keyword_match (sender domain: ${senderDomain}, expected: ${domains.join(', ')})` 
+    };
+  }
+  if (!domainMatch) {
+    const senderDomain = normalizeDomain(email.sender || "");
+    return { 
+      relevant: false, 
+      reason: `domain_mismatch (sender: ${senderDomain}, expected: ${domains.join(', ')})` 
+    };
+  }
+  if (!keywordMatch) {
+    return { 
+      relevant: false, 
+      reason: `keyword_mismatch (expected: ${keywords.join(', ')})` 
+    };
+  }
+
+  // BOTH match
+  return { 
+    relevant: true, 
+    reason: "matched", 
+    matchedDomain, 
+    matchedKeyword 
+  };
 }
 
 // Check if email is blacklisted
@@ -410,9 +467,15 @@ async function processEmailsInBackground(
 
           // ===== FILTER CHECK: Skip irrelevant emails =====
           const emailForFilter = { sender, recipient, subject, body };
-          if (!isEmailRelevant(emailForFilter, filters)) {
-            console.log(`[Filter] Skipping email ${msg.id} - not relevant (subject: ${subject.substring(0, 50)}...)`);
+          const filterResult = isEmailRelevant(emailForFilter, filters, true);
+          
+          if (!filterResult.relevant) {
+            console.log(`[Filter] REJECTED email ${msg.id}: ${filterResult.reason}`);
+            console.log(`  -> Subject: ${subject.substring(0, 60)}...`);
+            console.log(`  -> Sender: ${sender}`);
             return { success: true, skipped: true, skipReason: 'filter' };
+          } else if (filterResult.matchedDomain || filterResult.matchedKeyword) {
+            console.log(`[Filter] ACCEPTED email ${msg.id}: matched domain="${filterResult.matchedDomain || 'N/A'}", keyword="${filterResult.matchedKeyword || 'N/A'}"`);
           }
 
           // ===== BLACKLIST CHECK: Skip blacklisted emails =====

@@ -119,3 +119,6 @@ verify_jwt = false
 
 [functions.validate-ai-output]
 verify_jwt = false
+
+[functions.cleanup-emails]
+verify_jwt = false
