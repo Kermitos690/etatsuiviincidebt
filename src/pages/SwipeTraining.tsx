@@ -88,11 +88,14 @@ export default function SwipeTraining() {
 
         const emailMap = new Map(emails?.map(e => [e.id, e]) || []);
 
-        const enrichedPairs = pairsData.map(p => ({
-          ...p,
-          email_1: emailMap.get(p.email_1_id),
-          email_2: emailMap.get(p.email_2_id),
-        }));
+        const enrichedPairs = pairsData
+          .map(p => ({
+            ...p,
+            email_1: emailMap.get(p.email_1_id),
+            email_2: emailMap.get(p.email_2_id),
+          }))
+          // Filtrer les paires où les emails n'existent plus
+          .filter(p => p.email_1 && p.email_2);
 
         setPairs(enrichedPairs);
       } else {
