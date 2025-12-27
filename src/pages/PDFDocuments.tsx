@@ -235,7 +235,7 @@ export default function PDFDocuments() {
 
   return (
     <AppLayout>
-      <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] gap-4 p-4">
+      <div className="flex flex-col lg:flex-row min-h-0 flex-1 gap-4 p-4 overflow-auto">
         {/* Sidebar - Folders */}
         <div className="w-full lg:w-64 flex-shrink-0 space-y-4">
           <Card className="p-4">
@@ -267,10 +267,10 @@ export default function PDFDocuments() {
         </div>
 
         {/* Main content */}
-        <div className="flex-1 flex flex-col lg:flex-row gap-4 min-w-0">
+        <div className="flex-1 flex flex-col gap-4 min-w-0">
           {/* Upload zone */}
           {showUploader && (
-            <Card className="p-4 lg:w-80 flex-shrink-0">
+            <Card className="p-4">
               <PDFUploader
                 folders={folders}
                 onUploadComplete={() => { fetchDocuments(); setShowUploader(false); }}
@@ -279,104 +279,119 @@ export default function PDFDocuments() {
             </Card>
           )}
 
-          {/* Documents list */}
-          <div className="flex-1 min-w-0 flex flex-col">
-            {/* Search & Filters */}
-            <div className="mb-4">
-              <PDFSearchFilters
-                filters={filters}
-                onFiltersChange={setFilters}
-                allTags={allTags}
-                documentTypes={documentTypes}
-              />
-            </div>
-
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-medium">
-                {filteredDocuments.length} document(s)
-                {filteredDocuments.length !== documents.length && (
-                  <span className="text-muted-foreground"> sur {documents.length}</span>
-                )}
-              </h3>
-              <Button variant="ghost" size="sm" onClick={fetchDocuments}>
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-            </div>
-
-            {isLoading ? (
-              <div className="flex items-center justify-center h-64">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            ) : filteredDocuments.length === 0 ? (
-              <Card className="p-8 text-center">
-                <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">
-                  {documents.length === 0 ? 'Aucun document' : 'Aucun résultat'}
-                </p>
-                {documents.length === 0 && (
-                  <Button className="mt-4" onClick={() => setShowUploader(true)}>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Importer
-                  </Button>
-                )}
-              </Card>
-            ) : (
-              <div className="space-y-3 overflow-auto flex-1">
-                {filteredDocuments.map(doc => (
-                  <PDFCard
-                    key={doc.id}
-                    document={doc}
-                    isSelected={
-                      compareMode 
-                        ? compareIds.includes(doc.id)
-                        : selectedDocument?.id === doc.id
-                    }
-                    onSelect={() => handleCompareSelect(doc)}
-                    onAnalyze={() => handleAnalyze(doc)}
-                    onDelete={() => handleDelete(doc)}
-                    onDownload={() => handleDownload(doc)}
-                    isAnalyzing={analyzingIds.has(doc.id)}
-                  />
-                ))}
-              </div>
-            )}
+          {/* Search & Filters */}
+          <div>
+            <PDFSearchFilters
+              filters={filters}
+              onFiltersChange={setFilters}
+              allTags={allTags}
+              documentTypes={documentTypes}
+            />
           </div>
 
-          {/* Detail/Compare panel */}
-          {!isMobile && (
-            <>
-              {compareMode && compareIds[0] && compareIds[1] ? (
-                <Card className="w-[500px] flex-shrink-0 overflow-hidden animate-slide-in-right">
-                  <PDFCompareView
-                    documents={documents}
-                    selectedIds={compareIds as [string, string]}
-                    onClose={() => setCompareIds([null, null])}
-                    onDocumentSelect={(pos, id) => {
-                      const newIds = [...compareIds] as [string | null, string | null];
-                      newIds[pos] = id;
-                      setCompareIds(newIds);
-                    }}
-                  />
-                </Card>
-              ) : selectedDocument && !compareMode ? (
-                <Card className="w-96 flex-shrink-0 overflow-hidden animate-slide-in-right">
-                  <PDFDetail
-                    document={selectedDocument}
-                    onClose={() => setSelectedDocument(null)}
-                    onAnalyze={() => handleAnalyze(selectedDocument)}
-                    onExtractText={() => handleExtractText(selectedDocument)}
-                    onDelete={() => handleDelete(selectedDocument)}
-                    onDownload={() => handleDownload(selectedDocument)}
-                    onCreateIncident={() => toast.info('Utilisez le panneau de liaison')}
-                    isAnalyzing={analyzingIds.has(selectedDocument.id)}
-                    isExtracting={extractingIds.has(selectedDocument.id)}
-                  />
-                </Card>
-              ) : null}
-            </>
+          <div className="flex items-center justify-between">
+            <h3 className="font-medium">
+              {filteredDocuments.length} document(s)
+              {filteredDocuments.length !== documents.length && (
+                <span className="text-muted-foreground"> sur {documents.length}</span>
+              )}
+            </h3>
+            <Button variant="ghost" size="sm" onClick={fetchDocuments}>
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : filteredDocuments.length === 0 ? (
+            <Card className="p-8 text-center">
+              <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">
+                {documents.length === 0 ? 'Aucun document' : 'Aucun résultat'}
+              </p>
+              {documents.length === 0 && (
+                <Button className="mt-4" onClick={() => setShowUploader(true)}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Importer
+                </Button>
+              )}
+            </Card>
+          ) : (
+            <div className="space-y-3 pb-4">
+              {filteredDocuments.map(doc => (
+                <PDFCard
+                  key={doc.id}
+                  document={doc}
+                  isSelected={
+                    compareMode 
+                      ? compareIds.includes(doc.id)
+                      : selectedDocument?.id === doc.id
+                  }
+                  onSelect={() => handleCompareSelect(doc)}
+                  onAnalyze={() => handleAnalyze(doc)}
+                  onDelete={() => handleDelete(doc)}
+                  onDownload={() => handleDownload(doc)}
+                  isAnalyzing={analyzingIds.has(doc.id)}
+                />
+              ))}
+            </div>
           )}
         </div>
+
+        {/* Detail/Compare panel - Desktop only */}
+        {!isMobile && selectedDocument && !compareMode && (
+          <Card className="w-96 flex-shrink-0 overflow-auto max-h-[calc(100vh-8rem)] animate-slide-in-right">
+            <PDFDetail
+              document={selectedDocument}
+              onClose={() => setSelectedDocument(null)}
+              onAnalyze={() => handleAnalyze(selectedDocument)}
+              onExtractText={() => handleExtractText(selectedDocument)}
+              onDelete={() => handleDelete(selectedDocument)}
+              onDownload={() => handleDownload(selectedDocument)}
+              onCreateIncident={() => toast.info('Utilisez le panneau de liaison')}
+              isAnalyzing={analyzingIds.has(selectedDocument.id)}
+              isExtracting={extractingIds.has(selectedDocument.id)}
+            />
+          </Card>
+        )}
+
+        {!isMobile && compareMode && compareIds[0] && compareIds[1] && (
+          <Card className="w-[500px] flex-shrink-0 overflow-auto max-h-[calc(100vh-8rem)] animate-slide-in-right">
+            <PDFCompareView
+              documents={documents}
+              selectedIds={compareIds as [string, string]}
+              onClose={() => setCompareIds([null, null])}
+              onDocumentSelect={(pos, id) => {
+                const newIds = [...compareIds] as [string | null, string | null];
+                newIds[pos] = id;
+                setCompareIds(newIds);
+              }}
+            />
+          </Card>
+        )}
       </div>
+
+      {/* Mobile bottom sheet for document detail */}
+      {isMobile && selectedDocument && !compareMode && (
+        <div className="fixed inset-x-0 bottom-0 z-50 bg-background border-t rounded-t-2xl shadow-2xl max-h-[70vh] overflow-auto animate-slide-in-right">
+          <div className="p-1 flex justify-center">
+            <div className="w-12 h-1 rounded-full bg-muted-foreground/30" />
+          </div>
+          <PDFDetail
+            document={selectedDocument}
+            onClose={() => setSelectedDocument(null)}
+            onAnalyze={() => handleAnalyze(selectedDocument)}
+            onExtractText={() => handleExtractText(selectedDocument)}
+            onDelete={() => handleDelete(selectedDocument)}
+            onDownload={() => handleDownload(selectedDocument)}
+            onCreateIncident={() => toast.info('Utilisez le panneau de liaison')}
+            isAnalyzing={analyzingIds.has(selectedDocument.id)}
+            isExtracting={extractingIds.has(selectedDocument.id)}
+          />
+        </div>
+      )}
     </AppLayout>
   );
 }
