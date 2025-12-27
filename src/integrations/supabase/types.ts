@@ -14,6 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      active_learning_queue: {
+        Row: {
+          context_summary: string | null
+          created_at: string
+          entity_id: string
+          entity_type: string
+          expires_at: string | null
+          id: string
+          potential_learning_value: number | null
+          proposal_reason: string
+          reviewed_at: string | null
+          status: string | null
+          suggested_questions: Json | null
+          uncertainty_score: number | null
+          user_id: string | null
+        }
+        Insert: {
+          context_summary?: string | null
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          expires_at?: string | null
+          id?: string
+          potential_learning_value?: number | null
+          proposal_reason: string
+          reviewed_at?: string | null
+          status?: string | null
+          suggested_questions?: Json | null
+          uncertainty_score?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          context_summary?: string | null
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          expires_at?: string | null
+          id?: string
+          potential_learning_value?: number | null
+          proposal_reason?: string
+          reviewed_at?: string | null
+          status?: string | null
+          suggested_questions?: Json | null
+          uncertainty_score?: number | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       actor_trust_scores: {
         Row: {
           actor_email: string | null
@@ -67,6 +115,84 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      ai_situation_training: {
+        Row: {
+          ai_confidence: number | null
+          ai_reasoning: string | null
+          correct_legal_refs: Json | null
+          correction_notes: string | null
+          created_at: string
+          detected_legal_refs: Json | null
+          detected_violation_type: string | null
+          email_id: string | null
+          id: string
+          incident_id: string | null
+          is_used_for_training: boolean | null
+          situation_summary: string
+          trained_at: string | null
+          training_priority: number | null
+          updated_at: string
+          user_correction: string | null
+          user_id: string | null
+          validation_status: string | null
+        }
+        Insert: {
+          ai_confidence?: number | null
+          ai_reasoning?: string | null
+          correct_legal_refs?: Json | null
+          correction_notes?: string | null
+          created_at?: string
+          detected_legal_refs?: Json | null
+          detected_violation_type?: string | null
+          email_id?: string | null
+          id?: string
+          incident_id?: string | null
+          is_used_for_training?: boolean | null
+          situation_summary: string
+          trained_at?: string | null
+          training_priority?: number | null
+          updated_at?: string
+          user_correction?: string | null
+          user_id?: string | null
+          validation_status?: string | null
+        }
+        Update: {
+          ai_confidence?: number | null
+          ai_reasoning?: string | null
+          correct_legal_refs?: Json | null
+          correction_notes?: string | null
+          created_at?: string
+          detected_legal_refs?: Json | null
+          detected_violation_type?: string | null
+          email_id?: string | null
+          id?: string
+          incident_id?: string | null
+          is_used_for_training?: boolean | null
+          situation_summary?: string
+          trained_at?: string | null
+          training_priority?: number | null
+          updated_at?: string
+          user_correction?: string | null
+          user_id?: string | null
+          validation_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_situation_training_email_id_fkey"
+            columns: ["email_id"]
+            isOneToOne: false
+            referencedRelation: "emails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_situation_training_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "incidents"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ai_training_feedback: {
         Row: {
@@ -527,6 +653,57 @@ export type Database = {
         }
         Relationships: []
       }
+      entity_relations: {
+        Row: {
+          created_at: string
+          evidence: Json | null
+          id: string
+          is_verified: boolean | null
+          relation_strength: number | null
+          relation_type: string
+          source_id: string
+          source_label: string | null
+          source_type: string
+          target_id: string
+          target_label: string | null
+          target_type: string
+          user_id: string | null
+          verified_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          evidence?: Json | null
+          id?: string
+          is_verified?: boolean | null
+          relation_strength?: number | null
+          relation_type: string
+          source_id: string
+          source_label?: string | null
+          source_type: string
+          target_id: string
+          target_label?: string | null
+          target_type: string
+          user_id?: string | null
+          verified_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          evidence?: Json | null
+          id?: string
+          is_verified?: boolean | null
+          relation_strength?: number | null
+          relation_type?: string
+          source_id?: string
+          source_label?: string | null
+          source_type?: string
+          target_id?: string
+          target_label?: string | null
+          target_type?: string
+          user_id?: string | null
+          verified_at?: string | null
+        }
+        Relationships: []
+      }
       gmail_config: {
         Row: {
           access_token: string | null
@@ -675,6 +852,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      legal_references: {
+        Row: {
+          article_number: string
+          article_text: string | null
+          code_name: string
+          created_at: string
+          domain: string | null
+          id: string
+          is_verified: boolean | null
+          keywords: string[] | null
+          notes: string | null
+          source_url: string | null
+          updated_at: string
+          user_id: string | null
+          verified_at: string | null
+        }
+        Insert: {
+          article_number: string
+          article_text?: string | null
+          code_name: string
+          created_at?: string
+          domain?: string | null
+          id?: string
+          is_verified?: boolean | null
+          keywords?: string[] | null
+          notes?: string | null
+          source_url?: string | null
+          updated_at?: string
+          user_id?: string | null
+          verified_at?: string | null
+        }
+        Update: {
+          article_number?: string
+          article_text?: string | null
+          code_name?: string
+          created_at?: string
+          domain?: string | null
+          id?: string
+          is_verified?: boolean | null
+          keywords?: string[] | null
+          notes?: string | null
+          source_url?: string | null
+          updated_at?: string
+          user_id?: string | null
+          verified_at?: string | null
+        }
+        Relationships: []
       }
       monthly_reports: {
         Row: {
