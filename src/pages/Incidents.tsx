@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Filter, Plus, Eye, Pencil, Send, FileText, MoreHorizontal, CalendarIcon, Download, ArrowUpDown, ArrowUp, ArrowDown, X, Check, ChevronsUpDown } from 'lucide-react';
+import { Search, Filter, Plus, Eye, Pencil, Send, FileText, MoreHorizontal, CalendarIcon, Download, ArrowUpDown, ArrowUp, ArrowDown, X, Check, ChevronsUpDown, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
@@ -15,7 +15,18 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 import type { Incident } from '@/types/incident';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import {
   Command,
@@ -78,6 +89,8 @@ export default function Incidents() {
   const [statutOpen, setStatutOpen] = useState(false);
   const [graviteOpen, setGraviteOpen] = useState(false);
   const [exportingPdf, setExportingPdf] = useState<string | null>(null);
+  const [incidentToDelete, setIncidentToDelete] = useState<Incident | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Load incidents from Supabase on mount
   useEffect(() => {
@@ -381,6 +394,45 @@ export default function Incidents() {
       dateTransmissionJP: new Date().toISOString(),
       statut: 'Transmis'
     });
+  };
+
+  // Supprimer un incident avec feedback IA
+  const deleteIncident = async (incident: Incident) => {
+    setIsDeleting(true);
+    try {
+      // Enregistrer le feedback pour l'IA (incident non pertinent)
+      await supabase.from('ai_training_feedback').insert({
+        entity_id: incident.id,
+        entity_type: 'incident',
+        feedback_type: 'rejected',
+        original_detection: {
+          titre: incident.titre,
+          institution: incident.institution,
+          type: incident.type,
+          gravite: incident.gravite,
+          dysfonctionnement: incident.dysfonctionnement
+        },
+        notes: 'Incident supprimé manuellement - hors périmètre'
+      });
+
+      // Supprimer l'incident
+      const { error } = await supabase
+        .from('incidents')
+        .delete()
+        .eq('id', incident.id);
+
+      if (error) throw error;
+
+      // Recharger les données
+      await loadFromSupabase();
+      toast.success(`Incident #${incident.numero} supprimé et enregistré comme feedback IA`);
+    } catch (error) {
+      console.error('Error deleting incident:', error);
+      toast.error('Erreur lors de la suppression');
+    } finally {
+      setIsDeleting(false);
+      setIncidentToDelete(null);
+    }
   };
 
   return (
@@ -692,6 +744,13 @@ export default function Incidents() {
                           <FileText className="h-4 w-4 mr-2" />
                           {exportingPdf === incident.id ? 'Export...' : 'Export PDF'}
                         </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={() => setIncidentToDelete(incident)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Supprimer (hors sujet)
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
@@ -852,6 +911,13 @@ export default function Incidents() {
                                 <FileText className="h-4 w-4 mr-2" />
                                 {exportingPdf === incident.id ? 'Export...' : 'Export PDF'}
                               </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => setIncidentToDelete(incident)}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Supprimer (hors sujet)
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -912,6 +978,29 @@ export default function Incidents() {
           </div>
         )}
       </div>
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={!!incidentToDelete} onOpenChange={(open) => !open && setIncidentToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer cet incident ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              L'incident #{incidentToDelete?.numero} "{incidentToDelete?.titre}" sera supprimé définitivement. 
+              Cette action entraînera également l'IA à ne plus détecter ce type de situation comme un incident.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => incidentToDelete && deleteIncident(incidentToDelete)}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? 'Suppression...' : 'Supprimer et entraîner l\'IA'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 }
