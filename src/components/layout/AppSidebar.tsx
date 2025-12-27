@@ -325,34 +325,34 @@ function NavContent({ onItemClick }: { onItemClick?: () => void }) {
   const { signOut, user, profile, roles } = useAuth();
   const { mode, setMode } = useDataSourceMode();
   
-  const navCategories = getNavCategories(mode);
+  const navCategories = useMemo(() => getNavCategories(mode), [mode]);
   
-  // Memoize getInitialOpenState to avoid useEffect dependency issues
-  const getInitialOpenState = useCallback(() => {
-    const openState: Record<string, boolean> = {};
+  // State for open categories - each category is independently controlled
+  const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({});
+
+  // Initialize open state based on current route when location changes
+  useEffect(() => {
+    const newOpenState: Record<string, boolean> = {};
     navCategories.forEach(cat => {
-      openState[cat.id] = cat.items.some(item => 
+      const hasActiveItem = cat.items.some(item => 
         location.pathname === item.to || 
         (item.to !== '/' && location.pathname.startsWith(item.to))
       );
+      // Keep existing open state OR set open if has active item
+      newOpenState[cat.id] = openCategories[cat.id] ?? hasActiveItem;
     });
-    // Always open first category if none is active
-    if (!Object.values(openState).some(v => v)) {
-      openState['dashboard'] = true;
+    // Always open dashboard if nothing else is open
+    if (!Object.values(newOpenState).some(v => v)) {
+      newOpenState['dashboard'] = true;
     }
-    return openState;
-  }, [navCategories, location.pathname]);
+    setOpenCategories(newOpenState);
+  // Only run on mount and when mode changes (not on every location change)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
 
-  const [openCategories, setOpenCategories] = useState<Record<string, boolean>>(() => getInitialOpenState());
-  
-  // Update open state when mode changes
-  useEffect(() => {
-    setOpenCategories(getInitialOpenState());
-  }, [getInitialOpenState]);
-
-  const toggleCategory = (id: string) => {
+  const toggleCategory = useCallback((id: string) => {
     setOpenCategories(prev => ({ ...prev, [id]: !prev[id] }));
-  };
+  }, []);
 
   const handleSignOut = async () => {
     const { error } = await signOut();
