@@ -394,6 +394,36 @@ export type Database = {
           },
         ]
       }
+      app_settings: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          key: string
+          updated_at: string
+          user_id: string | null
+          value: Json
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          key: string
+          updated_at?: string
+          user_id?: string | null
+          value: Json
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          key?: string
+          updated_at?: string
+          user_id?: string | null
+          value?: Json
+        }
+        Relationships: []
+      }
       audit_alerts: {
         Row: {
           alert_type: string
@@ -1198,6 +1228,7 @@ export type Database = {
           date_creation: string
           date_incident: string
           date_transmission_jp: string | null
+          dedup_key: string | null
           dysfonctionnement: string
           email_source_id: string | null
           faits: string
@@ -1225,6 +1256,7 @@ export type Database = {
           date_creation?: string
           date_incident: string
           date_transmission_jp?: string | null
+          dedup_key?: string | null
           dysfonctionnement: string
           email_source_id?: string | null
           faits: string
@@ -1252,6 +1284,7 @@ export type Database = {
           date_creation?: string
           date_incident?: string
           date_transmission_jp?: string | null
+          dedup_key?: string | null
           dysfonctionnement?: string
           email_source_id?: string | null
           faits?: string
@@ -2180,6 +2213,21 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      business_days_between: { Args: { a: string; b: string }; Returns: number }
+      get_last_curatelle_contact: {
+        Args: { p_curatelle_emails: string[]; p_user_id: string }
+        Returns: {
+          contact_recipient: string
+          contact_sender: string
+          last_contact_at: string
+        }[]
+      }
+      get_users_with_gmail_sync: {
+        Args: never
+        Returns: {
+          user_id: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
