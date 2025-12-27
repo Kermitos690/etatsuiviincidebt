@@ -1,8 +1,35 @@
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// ============= CORS Headers =============
+// ============= CORS Configuration =============
+// List of allowed origins for CORS
+const ALLOWED_ORIGINS = [
+  "https://68b94080-8702-44ad-92ac-e956f60a1e94.lovableproject.com",
+  "https://csysnvkvnoghhyqaxdkz.supabase.co",
+  "http://localhost:5173",
+  "http://localhost:8080",
+  "http://localhost:3000",
+];
+
+// Get dynamic CORS headers based on request origin
+export function getCorsHeaders(req?: Request): Record<string, string> {
+  const origin = req?.headers?.get("origin") || "";
+  
+  // For development or if origin matches allowed list
+  const isAllowedOrigin = ALLOWED_ORIGINS.some(allowed => 
+    origin === allowed || origin.endsWith(".lovableproject.com")
+  );
+  
+  return {
+    "Access-Control-Allow-Origin": isAllowedOrigin ? origin : ALLOWED_ORIGINS[0],
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Credentials": "true",
+  };
+}
+
+// Legacy corsHeaders for backward compatibility (uses first allowed origin)
 export const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": ALLOWED_ORIGINS[0],
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
 };
@@ -122,39 +149,40 @@ export async function verifyAuthOrInternal(req: Request): Promise<AuthResult & {
 }
 
 // ============= Response Helpers =============
-export function successResponse<T>(data: T, status = 200): Response {
+export function successResponse<T>(data: T, status = 200, req?: Request): Response {
   return new Response(
     JSON.stringify({ success: true, data }),
-    { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    { status, headers: { ...getCorsHeaders(req), "Content-Type": "application/json" } }
   );
 }
 
 export function errorResponse(
   message: string, 
   code: string = ErrorCodes.INTERNAL_ERROR, 
-  status = 500
+  status = 500,
+  req?: Request
 ): Response {
   log("error", `Error response: ${message}`, { code, status });
   return new Response(
     JSON.stringify({ success: false, error: message, code }),
-    { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    { status, headers: { ...getCorsHeaders(req), "Content-Type": "application/json" } }
   );
 }
 
-export function unauthorizedResponse(message = "Unauthorized"): Response {
-  return errorResponse(message, ErrorCodes.UNAUTHORIZED, 401);
+export function unauthorizedResponse(message = "Unauthorized", req?: Request): Response {
+  return errorResponse(message, ErrorCodes.UNAUTHORIZED, 401, req);
 }
 
-export function badRequestResponse(message: string): Response {
-  return errorResponse(message, ErrorCodes.VALIDATION_ERROR, 400);
+export function badRequestResponse(message: string, req?: Request): Response {
+  return errorResponse(message, ErrorCodes.VALIDATION_ERROR, 400, req);
 }
 
-export function notFoundResponse(message = "Resource not found"): Response {
-  return errorResponse(message, ErrorCodes.NOT_FOUND, 404);
+export function notFoundResponse(message = "Resource not found", req?: Request): Response {
+  return errorResponse(message, ErrorCodes.NOT_FOUND, 404, req);
 }
 
-export function corsResponse(): Response {
-  return new Response(null, { headers: corsHeaders });
+export function corsResponse(req?: Request): Response {
+  return new Response(null, { headers: getCorsHeaders(req) });
 }
 
 // ============= Request Helpers =============
@@ -298,9 +326,9 @@ export function createHandler(
   const { requireAuth = false, allowInternal = false } = options;
   
   return async (req: Request): Promise<Response> => {
-    // Handle CORS preflight
+    // Handle CORS preflight with dynamic origin
     if (req.method === "OPTIONS") {
-      return corsResponse();
+      return corsResponse(req);
     }
     
     try {
@@ -309,12 +337,12 @@ export function createHandler(
         if (allowInternal) {
           const result = await verifyAuthOrInternal(req);
           if (result.error) {
-            return unauthorizedResponse(result.error);
+            return unauthorizedResponse(result.error, req);
           }
         } else {
           const result = await verifyAuth(req);
           if (result.error) {
-            return unauthorizedResponse(result.error);
+            return unauthorizedResponse(result.error, req);
           }
         }
       }
@@ -328,7 +356,8 @@ export function createHandler(
       return errorResponse(
         error instanceof Error ? error.message : "Internal server error",
         ErrorCodes.INTERNAL_ERROR,
-        500
+        500,
+        req
       );
     }
   };
