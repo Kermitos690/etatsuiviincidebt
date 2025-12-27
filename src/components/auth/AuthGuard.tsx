@@ -4,6 +4,10 @@ import { useAuth, AppRole } from '@/hooks/useAuth';
 import { Loader2, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
+// Tutorial mode: bypass authentication when enabled
+// Set VITE_TUTORIAL_MODE=true in .env to enable (for screenshot capture)
+const TUTORIAL_MODE = import.meta.env.VITE_TUTORIAL_MODE === 'true';
+
 interface AuthGuardProps {
   children: ReactNode;
   requiredRoles?: AppRole[];
@@ -13,6 +17,12 @@ interface AuthGuardProps {
 export function AuthGuard({ children, requiredRoles, fallback }: AuthGuardProps) {
   const { session, loading, profileLoading, roles, hasRole } = useAuth();
   const location = useLocation();
+
+  // Tutorial mode bypass - skip all auth checks
+  if (TUTORIAL_MODE) {
+    console.log('[Tutorial Mode] Auth bypassed for:', location.pathname);
+    return <>{children}</>;
+  }
 
   // Show loading state
   if (loading || profileLoading) {
