@@ -110,3 +110,12 @@ verify_jwt = false
 
 [functions.scrape-csias-norms]
 verify_jwt = false
+
+[functions.seal-evidence]
+verify_jwt = false
+
+[functions.match-facts-to-law]
+verify_jwt = false
+
+[functions.validate-ai-output]
+verify_jwt = false
