@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, verifyAuth, unauthorizedResponse } from "../_shared/auth.ts";
+import { validateAIOutput, createProofChainData, LegalArticle } from "../_shared/legal-validation.ts";
 
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
@@ -408,7 +409,15 @@ CHAQUE problème identifié DOIT avoir au moins une citation exacte.`;
       return null;
     }
 
-    return JSON.parse(jsonMatch[0]) as ThreadAnalysis;
+    const parsed = JSON.parse(jsonMatch[0]) as ThreadAnalysis;
+    
+    // GUARDRAIL: Mark any analysis as needing validation
+    if (parsed.analysis_metadata) {
+      parsed.analysis_metadata.requires_validation = true;
+      parsed.analysis_metadata.validation_status = 'pending';
+    }
+    
+    return parsed;
   } catch (error) {
     console.error('AI analysis error:', error);
     return null;
@@ -540,7 +549,48 @@ serve(async (req) => {
           return count + (issue.legal_violations?.length || 0);
         }, 0);
 
-        const { error: insertError } = await supabase
+        // GUARDRAIL: Validate AI output against legal repository
+        const { data: legalArticles } = await supabase
+          .from('legal_articles')
+          .select('*')
+          .eq('is_current', true);
+
+        let validationStatus = 'valid';
+        let hallucinationDetected = false;
+        
+        if (legalArticles && legalArticles.length > 0) {
+          const validation = await validateAIOutput(
+            JSON.stringify(analysis),
+            legalArticles as LegalArticle[],
+            { requireLegalBasis: false, strictMode: false }
+          );
+          
+          hallucinationDetected = validation.hallucinationDetected;
+          if (hallucinationDetected) {
+            validationStatus = 'requires_review';
+            console.log(`Thread ${currentThreadId}: Hallucination detected, marking for review`);
+          }
+          
+          // Record validation
+          await supabase.from('ai_output_validations').insert({
+            edge_function_name: 'analyze-thread-complete',
+            input_hash: currentThreadId,
+            output_hash: 'auto',
+            raw_output: { analysis },
+            validated_output: { analysis },
+            legal_refs_claimed: validation.verifiedRefs.map(r => `${r.code} ${r.article}`),
+            legal_refs_verified: validation.verifiedRefs.map(r => `${r.code} ${r.article}`),
+            legal_refs_rejected: validation.rejectedRefs.map(r => `${r.code} ${r.article}`),
+            hallucination_detected: hallucinationDetected,
+            validation_status: validationStatus,
+            model_used: 'google/gemini-2.5-flash',
+            prompt_version: 'master-analysis-v1',
+            validated_at: new Date().toISOString(),
+            user_id: user.id,
+          });
+        }
+
+        const { data: insertedAnalysis, error: insertError } = await supabase
           .from('thread_analyses')
           .insert({
             user_id: user.id,
@@ -553,12 +603,40 @@ serve(async (req) => {
             severity: maxSeverity,
             confidence_score: avgConfidence,
             citations: (analysis.issues || []).flatMap((i: any) => i.citations || []),
-          });
+            model: 'google/gemini-2.5-flash',
+            prompt_version: 'master-analysis-v1',
+          })
+          .select('id')
+          .single();
 
         if (insertError) {
           console.error(`Error storing analysis for thread ${currentThreadId}:`, insertError);
           results.errors.push(`Storage error for ${currentThreadId}`);
           continue;
+        }
+        
+        // SEAL EVIDENCE: Create proof chain entry for audit trail
+        if (insertedAnalysis) {
+          const proofData = await createProofChainData(
+            'thread_analysis',
+            insertedAnalysis.id,
+            analysis,
+            { thread_id: currentThreadId, emails_count: threadEmails.length }
+          );
+          
+          await supabase.from('proof_chain').insert({
+            entity_type: 'thread_analysis',
+            entity_id: insertedAnalysis.id,
+            content_hash: proofData.content_hash,
+            metadata_hash: proofData.metadata_hash,
+            combined_hash: proofData.combined_hash,
+            chain_position: 1,
+            sealed_by: 'edge_function',
+            seal_reason: 'creation',
+            verification_status: 'valid',
+            last_verified_at: new Date().toISOString(),
+            user_id: user.id,
+          });
         }
 
         results.analyzed++;

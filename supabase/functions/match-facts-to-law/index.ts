@@ -14,7 +14,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { fact_id, fact_type, fact_text, domain, user_id, auto_validate = false } = await req.json();
-    if (!fact_text || !user_id) return errorResponse("fact_text and user_id required", 400, req);
+    if (!fact_text || !user_id) return errorResponse("fact_text and user_id required", "VALIDATION_ERROR", 400, req);
 
     // Fetch legal articles
     let query = supabase.from("legal_articles").select("*").eq("is_current", true);
@@ -58,6 +58,6 @@ RÉFÉRENTIEL:\n${articlesContext}` },
     return successResponse({ matches, mappings_created: matches.filter(m => m.relevance_score >= 0.3).length }, 200, req);
   } catch (error) {
     log("error", "match-facts-to-law error", { error: (error as Error).message });
-    return errorResponse((error as Error).message, 500, req);
+    return errorResponse((error as Error).message, "INTERNAL_ERROR", 500, req);
   }
 });

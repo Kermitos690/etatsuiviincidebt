@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, verifyAuth, unauthorizedResponse } from "../_shared/auth.ts";
+import { createProofChainData } from "../_shared/legal-validation.ts";
 
 // Regex patterns for extraction
 const EMAIL_PATTERN = /[\w.-]+@[\w.-]+\.\w+/gi;
@@ -319,7 +320,7 @@ serve(async (req) => {
         const facts = extractFacts(email);
 
         // Insert facts
-        const { error: insertError } = await supabase
+        const { data: insertedFact, error: insertError } = await supabase
           .from('email_facts')
           .insert({
             email_id: email.id,
@@ -335,7 +336,9 @@ serve(async (req) => {
             sentiment: facts.sentiment,
             urgency_level: facts.urgencyLevel,
             raw_citations: facts.rawCitations,
-          });
+          })
+          .select('id')
+          .single();
 
         if (insertError) {
           console.error(`Error inserting facts for email ${email.id}:`, insertError);
@@ -344,6 +347,24 @@ serve(async (req) => {
         }
 
         results.processed++;
+        
+        // SEAL EVIDENCE: Create proof chain entry for the extracted facts
+        if (insertedFact) {
+          const proofData = await createProofChainData('email_fact', insertedFact.id, facts, { email_id: email.id });
+          await supabase.from('proof_chain').insert({
+            entity_type: 'email_fact',
+            entity_id: insertedFact.id,
+            content_hash: proofData.content_hash,
+            metadata_hash: proofData.metadata_hash,
+            combined_hash: proofData.combined_hash,
+            chain_position: 1,
+            sealed_by: 'edge_function',
+            seal_reason: 'creation',
+            verification_status: 'valid',
+            last_verified_at: new Date().toISOString(),
+            user_id: user.id,
+          });
+        }
 
         // Create relations with other emails in the same thread
         if (email.gmail_thread_id) {

@@ -14,7 +14,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { ai_output, edge_function_name, user_id, require_legal_basis = true, strict_mode = false, domain } = await req.json();
-    if (!ai_output || !user_id) return errorResponse("ai_output and user_id required", 400, req);
+    if (!ai_output || !user_id) return errorResponse("ai_output and user_id required", "VALIDATION_ERROR", 400, req);
 
     // Fetch legal repository
     let query = supabase.from("legal_articles").select("*").eq("is_current", true);
@@ -55,6 +55,6 @@ serve(async (req) => {
     return successResponse({ is_valid: validation.isValid, validation_status: status, verified_references: validation.verifiedRefs, validated_output: validatedOutput }, 200, req);
   } catch (error) {
     log("error", "validate-ai-output error", { error: (error as Error).message });
-    return errorResponse((error as Error).message, 500, req);
+    return errorResponse((error as Error).message, "INTERNAL_ERROR", 500, req);
   }
 });
