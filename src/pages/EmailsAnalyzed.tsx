@@ -8,13 +8,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from '@/components/ui/table';
 import {
   Dialog,
@@ -22,24 +22,27 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { 
-  Mail, 
-  Search, 
-  AlertTriangle, 
-  CheckCircle, 
+import {
+  Mail,
+  Search,
+  AlertTriangle,
+  CheckCircle,
   Clock,
   Brain,
   Link2,
   Eye,
   TrendingUp,
   Building2,
-  RefreshCw
+  RefreshCw,
+  Filter
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { EmailLink } from '@/components/email';
 import { useNavigate } from 'react-router-dom';
 import { FullReanalyzeDialog } from '@/components/analysis/FullReanalyzeDialog';
+import { useGmailFilters } from '@/hooks/useGmailFilters';
+import { isEmailRelevant } from '@/utils/emailFilters';
 
 interface AIAnalysis {
   is_incident?: boolean;
@@ -83,6 +86,8 @@ export default function EmailsAnalyzed() {
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [linkedIncident, setLinkedIncident] = useState<Incident | null>(null);
   const [showReanalyze, setShowReanalyze] = useState(false);
+  const [showAllEmails, setShowAllEmails] = useState(false);
+  const { data: gmailFilters } = useGmailFilters();
   const queryClient = useQueryClient();
 
   // Fetch analyzed emails
@@ -125,6 +130,9 @@ export default function EmailsAnalyzed() {
 
   // Filter emails
   const filteredEmails = emails?.filter(email => {
+    const relevant = showAllEmails || !gmailFilters ? true : isEmailRelevant(email as any, gmailFilters);
+    if (!relevant) return false;
+
     const searchLower = searchTerm.toLowerCase();
     return (
       email.subject.toLowerCase().includes(searchLower) ||
@@ -161,14 +169,38 @@ export default function EmailsAnalyzed() {
     <AppLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <PageHeader 
-            title="Emails Analysés" 
+          <PageHeader
+            title="Emails Analysés"
             description="Visualisez les emails analysés par l'IA avec leurs scores et incidents liés"
           />
-          <Button onClick={() => setShowReanalyze(true)} className="gap-2">
-            <RefreshCw className="h-4 w-4" />
-            Réanalyse Complète
-          </Button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 p-1 rounded-lg bg-secondary/50">
+              <Button
+                variant={!showAllEmails ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setShowAllEmails(false)}
+                className="h-8"
+                title="Affiche uniquement les emails correspondant à vos domaines et mots-clés"
+              >
+                <Filter className="h-4 w-4 mr-1" />
+                Pertinents
+              </Button>
+              <Button
+                variant={showAllEmails ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setShowAllEmails(true)}
+                className="h-8"
+                title="Affiche tous les emails synchronisés (peut inclure du spam)"
+              >
+                Tous
+              </Button>
+            </div>
+
+            <Button onClick={() => setShowReanalyze(true)} className="gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Réanalyse Complète
+            </Button>
+          </div>
         </div>
 
         <FullReanalyzeDialog 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { 
-  Mail, Sparkles, Check, X, RefreshCw, AlertTriangle, ArrowRight, Clock, Brain, Send, 
-  MessageSquare, Settings, Zap, Play, Scale, ChevronDown, ChevronRight, Layers, 
+import {
+  Mail, Sparkles, Check, X, RefreshCw, AlertTriangle, ArrowRight, Clock, Brain, Send,
+  MessageSquare, Settings, Zap, Play, Scale, ChevronDown, ChevronRight, Layers,
   Filter, Search, BarChart3, TrendingUp, Users, Building2, Inbox, Archive, Trash2,
   LayoutGrid, List, SortAsc, SortDesc, Maximize2, Minimize2, Eye, EyeOff, Paperclip,
   FileText, Image, File, Download, Loader2
@@ -25,6 +25,8 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useGmailFilters } from '@/hooks/useGmailFilters';
+import { isEmailRelevant } from '@/utils/emailFilters';
 
 interface Email {
   id: string;
@@ -145,6 +147,9 @@ interface EmailThread {
 
 export default function EmailsInbox() {
   const { session, user } = useAuth();
+  const { data: gmailFilters } = useGmailFilters();
+
+  const [showAllEmails, setShowAllEmails] = useState(false);
   const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedThread, setSelectedThread] = useState<EmailThread | null>(null);
@@ -286,7 +291,7 @@ export default function EmailsInbox() {
       setLoading(false);
       return;
     }
-    
+
     setLoading(true);
     try {
       console.log('Fetching emails for user:', user.id);
@@ -299,16 +304,21 @@ export default function EmailsInbox() {
         console.error('Supabase error:', error);
         throw error;
       }
-      
-      console.log('Emails fetched:', data?.length || 0);
-      setEmails((data || []) as unknown as Email[]);
+
+      const allEmails = (data || []) as unknown as Email[];
+      const visibleEmails = !showAllEmails && gmailFilters
+        ? allEmails.filter((e) => isEmailRelevant(e, gmailFilters))
+        : allEmails;
+
+      console.log('Emails fetched:', visibleEmails.length);
+      setEmails(visibleEmails);
     } catch (error) {
       console.error('Error fetching emails:', error);
       toast.error('Erreur lors du chargement des emails');
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, gmailFilters, showAllEmails]);
 
   useEffect(() => {
     if (user) {
@@ -939,6 +949,28 @@ export default function EmailsInbox() {
 
             {/* Filters */}
             <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 p-1 rounded-lg bg-secondary/50">
+                <Button
+                  variant={!showAllEmails ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setShowAllEmails(false)}
+                  className={cn("h-8", !showAllEmails && "shadow-glow-sm")}
+                  title="Affiche uniquement les emails correspondant à vos domaines et mots-clés"
+                >
+                  <Filter className="h-4 w-4 mr-1" />
+                  Pertinents
+                </Button>
+                <Button
+                  variant={showAllEmails ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setShowAllEmails(true)}
+                  className={cn("h-8", showAllEmails && "shadow-glow-sm")}
+                  title="Affiche tous les emails synchronisés (peut inclure du spam)"
+                >
+                  Tous
+                </Button>
+              </div>
+
               <Button
                 variant={filterIncidents ? "default" : "ghost"}
                 size="sm"
