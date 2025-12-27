@@ -60,6 +60,206 @@ export const SYNC_KEYWORDS = [
   'curatelle'
 ];
 
+// Predefined filter presets for common use cases
+export interface FilterPreset {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  domains: string[];
+  keywords: string[];
+}
+
+export const FILTER_PRESETS: FilterPreset[] = [
+  {
+    id: 'education',
+    name: 'Éducation',
+    description: 'Écoles, universités, DGEO, formations',
+    icon: '🎓',
+    domains: [
+      'edu.vd.ch',
+      'epfl.ch',
+      'unil.ch',
+      'unige.ch',
+      'unifr.ch',
+      'unine.ch',
+      'unibas.ch',
+      'uzh.ch',
+      'ethz.ch',
+      'hes-so.ch',
+      'vd.ch',
+      'ge.ch',
+      'eduvs.ch',
+      'rpn.ch'
+    ],
+    keywords: [
+      'scolarité',
+      'inscription',
+      'orientation',
+      'élève',
+      'étudiant',
+      'formation',
+      'diplôme',
+      'examen',
+      'enseignant',
+      'école',
+      'collège',
+      'gymnase',
+      'université',
+      'apprentissage'
+    ]
+  },
+  {
+    id: 'sante',
+    name: 'Santé',
+    description: 'Hôpitaux, assurances maladie, médecins',
+    icon: '🏥',
+    domains: [
+      'chuv.ch',
+      'hug.ch',
+      'insel.ch',
+      'usz.ch',
+      'lamal.ch',
+      'css.ch',
+      'swica.ch',
+      'groupe-mutuel.ch',
+      'assura.ch',
+      'helsana.ch',
+      'sanitas.ch',
+      'concordia.ch',
+      'ofsp.admin.ch',
+      'bag.admin.ch',
+      'vd.ch',
+      'ge.ch'
+    ],
+    keywords: [
+      'patient',
+      'traitement',
+      'hospitalisation',
+      'ordonnance',
+      'consultation',
+      'diagnostic',
+      'maladie',
+      'accident',
+      'assurance',
+      'remboursement',
+      'franchise',
+      'médecin',
+      'hôpital',
+      'clinique',
+      'soins'
+    ]
+  },
+  {
+    id: 'administration',
+    name: 'Administration',
+    description: 'Services publics, communes, cantons',
+    icon: '🏛️',
+    domains: [
+      'admin.ch',
+      'vd.ch',
+      'ge.ch',
+      'ne.ch',
+      'fr.ch',
+      'vs.ch',
+      'be.ch',
+      'ti.ch',
+      'zh.ch',
+      'lu.ch',
+      'ag.ch',
+      'sg.ch',
+      'bs.ch',
+      'bl.ch',
+      'justice.ch',
+      'police.ch'
+    ],
+    keywords: [
+      'demande',
+      'autorisation',
+      'permis',
+      'décision',
+      'recours',
+      'délai',
+      'formulaire',
+      'taxe',
+      'impôt',
+      'registre',
+      'citoyenneté',
+      'état civil',
+      'commune',
+      'canton',
+      'confédération'
+    ]
+  },
+  {
+    id: 'justice',
+    name: 'Justice & Curatelle',
+    description: 'Tribunaux, justice de paix, protection',
+    icon: '⚖️',
+    domains: [
+      'justice.ch',
+      'vd.ch',
+      'ge.ch',
+      'ne.ch',
+      'admin.ch',
+      'tribunaux.ch'
+    ],
+    keywords: [
+      'curatelle',
+      'tutelle',
+      'protection',
+      'jugement',
+      'tribunal',
+      'ordonnance',
+      'audience',
+      'procédure',
+      'dossier',
+      'requête',
+      'recours',
+      'appel',
+      'décision',
+      'justice de paix',
+      'curateur'
+    ]
+  },
+  {
+    id: 'social',
+    name: 'Social & Aide',
+    description: 'Aide sociale, AVS, AI, chômage',
+    icon: '🤝',
+    domains: [
+      'avs.ch',
+      'ahv.ch',
+      'ai.ch',
+      'iv.ch',
+      'ocs.ch',
+      'csc.ch',
+      'admin.ch',
+      'vd.ch',
+      'ge.ch',
+      'caritas.ch',
+      'csp.ch'
+    ],
+    keywords: [
+      'aide sociale',
+      'prestation',
+      'allocation',
+      'rente',
+      'AVS',
+      'AI',
+      'invalidité',
+      'chômage',
+      'indemnité',
+      'subsides',
+      'logement',
+      'revenus',
+      'budget',
+      'dette',
+      'situation financière'
+    ]
+  }
+];
+
 export const POIDS_GRAVITE: Record<string, number> = {
   'Faible': 1,
   'Moyenne': 3,
