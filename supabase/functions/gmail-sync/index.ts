@@ -651,11 +651,12 @@ serve(async (req) => {
     }
 
     // Parse request body for options
-    let syncMode = 'all'; // 'all', 'filtered', 'label'
+    let syncMode = 'filtered'; // DEFAULT TO FILTERED - 'filtered', 'all', 'label'
     let specificLabel = null;
     let afterDate = null;
     let requestDomains: string[] | null = null;
     let requestKeywords: string[] | null = null;
+    let forceAll = false; // Explicit flag to override filters
 
     try {
       const body = await req.json();
@@ -664,20 +665,24 @@ serve(async (req) => {
       if (body.afterDate) afterDate = body.afterDate;
       if (body.domains) requestDomains = body.domains;
       if (body.keywords) requestKeywords = body.keywords;
+      if (body.forceAll === true) forceAll = true;
     } catch {
       // No body or invalid JSON - use defaults
     }
 
-    // Auto-detect filtered mode if domains or keywords are provided in request or config
+    // Get filters from request or config
     const domains = requestDomains || config.domains || [];
     const keywords = requestKeywords || config.keywords || [];
     const hasFilters = domains.length > 0 || keywords.length > 0;
     
-    // If filters exist and syncMode wasn't explicitly set to 'all', use filtered mode
-    if (hasFilters && syncMode === 'all') {
+    // CRITICAL: Only use 'all' mode if explicitly forced AND no filters exist
+    // If filters are configured, ALWAYS apply them unless forceAll is true
+    if (syncMode === 'all' && hasFilters && !forceAll) {
       syncMode = 'filtered';
-      console.log('Auto-switching to filtered mode because domains/keywords are configured');
+      console.log('⚠️ OVERRIDING all mode to filtered - filters are configured. Use forceAll:true to bypass.');
     }
+    
+    console.log(`📧 Sync mode: ${syncMode}, Filters: ${domains.length} domains, ${keywords.length} keywords, forceAll: ${forceAll}`);
 
     // Fetch custom labels if doing full sync
     let customLabels: string[] = [];
@@ -686,31 +691,60 @@ serve(async (req) => {
     }
 
     // Build Gmail search query based on sync mode
+    // CRITICAL: Filters are applied HERE at the API level, not after download
     let query = '';
+    
+    // Build domain filter query with CORRECT Gmail syntax
+    const buildDomainQuery = (domainList: string[]): string => {
+      if (domainList.length === 0) return '';
+      // Gmail syntax: from:*@domain.fr OR to:*@domain.fr
+      const domainQueries = domainList.map((d: string) => {
+        const cleanDomain = d.trim().replace(/^@/, ''); // Remove leading @ if present
+        return `from:*@${cleanDomain} OR to:*@${cleanDomain}`;
+      });
+      return `(${domainQueries.join(' OR ')})`;
+    };
+    
+    // Build keyword filter query
+    const buildKeywordQuery = (keywordList: string[]): string => {
+      if (keywordList.length === 0) return '';
+      // Search in subject and body
+      const keywordQueries = keywordList.map((k: string) => `"${k.trim()}"`);
+      return `(${keywordQueries.join(' OR ')})`;
+    };
+    
     if (syncMode === 'all') {
-      // Sync ALL emails from ALL folders including spam, trash, and custom labels
+      // Full sync mode - NO filters applied at API level
       const allLabelsToSearch = [...ALL_GMAIL_LABELS, ...customLabels];
       query = allLabelsToSearch.map(l => `label:${l}`).join(' OR ');
-      // Also include unlabeled emails
       query = `(${query}) OR -label:*`;
-      console.log('Full sync mode - fetching ALL emails from ALL folders');
+      console.log('🔓 Full sync mode - fetching ALL emails (NO API-level filtering)');
     } else if (syncMode === 'label' && specificLabel) {
+      // Label-specific sync with optional filters
       query = `label:${specificLabel}`;
-      console.log(`Label sync mode - fetching emails from ${specificLabel}`);
+      // Still apply domain/keyword filters even in label mode
+      const domainQuery = buildDomainQuery(domains);
+      const keywordQuery = buildKeywordQuery(keywords);
+      if (domainQuery || keywordQuery) {
+        query = `${query} ${[domainQuery, keywordQuery].filter(Boolean).join(' ')}`;
+      }
+      console.log(`📁 Label sync mode - ${specificLabel} with filters`);
     } else {
-      // Filtered mode - use config domains/keywords
-      console.log(`Filtered mode - domains: ${domains.length}, keywords: ${keywords.length}`);
-      const domainParts = domains.length 
-        ? domains.map((d: string) => `(@${d})`).join(" OR ")
-        : "";
-      const domainQuery = domainParts 
-        ? `(from:(${domainParts}) OR to:(${domainParts}))` 
-        : "";
-      const keywordQuery = keywords.length 
-        ? `(${keywords.join(" OR ")})` 
-        : "";
-      query = [domainQuery, keywordQuery].filter(Boolean).join(" ");
-      console.log(`Gmail query for filtered mode: ${query || '(no query - fetching all)'}`);
+      // FILTERED mode - apply domain and keyword filters AT THE API LEVEL
+      console.log(`🔍 Filtered mode - applying ${domains.length} domains and ${keywords.length} keywords AT API LEVEL`);
+      
+      const domainQuery = buildDomainQuery(domains);
+      const keywordQuery = buildKeywordQuery(keywords);
+      
+      if (!domainQuery && !keywordQuery) {
+        console.log('⚠️ No filters configured - this will fetch ALL emails! Consider adding domains/keywords.');
+      }
+      
+      // Combine domain and keyword queries
+      // If both exist, emails must match BOTH (domain AND keyword)
+      query = [domainQuery, keywordQuery].filter(Boolean).join(' ');
+      
+      console.log(`📤 Gmail API query: ${query || '(empty - will fetch all)'}`);
     }
 
     if (afterDate) {
