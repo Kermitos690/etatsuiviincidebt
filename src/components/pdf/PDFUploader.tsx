@@ -71,7 +71,7 @@ export function PDFUploader({ folders, onUploadComplete, onCreateFolder }: PDFUp
         .from('pdf_documents')
         .insert({
           user_id: user.id,
-          folder_id: selectedFolderId || null,
+          folder_id: selectedFolderId === 'none' || !selectedFolderId ? null : selectedFolderId,
           filename: safeFilename,
           original_filename: file.name,
           storage_path: storagePath,
@@ -148,7 +148,7 @@ export function PDFUploader({ folders, onUploadComplete, onCreateFolder }: PDFUp
             <SelectValue placeholder="Sélectionner un dossier (optionnel)" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Sans dossier</SelectItem>
+            <SelectItem value="none">Sans dossier</SelectItem>
             {folders.map(folder => (
               <SelectItem key={folder.id} value={folder.id}>
                 <div className="flex items-center gap-2">
