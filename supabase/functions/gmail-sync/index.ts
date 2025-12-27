@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { verifyAuth } from "../_shared/auth.ts";
 
 declare const EdgeRuntime: {
   waitUntil: (promise: Promise<any>) => void;
@@ -222,6 +223,7 @@ async function downloadAttachments(
 // Background task for processing emails
 async function processEmailsInBackground(
   syncId: string,
+  userId: string,
   allMessages: any[],
   accessToken: string,
   config: any,
@@ -310,11 +312,12 @@ async function processEmailsInBackground(
             }
           }
 
-          // Check if email already exists
+          // Check if email already exists (scoped to this user)
           const { data: existingEmail } = await supabase
             .from("emails")
             .select("id")
             .eq("gmail_message_id", msg.id)
+            .eq("user_id", userId)
             .maybeSingle();
 
           const isNew = !existingEmail;
@@ -323,8 +326,8 @@ async function processEmailsInBackground(
           let receivedAt: string;
           try {
             const parsedDate = new Date(date);
-            receivedAt = isNaN(parsedDate.getTime()) 
-              ? new Date().toISOString() 
+            receivedAt = isNaN(parsedDate.getTime())
+              ? new Date().toISOString()
               : parsedDate.toISOString();
           } catch {
             receivedAt = new Date().toISOString();
@@ -332,18 +335,22 @@ async function processEmailsInBackground(
 
           const { data: savedEmail, error: insertError } = await supabase
             .from("emails")
-            .upsert({
-              subject,
-              sender,
-              recipient,
-              body: body.substring(0, 10000),
-              received_at: receivedAt,
-              gmail_message_id: msg.id,
-              gmail_thread_id: msgData.threadId,
-              is_sent,
-              email_type,
-              gmail_label,
-            }, { onConflict: "gmail_message_id" })
+            .upsert(
+              {
+                user_id: userId,
+                subject,
+                sender,
+                recipient,
+                body: body.substring(0, 10000),
+                received_at: receivedAt,
+                gmail_message_id: msg.id,
+                gmail_thread_id: msgData.threadId,
+                is_sent,
+                email_type,
+                gmail_label,
+              },
+              { onConflict: "gmail_message_id" }
+            )
             .select("id")
             .single();
 
@@ -463,23 +470,41 @@ serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-    // Get stored Gmail config
-    const { data: config, error: configError } = await supabase
-      .from("gmail_config")
-      .select("*")
-      .limit(1)
-      .maybeSingle();
-
-    if (configError || !config) {
-      console.error("No Gmail config found");
-      return new Response(JSON.stringify({ 
-        error: "Gmail not configured. Please connect your Gmail account first." 
-      }), {
-        status: 400,
+    const { user, error: authError } = await verifyAuth(req);
+    if (authError || !user) {
+      console.error("[Auth] gmail-sync unauthorized:", authError);
+      return new Response(JSON.stringify({ error: "Non autorisé" }), {
+        status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Get stored Gmail config for this user
+    let configQuery = supabase.from("gmail_config").select("*").eq("user_id", user.id).maybeSingle();
+    let { data: config, error: configError } = await configQuery;
+
+    // Fallback (legacy rows) by email if user_id wasn't set
+    if ((!config || configError) && user.email) {
+      const fallback = await supabase
+        .from("gmail_config")
+        .select("*")
+        .eq("user_email", user.email)
+        .maybeSingle();
+      config = fallback.data;
+      configError = fallback.error;
+    }
+
+    if (configError || !config) {
+      console.error("No Gmail config found for user", user.id, configError);
+      return new Response(
+        JSON.stringify({ error: "Gmail non configuré. Connecte ton compte Gmail d'abord." }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
     // Check if token is expired
@@ -640,11 +665,22 @@ serve(async (req) => {
     const { data: syncStatus, error: syncError } = await supabase
       .from("sync_status")
       .insert({
+        user_id: user.id,
         status: "processing",
         total_emails: allMessages.length,
         processed_emails: 0,
         new_emails: 0,
-        stats: { received: 0, sent: 0, replied: 0, forwarded: 0, spam: 0, trash: 0, drafts: 0, custom_folders: 0, sync_mode: syncMode }
+        stats: {
+          received: 0,
+          sent: 0,
+          replied: 0,
+          forwarded: 0,
+          spam: 0,
+          trash: 0,
+          drafts: 0,
+          custom_folders: 0,
+          sync_mode: syncMode,
+        },
       })
       .select()
       .single();
@@ -655,9 +691,7 @@ serve(async (req) => {
     }
 
     // Start background processing
-    EdgeRuntime.waitUntil(
-      processEmailsInBackground(syncStatus.id, allMessages, accessToken, config, supabase)
-    );
+    EdgeRuntime.waitUntil(processEmailsInBackground(syncStatus.id, user.id, allMessages, accessToken, config, supabase));
 
     // Return immediate response
     return new Response(JSON.stringify({ 

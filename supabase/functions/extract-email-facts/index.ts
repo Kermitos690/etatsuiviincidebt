@@ -238,10 +238,11 @@ serve(async (req) => {
 
     const { batchSize = 100, emailIds, domains, keywords } = await req.json().catch(() => ({}));
 
-    // Get emails to process
+    // Get emails to process (scoped to current user)
     let query = supabase
       .from('emails')
       .select('id, sender, recipient, subject, body, gmail_thread_id')
+      .eq('user_id', user.id)
       .not('body', 'is', null)
       .not('body', 'eq', '');
 
@@ -249,20 +250,13 @@ serve(async (req) => {
       query = query.in('id', emailIds);
     }
 
-    // Get emails that haven't been processed yet
-    const { data: existingFacts } = await supabase
-      .from('email_facts')
-      .select('email_id');
-    
-    const processedIds = new Set(existingFacts?.map(f => f.email_id) || []);
-
     const { data: emails, error: emailsError } = await query.limit(batchSize * 2);
 
     if (emailsError) throw emailsError;
 
     // Apply domain and keyword filters
-    let filteredEmails = (emails || []).filter(e => !processedIds.has(e.id));
-    
+    let filteredEmails = emails || [];
+
     if (domains && domains.length > 0) {
       filteredEmails = filteredEmails.filter(email => {
         const sender = email.sender?.toLowerCase() || '';
@@ -271,7 +265,7 @@ serve(async (req) => {
       });
       console.log(`After domain filter (${domains.join(', ')}): ${filteredEmails.length} emails`);
     }
-    
+
     if (keywords && keywords.length > 0) {
       filteredEmails = filteredEmails.filter(email => {
         const subject = email.subject?.toLowerCase() || '';
@@ -280,6 +274,25 @@ serve(async (req) => {
       });
       console.log(`After keyword filter (${keywords.join(', ')}): ${filteredEmails.length} emails`);
     }
+
+    // Remove already processed emails (facts exist)
+    const candidateIds = filteredEmails.map(e => e.id);
+    const processedIds = new Set<string>();
+
+    if (candidateIds.length > 0) {
+      const { data: existingFacts, error: factsErr } = await supabase
+        .from('email_facts')
+        .select('email_id')
+        .in('email_id', candidateIds);
+
+      if (factsErr) throw factsErr;
+
+      for (const f of existingFacts || []) {
+        processedIds.add(f.email_id);
+      }
+    }
+
+    filteredEmails = filteredEmails.filter(e => !processedIds.has(e.id));
 
     const emailsToProcess = filteredEmails.slice(0, batchSize);
 
