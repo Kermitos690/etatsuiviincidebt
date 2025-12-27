@@ -19,10 +19,11 @@ import {
   ExternalLink, Shield, Clock, CalendarIcon, ChevronLeft, ChevronRight,
   Loader2, CheckCircle2, AlertCircle
 } from 'lucide-react';
-import { INSTITUTIONAL_DOMAINS, SYNC_KEYWORDS } from '@/config/appConfig';
+import { INSTITUTIONAL_DOMAINS, SYNC_KEYWORDS, FILTER_PRESETS, type FilterPreset } from '@/config/appConfig';
 import { format, setMonth, setYear } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
 interface GmailConfig {
   connected: boolean;
@@ -558,6 +559,65 @@ export default function GmailConfig() {
                   <p className="text-sm text-muted-foreground">Récupérer automatiquement les nouveaux emails</p>
                 </div>
                 <Switch checked={config.syncEnabled} onCheckedChange={handleSyncEnabledChange} />
+              </div>
+              <Separator />
+              {/* Filter Presets */}
+              <div className="space-y-3">
+                <Label className="text-base">Filtres prédéfinis</Label>
+                <p className="text-sm text-muted-foreground">
+                  Appliquez rapidement des filtres adaptés à votre cas d'usage
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                  {FILTER_PRESETS.map((preset) => (
+                    <Button
+                      key={preset.id}
+                      variant="outline"
+                      size="sm"
+                      className="flex flex-col items-center gap-1 h-auto py-3 hover:bg-primary/10 hover:border-primary/50 transition-all"
+                      onClick={async () => {
+                        // Merge preset with existing filters
+                        const newDomains = [...new Set([...config.domains, ...preset.domains])];
+                        const newKeywords = [...new Set([...config.keywords, ...preset.keywords])];
+                        setConfig(prev => ({ ...prev, domains: newDomains, keywords: newKeywords }));
+                        await saveConfigToDb(newDomains, newKeywords, config.syncEnabled);
+                        toast.success(`Filtres "${preset.name}" appliqués`);
+                      }}
+                    >
+                      <span className="text-xl">{preset.icon}</span>
+                      <span className="text-xs font-medium">{preset.name}</span>
+                    </Button>
+                  ))}
+                </div>
+                <Accordion type="single" collapsible className="w-full">
+                  <AccordionItem value="preset-details" className="border-none">
+                    <AccordionTrigger className="text-xs text-muted-foreground hover:no-underline py-2">
+                      Voir le détail des filtres prédéfinis
+                    </AccordionTrigger>
+                    <AccordionContent>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                        {FILTER_PRESETS.map((preset) => (
+                          <div key={preset.id} className="p-3 rounded-lg bg-muted/50 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg">{preset.icon}</span>
+                              <span className="font-medium text-sm">{preset.name}</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">{preset.description}</p>
+                            <div className="space-y-1">
+                              <p className="text-xs">
+                                <span className="font-medium">Domaines:</span>{' '}
+                                <span className="text-muted-foreground">{preset.domains.slice(0, 4).join(', ')}{preset.domains.length > 4 ? ` +${preset.domains.length - 4}` : ''}</span>
+                              </p>
+                              <p className="text-xs">
+                                <span className="font-medium">Mots-clés:</span>{' '}
+                                <span className="text-muted-foreground">{preset.keywords.slice(0, 4).join(', ')}{preset.keywords.length > 4 ? ` +${preset.keywords.length - 4}` : ''}</span>
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
               </div>
               <Separator />
               <div className="space-y-3">
