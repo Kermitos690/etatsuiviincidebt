@@ -100,6 +100,7 @@ const navCategories: NavCategory[] = [
       { to: '/ia-training', icon: GraduationCap, label: 'Entraînement Base' },
       { to: '/advanced-training', icon: Zap, label: 'Entraînement Avancé' },
       { to: '/relationship-graph', icon: Network, label: 'Graphe Relations' },
+      { to: '/anomaly-detection', icon: AlertTriangle, label: 'Détection Anomalies' },
     ]
   },
   {

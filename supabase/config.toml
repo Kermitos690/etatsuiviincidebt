@@ -104,3 +104,6 @@ verify_jwt = false
 
 [functions.generate-active-learning]
 verify_jwt = false
+
+[functions.detect-anomalies]
+verify_jwt = false
