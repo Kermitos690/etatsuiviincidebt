@@ -84,13 +84,15 @@ export function PDFIncidentLinker({ document, onIncidentLinked }: PDFIncidentLin
 
   useEffect(() => {
     fetchLinkedIncidents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [document.id]);
 
   useEffect(() => {
     if (isDialogOpen) {
       fetchAvailableIncidents();
     }
-  }, [isDialogOpen, linkedIncidents]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDialogOpen]);
 
   const handleLinkIncident = async (incidentId: string) => {
     setLinkingId(incidentId);
