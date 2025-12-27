@@ -41,10 +41,14 @@ import {
   Clock,
   BarChart3,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  FileDown,
+  Loader2
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, subWeeks, addWeeks, isWithinInterval, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { generateWeeklyPDF } from '@/utils/generateWeeklyPDF';
+import { toast } from 'sonner';
 
 const COLORS = [
   'hsl(var(--chart-1))',
@@ -67,6 +71,7 @@ const SEVERITY_COLORS = {
 export default function WeeklyDashboard() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [viewType, setViewType] = useState<'week' | 'month'>('week');
+  const [isExporting, setIsExporting] = useState(false);
 
   const currentDate = useMemo(() => {
     const base = new Date();
@@ -247,6 +252,63 @@ export default function WeeklyDashboard() {
     setWeekOffset(prev => direction === 'prev' ? prev + 1 : Math.max(0, prev - 1));
   };
 
+  // Export PDF
+  const handleExportPDF = async () => {
+    if (!incidents || !stats) {
+      toast.error('Aucune donnée à exporter');
+      return;
+    }
+
+    setIsExporting(true);
+    toast.info('Génération du rapport PDF en cours...');
+
+    try {
+      // Fetch additional data for the PDF
+      const [threadAnalysesRes, emailFactsRes] = await Promise.all([
+        supabase
+          .from('thread_analyses')
+          .select('*')
+          .gte('created_at', dateRange.start.toISOString())
+          .lte('created_at', dateRange.end.toISOString()),
+        supabase
+          .from('email_facts')
+          .select('*')
+          .gte('created_at', dateRange.start.toISOString())
+          .lte('created_at', dateRange.end.toISOString())
+          .limit(100),
+      ]);
+
+      const byType: Record<string, number> = {};
+      incidents.forEach(inc => {
+        byType[inc.type] = (byType[inc.type] || 0) + 1;
+      });
+
+      await generateWeeklyPDF({
+        dateRange,
+        incidents: incidents as any,
+        threadAnalyses: (threadAnalysesRes.data || []) as any,
+        emailFacts: (emailFactsRes.data || []) as any,
+        stats: {
+          total: stats.total,
+          critical: stats.criticalCount,
+          high: stats.highCount,
+          medium: stats.bySeverity.find(s => s.name === 'Moyenne')?.value || 0,
+          low: stats.bySeverity.find(s => s.name === 'Faible')?.value || 0,
+          byInstitution: stats.byInstitution,
+          byStatus: stats.byStatus,
+          byType: Object.entries(byType).map(([name, value]) => ({ name, value })),
+        },
+      });
+
+      toast.success('Rapport PDF généré avec succès !');
+    } catch (error) {
+      console.error('PDF export error:', error);
+      toast.error('Erreur lors de la génération du PDF');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -256,7 +318,20 @@ export default function WeeklyDashboard() {
             description="Évolution des incidents par institution et période"
           />
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button 
+              onClick={handleExportPDF} 
+              disabled={isExporting || !incidents?.length}
+              className="gap-2"
+            >
+              {isExporting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FileDown className="h-4 w-4" />
+              )}
+              Export PDF
+            </Button>
+
             <Select value={viewType} onValueChange={(v: 'week' | 'month') => setViewType(v)}>
               <SelectTrigger className="w-32">
                 <SelectValue />
