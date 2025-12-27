@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkRateLimit, getClientIdentifier, rateLimitResponse, RATE_LIMITS } from "../_shared/rateLimit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -136,6 +137,14 @@ async function analyzeEmail(emailContent: string): Promise<AnalysisResult | null
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Rate limiting for AI operations
+  const clientId = getClientIdentifier(req, "batch-analyze");
+  const rateCheck = checkRateLimit(clientId, RATE_LIMITS.ai);
+  if (!rateCheck.allowed) {
+    console.log(`[RateLimit] Request blocked for ${clientId}`);
+    return rateLimitResponse(rateCheck.resetAt);
   }
 
   try {

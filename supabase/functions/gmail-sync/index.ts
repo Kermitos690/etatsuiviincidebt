@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { verifyAuth } from "../_shared/auth.ts";
+import { checkRateLimit, getClientIdentifier, rateLimitResponse, RATE_LIMITS } from "../_shared/rateLimit.ts";
 
 declare const EdgeRuntime: {
   waitUntil: (promise: Promise<any>) => void;
@@ -583,6 +584,14 @@ addEventListener('beforeunload', (ev) => {
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Rate limiting for heavy operations
+  const clientId = getClientIdentifier(req, "gmail-sync");
+  const rateCheck = checkRateLimit(clientId, RATE_LIMITS.heavy);
+  if (!rateCheck.allowed) {
+    console.log(`[RateLimit] Request blocked for ${clientId}`);
+    return rateLimitResponse(rateCheck.resetAt);
   }
 
   try {
