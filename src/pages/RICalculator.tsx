@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -10,10 +10,11 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Calculator, Users, Home, MapPin, Briefcase, Info, TrendingUp, AlertCircle, Download, AlertTriangle, Scale } from "lucide-react";
+import { Calculator, Users, Home, MapPin, Briefcase, Info, TrendingUp, AlertCircle, Download, AlertTriangle, Scale, RefreshCw, ExternalLink, CheckCircle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
+import { supabase } from "@/integrations/supabase/client";
 
 // Normes CSIAS 2024 adaptées Vaud
 const FORFAITS_ENTRETIEN: Record<number, number> = {
@@ -55,6 +56,12 @@ const SANCTIONS = [
   { niveau: 5, label: "Niveau 5 - Suspension", reduction: 1.0, description: "Refus total de collaboration, fraude avérée" },
 ];
 
+interface ScrapedSource {
+  url: string;
+  title: string;
+  scraped_at: string;
+}
+
 const RICalculator = () => {
   // État du formulaire
   const [tailleManager, setTailleManager] = useState(1);
@@ -70,6 +77,36 @@ const RICalculator = () => {
   
   // Sanctions
   const [sanctionNiveau, setSanctionNiveau] = useState(0);
+  
+  // Scraping state
+  const [isScrapingNorms, setIsScrapingNorms] = useState(false);
+  const [lastNormsUpdate, setLastNormsUpdate] = useState<string | null>(null);
+  const [scrapedSources, setScrapedSources] = useState<ScrapedSource[]>([]);
+
+  // Scrape CSIAS norms
+  const scrapeNorms = async (action: 'scrape_csias' | 'scrape_vaud' | 'scrape_all' | 'search_norms') => {
+    setIsScrapingNorms(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('scrape-csias-norms', {
+        body: { action }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        setLastNormsUpdate(data.norms?.last_updated || new Date().toISOString());
+        setScrapedSources(data.norms?.sources || []);
+        toast.success(`Normes mises à jour depuis ${data.sources_scraped} sources`);
+      } else {
+        toast.error(data.error || 'Erreur lors du scraping');
+      }
+    } catch (error) {
+      console.error('Error scraping norms:', error);
+      toast.error('Erreur lors de la mise à jour des normes');
+    } finally {
+      setIsScrapingNorms(false);
+    }
+  };
 
   // Calculs
   const calculs = useMemo(() => {
@@ -274,11 +311,53 @@ const RICalculator = () => {
               </p>
             </div>
           </div>
-          <Button onClick={exportPDF} className="gap-2">
-            <Download className="h-4 w-4" />
-            Exporter PDF
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button 
+              onClick={() => scrapeNorms('scrape_all')} 
+              variant="outline" 
+              className="gap-2"
+              disabled={isScrapingNorms}
+            >
+              <RefreshCw className={`h-4 w-4 ${isScrapingNorms ? 'animate-spin' : ''}`} />
+              {isScrapingNorms ? 'Mise à jour...' : 'Actualiser normes'}
+            </Button>
+            <Button onClick={exportPDF} className="gap-2">
+              <Download className="h-4 w-4" />
+              Exporter PDF
+            </Button>
+          </div>
         </div>
+
+        {/* Sources scrapées */}
+        {scrapedSources.length > 0 && (
+          <Card className="bg-primary/5 border-primary/20">
+            <CardContent className="py-3">
+              <div className="flex items-center gap-2 text-sm">
+                <CheckCircle className="h-4 w-4 text-primary" />
+                <span className="font-medium">Normes vérifiées depuis:</span>
+                <div className="flex flex-wrap gap-2">
+                  {scrapedSources.map((source, i) => (
+                    <a
+                      key={i}
+                      href={source.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-primary hover:underline"
+                    >
+                      {source.title}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  ))}
+                </div>
+                {lastNormsUpdate && (
+                  <span className="text-muted-foreground ml-auto">
+                    Mis à jour: {new Date(lastNormsUpdate).toLocaleDateString('fr-CH')}
+                  </span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Tabs defaultValue="calculator" className="space-y-6">
           <TabsList>

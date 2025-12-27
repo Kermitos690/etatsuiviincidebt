@@ -107,3 +107,6 @@ verify_jwt = false
 
 [functions.detect-anomalies]
 verify_jwt = false
+
+[functions.scrape-csias-norms]
+verify_jwt = false
