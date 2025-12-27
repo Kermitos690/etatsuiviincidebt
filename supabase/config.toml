@@ -1,8 +1,5 @@
 project_id = "csysnvkvnoghhyqaxdkz"
 
-# Functions that handle their own JWT validation internally
-# Security is maintained because each function validates the Bearer token in code
-
 [functions.analyze-incident]
 verify_jwt = false
 
@@ -145,4 +142,16 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.analyze-situation]
+verify_jwt = false
+
+[functions.scheduled-analysis]
+verify_jwt = false
+
+[functions.detect-email-templates]
+verify_jwt = false
+
+[functions.detect-contradictions]
+verify_jwt = false
+
+[functions.compare-situations]
 verify_jwt = false
