@@ -1432,6 +1432,69 @@ export type Database = {
         }
         Relationships: []
       }
+      legal_search_results: {
+        Row: {
+          created_at: string | null
+          date_decision: string | null
+          full_content: string | null
+          id: string
+          is_saved: boolean | null
+          keywords: string[] | null
+          legal_domain: string | null
+          reference_number: string | null
+          relevance_score: number | null
+          scraped_at: string | null
+          search_query: string
+          source_name: string
+          source_type: string
+          source_url: string
+          summary: string | null
+          title: string
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          date_decision?: string | null
+          full_content?: string | null
+          id?: string
+          is_saved?: boolean | null
+          keywords?: string[] | null
+          legal_domain?: string | null
+          reference_number?: string | null
+          relevance_score?: number | null
+          scraped_at?: string | null
+          search_query: string
+          source_name: string
+          source_type: string
+          source_url: string
+          summary?: string | null
+          title: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          date_decision?: string | null
+          full_content?: string | null
+          id?: string
+          is_saved?: boolean | null
+          keywords?: string[] | null
+          legal_domain?: string | null
+          reference_number?: string | null
+          relevance_score?: number | null
+          scraped_at?: string | null
+          search_query?: string
+          source_name?: string
+          source_type?: string
+          source_url?: string
+          summary?: string | null
+          title?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       monthly_reports: {
         Row: {
           created_at: string
