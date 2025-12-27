@@ -134,3 +134,6 @@ verify_jwt = false
 
 [functions.explain-legal-context]
 verify_jwt = false
+
+[functions.check-curatelle-contact]
+verify_jwt = false
