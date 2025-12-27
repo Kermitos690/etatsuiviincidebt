@@ -973,8 +973,55 @@ serve(async (req) => {
 
     console.log(`Analyzing ${emails.length} email(s) for user ${userId}, inputHash: ${inputHash.slice(0, 16)}...`);
 
+    // -------- Charger les feedbacks utilisateur pour enrichir l'IA
+    let trainingContext = "";
+    try {
+      // Récupérer les incidents rejetés (hors périmètre)
+      const { data: rejectedIncidents } = await supabase
+        .from("ai_training_feedback")
+        .select("original_detection, notes")
+        .eq("user_id", userId)
+        .eq("entity_type", "incident")
+        .eq("feedback_type", "rejected")
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      // Récupérer les résultats de swipe training
+      const { data: swipeResults } = await supabase
+        .from("swipe_training_results")
+        .select("user_decision, relationship_type, manual_notes, pair_id")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(30);
+
+      if (rejectedIncidents && rejectedIncidents.length > 0) {
+        const rejectedPatterns = rejectedIncidents.map((r: any) => {
+          const d = r.original_detection || {};
+          return `- Type "${d.type || 'inconnu'}" + Institution "${d.institution || 'inconnue'}" + Dysfonctionnement: "${(d.dysfonctionnement || '').slice(0, 100)}"`;
+        }).join("\n");
+        trainingContext += `\n\n===== APPRENTISSAGE UTILISATEUR: INCIDENTS HORS PÉRIMÈTRE =====\nL'utilisateur a marqué les types d'incidents suivants comme HORS PÉRIMÈTRE (à NE PAS détecter):\n${rejectedPatterns}\n`;
+      }
+
+      if (swipeResults && swipeResults.length > 0) {
+        const confirmedRelations = swipeResults.filter((s: any) => s.user_decision === "confirm" || s.user_decision === "corroboration");
+        const rejectedRelations = swipeResults.filter((s: any) => s.user_decision === "reject" || s.user_decision === "unrelated");
+        
+        if (confirmedRelations.length > 0) {
+          trainingContext += `\n===== APPRENTISSAGE: CORROBORATIONS CONFIRMÉES =====\nL'utilisateur a confirmé ${confirmedRelations.length} corroborations entre emails.\n`;
+        }
+        if (rejectedRelations.length > 0) {
+          trainingContext += `\n===== APPRENTISSAGE: FAUSSES CORROBORATIONS =====\nL'utilisateur a rejeté ${rejectedRelations.length} fausses détections de corroboration.\n`;
+        }
+      }
+
+      console.log(`Training context loaded: ${trainingContext.length} chars from ${(rejectedIncidents?.length || 0)} rejected incidents, ${(swipeResults?.length || 0)} swipe results`);
+    } catch (trainingErr) {
+      console.error("Error loading training data (non-blocking):", trainingErr);
+    }
+
     // -------- AI call
     const model = "google/gemini-2.5-flash";
+    const systemPromptWithTraining = MASTER_ANALYSIS_PROMPT + trainingContext;
 
     const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -986,7 +1033,7 @@ serve(async (req) => {
         model,
         temperature: 0.1,
         messages: [
-          { role: "system", content: MASTER_ANALYSIS_PROMPT },
+          { role: "system", content: systemPromptWithTraining },
           {
             role: "user",
             content:
