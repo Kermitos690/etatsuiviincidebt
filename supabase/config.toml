@@ -98,3 +98,6 @@ verify_jwt = false
 
 [functions.migrate-gmail-tokens]
 verify_jwt = false
+
+[functions.rotate-gmail-tokens]
+verify_jwt = false
