@@ -86,14 +86,25 @@ async function getServiceAccountToken(): Promise<string | null> {
   }
 }
 
+import { verifyAuth, unauthorizedResponse } from "../_shared/auth.ts";
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Verify user authentication
+  const { user, error: authError, supabase: userClient } = await verifyAuth(req);
+  if (authError || !user) {
+    console.error("[Auth] Authentication failed:", authError);
+    return unauthorizedResponse(authError || "Unauthorized");
+  }
+
   try {
     const { action, spreadsheetId, sheetName, columnMapping, incidentId } = await req.json();
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    
+    // Create service client for operations that need it (Google Sheets API calls)
+    const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     if (action === "get-service-account-email") {
       const serviceAccountJson = Deno.env.get("GOOGLE_SHEETS_SERVICE_ACCOUNT");
@@ -124,10 +135,11 @@ serve(async (req) => {
     }
 
     if (action === "get-config") {
-      const { data: config, error } = await supabase
+      // Use userClient with RLS - automatically scoped to user
+      const { data: config, error } = await userClient!
         .from("sheets_config")
         .select("*")
-        .limit(1)
+        .eq("user_id", user.id)
         .maybeSingle();
 
       if (error) throw error;
@@ -141,22 +153,23 @@ serve(async (req) => {
     }
 
     if (action === "save-config") {
-      const { data: existing } = await supabase
+      const { data: existing } = await userClient!
         .from("sheets_config")
         .select("id")
-        .limit(1)
+        .eq("user_id", user.id)
         .maybeSingle();
 
       const configData = {
+        user_id: user.id,
         spreadsheet_id: spreadsheetId,
         sheet_name: sheetName || "Incidents",
         column_mapping: columnMapping,
       };
 
       if (existing) {
-        await supabase.from("sheets_config").update(configData).eq("id", existing.id);
+        await userClient!.from("sheets_config").update(configData).eq("id", existing.id);
       } else {
-        await supabase.from("sheets_config").insert(configData);
+        await userClient!.from("sheets_config").insert(configData);
       }
 
       return new Response(JSON.stringify({ success: true }), {
@@ -197,22 +210,23 @@ serve(async (req) => {
 
       const spreadsheetData = await response.json();
       
-      // Save config
-      const { data: existing } = await supabase
+      // Save config with user ownership
+      const { data: existing } = await userClient!
         .from("sheets_config")
         .select("id")
-        .limit(1)
+        .eq("user_id", user.id)
         .maybeSingle();
 
       const configData = {
+        user_id: user.id,
         spreadsheet_id: spreadsheetId,
         sheet_name: sheetName || "Incidents",
       };
 
       if (existing) {
-        await supabase.from("sheets_config").update(configData).eq("id", existing.id);
+        await userClient!.from("sheets_config").update(configData).eq("id", existing.id);
       } else {
-        await supabase.from("sheets_config").insert(configData);
+        await userClient!.from("sheets_config").insert(configData);
       }
 
       return new Response(JSON.stringify({ 
@@ -234,11 +248,11 @@ serve(async (req) => {
         });
       }
 
-      // Get config
-      const { data: config } = await supabase
+      // Get user's config (with RLS)
+      const { data: config } = await userClient!
         .from("sheets_config")
         .select("*")
-        .limit(1)
+        .eq("user_id", user.id)
         .maybeSingle();
 
       if (!config?.spreadsheet_id) {
@@ -253,8 +267,8 @@ serve(async (req) => {
         titre: "E", gravite: "F", statut: "G", score: "H"
       };
 
-      // Fetch incidents
-      let incidentsQuery = supabase.from("incidents").select("*").order("numero", { ascending: true });
+      // Fetch only user's incidents (with RLS)
+      let incidentsQuery = userClient!.from("incidents").select("*").eq("user_id", user.id).order("numero", { ascending: true });
       if (incidentId) {
         incidentsQuery = incidentsQuery.eq("id", incidentId);
       }
@@ -314,8 +328,8 @@ serve(async (req) => {
       const result = await sheetsResponse.json();
       console.log(`Updated ${result.updatedRows || values.length} rows in Google Sheets`);
 
-      // Update last_sync
-      await supabase
+      // Update last_sync using user client
+      await userClient!
         .from("sheets_config")
         .update({ last_sync: new Date().toISOString() })
         .eq("id", config.id);
