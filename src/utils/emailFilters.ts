@@ -10,7 +10,7 @@ export function normalizeDomain(input: string): string {
   // allow user to paste full email; keep only domain part
   const at = d.lastIndexOf("@");
   const domain = at >= 0 ? d.slice(at + 1) : d;
-  return domain.replace(/^.+|.+$/g, "");
+  return domain.replace(/^\.+|\.+$/g, "");
 }
 
 function emailHasDomain(email: { sender?: string | null; recipient?: string | null }, domain: string) {
