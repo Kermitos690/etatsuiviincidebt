@@ -820,7 +820,7 @@ serve(async (req) => {
 
     console.log(`Found ${allMessages.length} total messages. Starting background processing...`);
 
-    // Create sync status record
+    // Create sync status record with filtering stats
     const { data: syncStatus, error: syncError } = await supabase
       .from("sync_status")
       .insert({
@@ -839,6 +839,13 @@ serve(async (req) => {
           drafts: 0,
           custom_folders: 0,
           sync_mode: syncMode,
+          // API filtering stats
+          api_emails_found: allMessages.length,
+          domains_count: domains.length,
+          keywords_count: keywords.length,
+          filters_applied_at_api: syncMode === 'filtered' && hasFilters,
+          skippedByFilter: 0,
+          skippedByBlacklist: 0,
         },
       })
       .select()
