@@ -11,6 +11,8 @@ interface SearchRequest {
   sourceType?: 'jurisprudence' | 'legislation' | 'all';
   domain?: string;
   limit?: number;
+  yearFrom?: number;
+  yearTo?: number;
 }
 
 interface SearchResult {
@@ -32,7 +34,7 @@ serve(async (req) => {
   }
 
   try {
-    const { query, sourceType = 'all', domain, limit = 10 } = await req.json() as SearchRequest;
+    const { query, sourceType = 'all', domain, limit = 10, yearFrom, yearTo } = await req.json() as SearchRequest;
 
     if (!query || query.trim().length < 2) {
       return new Response(
@@ -67,9 +69,22 @@ serve(async (req) => {
     const searchUrls: { url: string; name: string; type: 'jurisprudence' | 'legislation' }[] = [];
 
     if (sourceType === 'jurisprudence' || sourceType === 'all') {
-      // Tribunal fédéral - bger.ch search
-      const bgerSearchUrl = `https://www.bger.ch/ext/eurospider/live/fr/php/aza/http/index.php?lang=fr&type=simple_query&query_words=${encodeURIComponent(query)}&lang=fr`;
+      // Tribunal fédéral - bger.ch search with better parameters
+      let bgerSearchUrl = `https://www.bger.ch/ext/eurospider/live/fr/php/aza/http/index.php?lang=fr&type=simple_query&query_words=${encodeURIComponent(query)}`;
+      
+      // Add year filters if provided
+      if (yearFrom) {
+        bgerSearchUrl += `&from_year=${yearFrom}`;
+      }
+      if (yearTo) {
+        bgerSearchUrl += `&to_year=${yearTo}`;
+      }
+      
       searchUrls.push({ url: bgerSearchUrl, name: 'Tribunal fédéral (bger.ch)', type: 'jurisprudence' });
+      
+      // Also search entscheide.ch for additional ATF coverage
+      const entscheideUrl = `https://entscheide.ch/search?q=${encodeURIComponent(query)}&type=bger`;
+      searchUrls.push({ url: entscheideUrl, name: 'Entscheide.ch', type: 'jurisprudence' });
     }
 
     if (sourceType === 'legislation' || sourceType === 'all') {

@@ -49,6 +49,8 @@ export const legalSearchApi = {
       sourceType?: 'jurisprudence' | 'legislation' | 'all';
       domain?: string;
       limit?: number;
+      yearFrom?: number;
+      yearTo?: number;
     }
   ): Promise<SearchResponse> {
     const { data, error } = await supabase.functions.invoke('scrape-legal-sources', {
@@ -57,6 +59,8 @@ export const legalSearchApi = {
         sourceType: options?.sourceType || 'all',
         domain: options?.domain,
         limit: options?.limit || 10,
+        yearFrom: options?.yearFrom,
+        yearTo: options?.yearTo,
       },
     });
 
