@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 
-// Import actual screenshots from the application
+// Import static screenshots as fallback
 import gmailConfigImg from '@/assets/tutorial/gmail-config.png';
 import emailSyncImg from '@/assets/tutorial/email-sync.png';
 import analysisPipelineImg from '@/assets/tutorial/analysis-pipeline.png';
@@ -13,6 +13,10 @@ import exportsImg from '@/assets/tutorial/exports.png';
 import iaAuditorImg from '@/assets/tutorial/ia-auditor.png';
 import iaTrainingImg from '@/assets/tutorial/ia-training.png';
 
+// Supabase URL for dynamic screenshots
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const STORAGE_BUCKET = 'tutorial-screenshots';
+
 interface TutorialSection {
   title: string;
   description: string;
@@ -21,6 +25,12 @@ interface TutorialSection {
   tips?: string[];
   imageUrl?: string;
   imageCaption?: string;
+  clickZones?: ClickZone[]; // Visual annotations for where to click
+}
+
+interface ClickZone {
+  label: string;
+  description: string;
 }
 
 interface FAQItem {
@@ -41,9 +51,50 @@ const COLORS = {
   muted: [100, 116, 139] as [number, number, number], // Muted text
   success: [34, 197, 94] as [number, number, number], // Green
   warning: [234, 179, 8] as [number, number, number], // Yellow
+  danger: [239, 68, 68] as [number, number, number], // Red
+  info: [59, 130, 246] as [number, number, number], // Blue
   background: [248, 250, 252] as [number, number, number], // Light gray
   white: [255, 255, 255] as [number, number, number],
 };
+
+// Static fallback images mapping
+const staticFallbackImages: Record<string, string> = {
+  'dashboard': dashboardImg,
+  'gmail-config': gmailConfigImg,
+  'email-sync': emailSyncImg,
+  'analysis-pipeline': analysisPipelineImg,
+  'emails-analyzed': emailsAnalyzedImg,
+  'incidents': incidentsImg,
+  'attachments': attachmentsImg,
+  'violations': violationsImg,
+  'exports': exportsImg,
+  'ia-auditor': iaAuditorImg,
+  'ia-training': iaTrainingImg,
+};
+
+// Helper to load image from Supabase Storage with fallback to static assets
+async function loadImageWithFallback(imageKey: string): Promise<string | null> {
+  // Try to load from Supabase Storage first
+  const storageUrl = `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${imageKey}.png`;
+  
+  try {
+    const response = await fetch(storageUrl, { method: 'HEAD' });
+    if (response.ok) {
+      // Image exists in storage, load it
+      return await loadImageAsBase64(storageUrl);
+    }
+  } catch {
+    // Storage not available, use fallback
+  }
+  
+  // Fallback to static assets
+  const fallbackUrl = staticFallbackImages[imageKey];
+  if (fallbackUrl) {
+    return await loadImageAsBase64(fallbackUrl);
+  }
+  
+  return null;
+}
 
 // Helper to load image and convert to base64
 async function loadImageAsBase64(url: string): Promise<string | null> {
@@ -89,27 +140,21 @@ export async function generateTutorialPDF(): Promise<void> {
   const contentWidth = pageWidth - 2 * margin;
   let y = margin;
 
-  // Pre-load all images
+  // Pre-load all images with fallback support
   const imageMap = new Map<string, string | null>();
-  const imagesToLoad = [
-    { key: 'gmail-config', url: gmailConfigImg },
-    { key: 'email-sync', url: emailSyncImg },
-    { key: 'analysis-pipeline', url: analysisPipelineImg },
-    { key: 'emails-analyzed', url: emailsAnalyzedImg },
-    { key: 'incidents', url: incidentsImg },
-    { key: 'dashboard', url: dashboardImg },
-    { key: 'attachments', url: attachmentsImg },
-    { key: 'violations', url: violationsImg },
-    { key: 'exports', url: exportsImg },
-    { key: 'ia-auditor', url: iaAuditorImg },
-    { key: 'ia-training', url: iaTrainingImg },
+  const imageKeys = [
+    'gmail-config', 'email-sync', 'analysis-pipeline', 'emails-analyzed',
+    'incidents', 'dashboard', 'attachments', 'violations', 'exports',
+    'ia-auditor', 'ia-training'
   ];
 
-  // Load all images in parallel
+  // Load all images in parallel with fallback
+  console.log('Loading tutorial images...');
   await Promise.all(
-    imagesToLoad.map(async ({ key, url }) => {
-      const base64 = await loadImageAsBase64(url);
+    imageKeys.map(async (key) => {
+      const base64 = await loadImageWithFallback(key);
       imageMap.set(key, base64);
+      console.log(`Image ${key}: ${base64 ? 'loaded' : 'not found'}`);
     })
   );
 
@@ -209,11 +254,20 @@ export async function generateTutorialPDF(): Promise<void> {
     y += boxHeight + 5;
   };
 
-  // Add image to PDF with proper scaling
-  const addImage = async (imageKey: string, caption?: string) => {
+  // Add image to PDF with proper scaling and visual annotations
+  const addImage = async (imageKey: string, caption?: string, clickZones?: ClickZone[]) => {
     const base64 = imageMap.get(imageKey);
     if (!base64) {
       console.warn(`Image not found: ${imageKey}`);
+      // Add placeholder for missing image
+      checkPageBreak(30);
+      pdf.setFillColor(...COLORS.background);
+      pdf.roundedRect(margin, y, contentWidth, 25, 2, 2, 'F');
+      pdf.setFontSize(10);
+      pdf.setTextColor(...COLORS.muted);
+      pdf.text(`[Image: ${imageKey}]`, pageWidth / 2, y + 12, { align: 'center' });
+      pdf.text('Utilisez le tour de capture pour générer cette image', pageWidth / 2, y + 18, { align: 'center' });
+      y += 30;
       return;
     }
 
@@ -236,13 +290,13 @@ export async function generateTutorialPDF(): Promise<void> {
       }
 
       // Check if we need a new page
-      checkPageBreak(imgHeight + 15);
+      checkPageBreak(imgHeight + (clickZones ? 25 : 15));
 
       // Add a subtle border around the image
-      pdf.setDrawColor(...COLORS.muted);
-      pdf.setLineWidth(0.3);
+      pdf.setDrawColor(...COLORS.primary);
+      pdf.setLineWidth(0.5);
       const imgX = margin + (contentWidth - imgWidth) / 2;
-      pdf.roundedRect(imgX - 1, y - 1, imgWidth + 2, imgHeight + 2, 1, 1, 'S');
+      pdf.roundedRect(imgX - 1, y - 1, imgWidth + 2, imgHeight + 2, 2, 2, 'S');
 
       // Add the image
       pdf.addImage(base64, 'PNG', imgX, y, imgWidth, imgHeight);
@@ -254,7 +308,28 @@ export async function generateTutorialPDF(): Promise<void> {
         pdf.setFont('helvetica', 'italic');
         pdf.setTextColor(...COLORS.muted);
         pdf.text(caption, pageWidth / 2, y, { align: 'center' });
+        y += 5;
+      }
+
+      // Add click zone annotations if provided
+      if (clickZones && clickZones.length > 0) {
+        y += 2;
+        pdf.setFillColor(...COLORS.info);
+        pdf.setDrawColor(...COLORS.info);
+        pdf.roundedRect(margin, y, contentWidth, 6 + clickZones.length * 5, 2, 2, 'F');
+        
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(...COLORS.white);
+        pdf.text('📍 Où cliquer :', margin + 3, y + 4);
+        
         y += 6;
+        pdf.setFont('helvetica', 'normal');
+        clickZones.forEach((zone, idx) => {
+          pdf.text(`${idx + 1}. ${zone.label}: ${zone.description}`, margin + 5, y + 4);
+          y += 5;
+        });
+        y += 3;
       }
     } catch (error) {
       console.error('Error adding image:', imageKey, error);
@@ -400,7 +475,12 @@ export async function generateTutorialPDF(): Promise<void> {
         'La synchronisation récupère les emails de tous les dossiers'
       ],
       imageUrl: 'gmail-config',
-      imageCaption: 'Figure 2: Interface de configuration Gmail'
+      imageCaption: 'Figure 2: Interface de configuration Gmail',
+      clickZones: [
+        { label: 'Bouton "Connecter Gmail"', description: 'En haut à droite pour démarrer l\'OAuth' },
+        { label: 'Champs domaines', description: 'Ajoutez les domaines à surveiller' },
+        { label: 'Bouton "Synchroniser"', description: 'Pour lancer la première sync' }
+      ]
     },
     {
       title: '4. SYNCHRONISATION DES EMAILS',
@@ -609,10 +689,10 @@ export async function generateTutorialPDF(): Promise<void> {
     addText(section.description, 11, COLORS.muted);
     y += 5;
 
-    // Add screenshot at the beginning of the section
+    // Add screenshot at the beginning of the section with click zones
     if (section.imageUrl) {
-      await addImage(section.imageUrl, section.imageCaption);
-      y += 5;
+      await addImage(section.imageUrl, section.imageCaption, section.clickZones);
+      y += 3;
     }
 
     addTitle('Étapes à suivre', 12, COLORS.text);

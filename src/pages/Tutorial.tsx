@@ -33,7 +33,8 @@ import { toast } from "sonner";
 import { generateTutorialPDF } from "@/utils/generateTutorialPDF";
 import { useRef, useState } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { ScreenshotCapture } from "@/components/tutorial/ScreenshotCapture";
+import { TutorialTour } from "@/components/tutorial/TutorialTour";
+import { TutorialImageManager } from "@/components/tutorial/TutorialImageManager";
 
 // Import tutorial images
 import gmailConfigImg from "@/assets/tutorial/gmail-config.png";
@@ -246,8 +247,11 @@ export default function Tutorial() {
           </Button>
         </div>
 
-        {/* Screenshot Capture Tool */}
-        <ScreenshotCapture />
+        {/* Tutorial Tour - Automatic Screenshot Capture */}
+        <TutorialTour />
+
+        {/* Tutorial Image Manager */}
+        <TutorialImageManager />
 
         {/* Quick Overview */}
         <Card className="glass-card border-primary/30 bg-primary/5">
