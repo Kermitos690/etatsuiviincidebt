@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { AppLayout } from '@/components/layout';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -32,12 +32,14 @@ import {
   Link2,
   Eye,
   TrendingUp,
-  Building2
+  Building2,
+  RefreshCw
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { EmailLink } from '@/components/email';
 import { useNavigate } from 'react-router-dom';
+import { FullReanalyzeDialog } from '@/components/analysis/FullReanalyzeDialog';
 
 interface AIAnalysis {
   is_incident?: boolean;
@@ -80,6 +82,8 @@ export default function EmailsAnalyzed() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [linkedIncident, setLinkedIncident] = useState<Incident | null>(null);
+  const [showReanalyze, setShowReanalyze] = useState(false);
+  const queryClient = useQueryClient();
 
   // Fetch analyzed emails
   const { data: emails, isLoading } = useQuery({
@@ -156,11 +160,22 @@ export default function EmailsAnalyzed() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <PageHeader 
-          title="Emails Analysés" 
-          description="Visualisez les emails analysés par l'IA avec leurs scores et incidents liés"
-        />
+        <div className="flex items-center justify-between">
+          <PageHeader 
+            title="Emails Analysés" 
+            description="Visualisez les emails analysés par l'IA avec leurs scores et incidents liés"
+          />
+          <Button onClick={() => setShowReanalyze(true)} className="gap-2">
+            <RefreshCw className="h-4 w-4" />
+            Réanalyse Complète
+          </Button>
+        </div>
 
+        <FullReanalyzeDialog 
+          open={showReanalyze} 
+          onOpenChange={setShowReanalyze}
+          onComplete={() => queryClient.invalidateQueries({ queryKey: ['analyzed-emails'] })}
+        />
         {/* Stats Cards */}
         <div className="grid gap-4 md:grid-cols-4">
           <Card className="glass-card">
