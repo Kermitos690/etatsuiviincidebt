@@ -15,6 +15,7 @@ import {
   LogOut,
   BarChart3,
   Scale,
+  Shield,
   Paperclip,
   GraduationCap,
   HelpCircle,
@@ -65,6 +66,7 @@ const navCategories: NavCategory[] = [
     items: [
       { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
       { to: '/control-center', icon: Activity, label: 'Centre de Contrôle' },
+      { to: '/compliance', icon: Shield, label: 'Conformité' },
       { to: '/violations', icon: Scale, label: 'Violations' },
     ]
   },
@@ -105,9 +107,10 @@ const navCategories: NavCategory[] = [
   },
   {
     id: 'tools',
-    label: 'Outils RI',
+    label: 'Outils Juridiques',
     icon: Scale,
     items: [
+      { to: '/legal-repository', icon: BookOpen, label: 'Référentiel Légal' },
       { to: '/ri-calculator', icon: Scale, label: 'Calculateur Budget' },
     ]
   },
