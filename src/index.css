@@ -358,7 +358,26 @@
 
 @layer utilities {
   /* Shimmer Animation */
-  @keyframes shimmer {
+/* Email-specific animations */
+@keyframes slide-in-right {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+@keyframes shimmer {
     0% { left: -100%; }
     100% { left: 200%; }
   }
