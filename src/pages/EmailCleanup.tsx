@@ -4,6 +4,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { DomainSwipeCard, DomainGroup } from '@/components/cleanup/DomainSwipeCard';
 import { CleanupStats } from '@/components/cleanup/CleanupStats';
+import { FilterCleanupPanel } from '@/components/cleanup/FilterCleanupPanel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -22,7 +23,8 @@ import {
   CheckCircle2,
   RefreshCw,
   Mail,
-  Filter
+  Filter,
+  Zap
 } from 'lucide-react';
 
 // Generic email domains that should be grouped by sender
@@ -45,6 +47,7 @@ export default function EmailCleanup() {
   const [gmailConfig, setGmailConfig] = useState<{ domains: string[]; keywords: string[] } | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [groupMode, setGroupMode] = useState<'domain' | 'sender'>('domain');
+  const [cleanupMode, setCleanupMode] = useState<'swipe' | 'auto'>('auto');
   const [deleting, setDeleting] = useState(false);
   
   // Session stats
@@ -317,145 +320,171 @@ export default function EmailCleanup() {
           description="Supprimez en masse les emails hors périmètre groupés par domaine ou expéditeur"
         />
 
-        {/* Summary cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card className="glass-card">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                <Mail className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{emails.length}</p>
-                <p className="text-xs text-muted-foreground">Emails total</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="glass-card">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
-                <Globe className="h-5 w-5 text-blue-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{groups.length}</p>
-                <p className="text-xs text-muted-foreground">Groupes</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="glass-card">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-destructive/10 flex items-center justify-center">
-                <AlertTriangle className="h-5 w-5 text-destructive" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{totalIrrelevant}</p>
-                <p className="text-xs text-muted-foreground">Hors périmètre</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="glass-card">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center">
-                <CheckCircle2 className="h-5 w-5 text-green-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{groups.length - totalIrrelevant}</p>
-                <p className="text-xs text-muted-foreground">Pertinents</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Mode toggle */}
+        {/* Mode toggle - Auto vs Swipe */}
         <div className="flex justify-center">
-          <Tabs value={groupMode} onValueChange={(v) => { setGroupMode(v as 'domain' | 'sender'); setCurrentIndex(0); }}>
-            <TabsList>
-              <TabsTrigger value="domain" className="gap-2">
-                <Globe className="h-4 w-4" />
-                Par domaine
+          <Tabs value={cleanupMode} onValueChange={(v) => setCleanupMode(v as 'swipe' | 'auto')}>
+            <TabsList className="grid w-full max-w-md grid-cols-2">
+              <TabsTrigger value="auto" className="gap-2">
+                <Zap className="h-4 w-4" />
+                Nettoyage automatique
               </TabsTrigger>
-              <TabsTrigger value="sender" className="gap-2">
-                <User className="h-4 w-4" />
-                Par expéditeur
+              <TabsTrigger value="swipe" className="gap-2">
+                <Globe className="h-4 w-4" />
+                Par swipe
               </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
 
-        {/* Swipe area */}
-        <div className="flex flex-col items-center gap-6">
-          {currentGroup ? (
-            <>
-              <DomainSwipeCard
-                group={currentGroup}
-                onSwipe={handleSwipe}
-                disabled={deleting}
-                totalGroups={groups.length}
-                currentIndex={currentIndex}
-              />
-              
-              {deleting && (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Suppression en cours...</span>
-                </div>
+        {cleanupMode === 'auto' ? (
+          /* Automatic cleanup panel */
+          <div className="max-w-2xl mx-auto">
+            <FilterCleanupPanel gmailConfig={gmailConfig} />
+          </div>
+        ) : (
+          /* Swipe mode */
+          <>
+            {/* Summary cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card className="glass-card">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <Mail className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{emails.length}</p>
+                    <p className="text-xs text-muted-foreground">Emails total</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="glass-card">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
+                    <Globe className="h-5 w-5 text-blue-500" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{groups.length}</p>
+                    <p className="text-xs text-muted-foreground">Groupes</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="glass-card">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-destructive/10 flex items-center justify-center">
+                    <AlertTriangle className="h-5 w-5 text-destructive" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{totalIrrelevant}</p>
+                    <p className="text-xs text-muted-foreground">Hors périmètre</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="glass-card">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center">
+                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{groups.length - totalIrrelevant}</p>
+                    <p className="text-xs text-muted-foreground">Pertinents</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Group mode toggle */}
+            <div className="flex justify-center">
+              <Tabs value={groupMode} onValueChange={(v) => { setGroupMode(v as 'domain' | 'sender'); setCurrentIndex(0); }}>
+                <TabsList>
+                  <TabsTrigger value="domain" className="gap-2">
+                    <Globe className="h-4 w-4" />
+                    Par domaine
+                  </TabsTrigger>
+                  <TabsTrigger value="sender" className="gap-2">
+                    <User className="h-4 w-4" />
+                    Par expéditeur
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+
+            {/* Swipe area */}
+            <div className="flex flex-col items-center gap-6">
+              {currentGroup ? (
+                <>
+                  <DomainSwipeCard
+                    group={currentGroup}
+                    onSwipe={handleSwipe}
+                    disabled={deleting}
+                    totalGroups={groups.length}
+                    currentIndex={currentIndex}
+                  />
+                  
+                  {deleting && (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Suppression en cours...</span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <Card className="w-full max-w-xl text-center p-8">
+                  <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-4" />
+                  <h3 className="text-xl font-semibold mb-2">Nettoyage terminé !</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Tous les groupes d'emails ont été traités.
+                  </p>
+                  <Button onClick={() => navigate('/emails')}>
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Retour aux emails
+                  </Button>
+                </Card>
               )}
-            </>
-          ) : (
-            <Card className="w-full max-w-xl text-center p-8">
-              <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">Nettoyage terminé !</h3>
-              <p className="text-muted-foreground mb-4">
-                Tous les groupes d'emails ont été traités.
-              </p>
-              <Button onClick={() => navigate('/emails')}>
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Retour aux emails
-              </Button>
-            </Card>
-          )}
 
-          <CleanupStats
-            deleted={stats.deleted}
-            kept={stats.kept}
-            blacklisted={stats.blacklisted}
-            skipped={stats.skipped}
-            remaining={remainingGroups}
-            className="w-full max-w-xl"
-          />
-        </div>
+              <CleanupStats
+                deleted={stats.deleted}
+                kept={stats.kept}
+                blacklisted={stats.blacklisted}
+                skipped={stats.skipped}
+                remaining={remainingGroups}
+                className="w-full max-w-xl"
+              />
+            </div>
 
-        {/* Current filters info */}
-        {gmailConfig && (
-          <Card className="glass-card max-w-xl mx-auto">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Filter className="h-4 w-4" />
-                Filtres actifs
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex flex-wrap gap-1">
-                <span className="text-xs text-muted-foreground">Domaines :</span>
-                {gmailConfig.domains.length > 0 ? (
-                  gmailConfig.domains.map((d, i) => (
-                    <Badge key={i} variant="outline" className="text-xs">{d}</Badge>
-                  ))
-                ) : (
-                  <span className="text-xs text-muted-foreground italic">Aucun</span>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-1">
-                <span className="text-xs text-muted-foreground">Mots-clés :</span>
-                {gmailConfig.keywords.length > 0 ? (
-                  gmailConfig.keywords.map((k, i) => (
-                    <Badge key={i} variant="secondary" className="text-xs">{k}</Badge>
-                  ))
-                ) : (
-                  <span className="text-xs text-muted-foreground italic">Aucun</span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+            {/* Current filters info */}
+            {gmailConfig && (
+              <Card className="glass-card max-w-xl mx-auto">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Filter className="h-4 w-4" />
+                    Filtres actifs
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="flex flex-wrap gap-1">
+                    <span className="text-xs text-muted-foreground">Domaines :</span>
+                    {gmailConfig.domains.length > 0 ? (
+                      gmailConfig.domains.map((d, i) => (
+                        <Badge key={i} variant="outline" className="text-xs">{d}</Badge>
+                      ))
+                    ) : (
+                      <span className="text-xs text-muted-foreground italic">Aucun</span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    <span className="text-xs text-muted-foreground">Mots-clés :</span>
+                    {gmailConfig.keywords.length > 0 ? (
+                      gmailConfig.keywords.map((k, i) => (
+                        <Badge key={i} variant="secondary" className="text-xs">{k}</Badge>
+                      ))
+                    ) : (
+                      <span className="text-xs text-muted-foreground italic">Aucun</span>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </>
         )}
       </div>
     </AppLayout>
