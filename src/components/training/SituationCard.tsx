@@ -190,15 +190,15 @@ export function SituationCard({ situation, onValidate }: SituationCardProps) {
             <Button 
               onClick={() => handleQuickValidate('correct')}
               variant="outline" 
-              className="flex-1 border-green-500 text-green-700 hover:bg-green-50"
+              className="flex-1 border-green-500 text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-950"
             >
               <CheckCircle className="h-4 w-4 mr-2" />
-              Correct
+              Correct (garder)
             </Button>
             <Button 
               onClick={() => handleQuickValidate('needs_verification')}
               variant="outline" 
-              className="flex-1 border-yellow-500 text-yellow-700 hover:bg-yellow-50"
+              className="flex-1 border-yellow-500 text-yellow-700 hover:bg-yellow-50 dark:text-yellow-400 dark:hover:bg-yellow-950"
             >
               <HelpCircle className="h-4 w-4 mr-2" />
               À vérifier
@@ -206,10 +206,10 @@ export function SituationCard({ situation, onValidate }: SituationCardProps) {
             <Button 
               onClick={() => handleQuickValidate('incorrect')}
               variant="outline" 
-              className="flex-1 border-red-500 text-red-700 hover:bg-red-50"
+              className="flex-1 border-red-500 text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
             >
               <XCircle className="h-4 w-4 mr-2" />
-              Incorrect
+              Hors sujet (supprimer)
             </Button>
           </div>
         )}
