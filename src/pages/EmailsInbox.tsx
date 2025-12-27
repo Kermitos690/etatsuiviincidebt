@@ -255,6 +255,41 @@ export default function EmailsInbox() {
     navigate('/nouveau', { state: { prefillData: { titre: analysis.suggestedTitle, faits: analysis.suggestedFacts, dysfonctionnement: analysis.suggestedDysfunction, institution: analysis.suggestedInstitution, type: analysis.suggestedType, gravite: analysis.suggestedGravity, emailSourceId: email.id } } });
   };
 
+  const deleteEmail = async (email: Email) => {
+    if (!confirm(`Supprimer l'email "${email.subject}" ?`)) return;
+    try {
+      const { error } = await supabase.from('emails').delete().eq('id', email.id);
+      if (error) throw error;
+      toast.success('Email supprimé');
+      setEmails(prev => prev.filter(e => e.id !== email.id));
+      if (selectedEmail?.id === email.id) {
+        setSelectedEmail(null);
+        setSelectedThread(null);
+      }
+    } catch (error) {
+      console.error('Error deleting email:', error);
+      toast.error('Erreur lors de la suppression');
+    }
+  };
+
+  const deleteThread = async (thread: EmailThread) => {
+    if (!confirm(`Supprimer ${thread.emails.length} email(s) de ce thread ?`)) return;
+    try {
+      const ids = thread.emails.map(e => e.id);
+      const { error } = await supabase.from('emails').delete().in('id', ids);
+      if (error) throw error;
+      toast.success(`${ids.length} email(s) supprimé(s)`);
+      setEmails(prev => prev.filter(e => !ids.includes(e.id)));
+      if (selectedThread?.threadId === thread.threadId) {
+        setSelectedEmail(null);
+        setSelectedThread(null);
+      }
+    } catch (error) {
+      console.error('Error deleting thread:', error);
+      toast.error('Erreur lors de la suppression');
+    }
+  };
+
   const formatDate = (date: string) => {
     const d = new Date(date); const now = new Date();
     const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
@@ -343,6 +378,7 @@ export default function EmailsInbox() {
                       onToggle={() => setExpandedThreads(prev => { const next = new Set(prev); next.has(thread.threadId) ? next.delete(thread.threadId) : next.add(thread.threadId); return next; })}
                       onAnalyze={() => analyzeThread(thread)}
                       onView={() => { setSelectedThread(thread); setSelectedEmail(thread.emails[thread.emails.length - 1]); }}
+                      onDelete={() => deleteThread(thread)}
                       formatDate={formatDate}
                       animationDelay={Math.min(idx * 50, 300)}
                     />
@@ -369,6 +405,7 @@ export default function EmailsInbox() {
                 onGenerateResponse={() => generateAIResponse(selectedEmail)}
                 onAnalyzeAttachment={analyzeAttachment}
                 onDownloadAttachment={downloadAttachment}
+                onDelete={() => deleteEmail(selectedEmail)}
               />
             ) : (
               <div className="h-full glass-card rounded-2xl flex items-center justify-center">
@@ -399,6 +436,7 @@ export default function EmailsInbox() {
             onGenerateResponse={() => selectedEmail && generateAIResponse(selectedEmail)}
             onAnalyzeAttachment={analyzeAttachment}
             onDownloadAttachment={downloadAttachment}
+            onDelete={() => selectedEmail && deleteEmail(selectedEmail)}
           />
         )}
 

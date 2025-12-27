@@ -19,6 +19,7 @@ interface EmailBottomSheetProps {
   onGenerateResponse: () => void;
   onAnalyzeAttachment: (id: string) => void;
   onDownloadAttachment: (attachment: EmailAttachment) => void;
+  onDelete?: () => void;
 }
 
 function EmailBottomSheetInner({
@@ -35,6 +36,7 @@ function EmailBottomSheetInner({
   onGenerateResponse,
   onAnalyzeAttachment,
   onDownloadAttachment,
+  onDelete,
 }: EmailBottomSheetProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -141,6 +143,7 @@ function EmailBottomSheetInner({
             onGenerateResponse={onGenerateResponse}
             onAnalyzeAttachment={onAnalyzeAttachment}
             onDownloadAttachment={onDownloadAttachment}
+            onDelete={onDelete}
           />
         </div>
       </div>

@@ -34,7 +34,8 @@ import {
   TrendingUp,
   Building2,
   RefreshCw,
-  Filter
+  Filter,
+  Trash2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -43,6 +44,7 @@ import { useNavigate } from 'react-router-dom';
 import { FullReanalyzeDialog } from '@/components/analysis/FullReanalyzeDialog';
 import { useGmailFilters } from '@/hooks/useGmailFilters';
 import { isEmailRelevant } from '@/utils/emailFilters';
+import { toast } from 'sonner';
 
 interface AIAnalysis {
   is_incident?: boolean;
@@ -125,6 +127,22 @@ export default function EmailsAnalyzed() {
       await fetchLinkedIncident(email.incident_id);
     } else {
       setLinkedIncident(null);
+    }
+  };
+
+  const deleteEmail = async (email: Email) => {
+    if (!confirm(`Supprimer l'email "${email.subject}" ?`)) return;
+    try {
+      const { error } = await supabase.from('emails').delete().eq('id', email.id);
+      if (error) throw error;
+      toast.success('Email supprimé');
+      queryClient.invalidateQueries({ queryKey: ['analyzed-emails'] });
+      if (selectedEmail?.id === email.id) {
+        setSelectedEmail(null);
+      }
+    } catch (error) {
+      console.error('Error deleting email:', error);
+      toast.error('Erreur lors de la suppression');
     }
   };
 
@@ -399,6 +417,15 @@ export default function EmailsAnalyzed() {
                             title="Voir l'analyse"
                           >
                             <Brain className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => deleteEmail(email)}
+                            title="Supprimer"
+                            className="hover:bg-destructive/10 hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </TableCell>
