@@ -1524,6 +1524,60 @@ export type Database = {
           },
         ]
       }
+      pdf_comparisons: {
+        Row: {
+          comparison_result: Json | null
+          contradictions_count: number | null
+          created_at: string
+          document_id_1: string
+          document_id_2: string
+          id: string
+          risk_level: string | null
+          similarity_score: number | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          comparison_result?: Json | null
+          contradictions_count?: number | null
+          created_at?: string
+          document_id_1: string
+          document_id_2: string
+          id?: string
+          risk_level?: string | null
+          similarity_score?: number | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          comparison_result?: Json | null
+          contradictions_count?: number | null
+          created_at?: string
+          document_id_1?: string
+          document_id_2?: string
+          id?: string
+          risk_level?: string | null
+          similarity_score?: number | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_comparisons_document_id_1_fkey"
+            columns: ["document_id_1"]
+            isOneToOne: false
+            referencedRelation: "pdf_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pdf_comparisons_document_id_2_fkey"
+            columns: ["document_id_2"]
+            isOneToOne: false
+            referencedRelation: "pdf_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pdf_documents: {
         Row: {
           created_at: string
