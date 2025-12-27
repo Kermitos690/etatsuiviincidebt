@@ -1538,6 +1538,7 @@ export type Database = {
           original_filename: string
           page_count: number | null
           storage_path: string
+          tags: string[] | null
           updated_at: string
           user_id: string
         }
@@ -1554,6 +1555,7 @@ export type Database = {
           original_filename: string
           page_count?: number | null
           storage_path: string
+          tags?: string[] | null
           updated_at?: string
           user_id: string
         }
@@ -1570,6 +1572,7 @@ export type Database = {
           original_filename?: string
           page_count?: number | null
           storage_path?: string
+          tags?: string[] | null
           updated_at?: string
           user_id?: string
         }

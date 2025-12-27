@@ -22,7 +22,8 @@ export interface PDFDocument {
   document_type: string;
   metadata: Record<string, unknown>;
   extracted_text: string | null;
-  extraction_status: 'pending' | 'extracting' | 'completed' | 'error';
+  extraction_status: 'pending' | 'extracting' | 'completed' | 'error' | string;
+  tags: string[];
   created_at: string;
   updated_at: string;
   analysis?: PDFAnalysis | null;
