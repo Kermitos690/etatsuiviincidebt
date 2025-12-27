@@ -172,12 +172,15 @@ export function FolderManager({
   return (
     <div className="space-y-2">
       {/* All Documents */}
-      <Card
+      <button
+        type="button"
         onClick={() => onSelectFolder(null)}
         className={cn(
-          "p-3 cursor-pointer transition-all duration-200",
-          "hover:bg-muted/50",
-          selectedFolderId === null && "ring-2 ring-primary bg-primary/5"
+          "w-full p-3 rounded-lg border transition-all duration-200 text-left",
+          "hover:bg-muted/50 active:scale-[0.98]",
+          selectedFolderId === null 
+            ? "ring-2 ring-primary bg-primary/5 border-primary/30" 
+            : "bg-card border-border"
         )}
       >
         <div className="flex items-center gap-3">
@@ -188,21 +191,24 @@ export function FolderManager({
             <p className="font-medium text-sm">Tous les documents</p>
           </div>
           <ChevronRight className={cn(
-            "h-4 w-4 transition-transform",
-            selectedFolderId === null && "rotate-90"
+            "h-4 w-4 transition-transform text-muted-foreground",
+            selectedFolderId === null && "rotate-90 text-primary"
           )} />
         </div>
-      </Card>
+      </button>
 
       {/* Folders list */}
       {folders.map(folder => (
-        <Card
+        <button
+          type="button"
           key={folder.id}
           onClick={() => onSelectFolder(folder.id)}
           className={cn(
-            "p-3 cursor-pointer transition-all duration-200 group",
-            "hover:bg-muted/50",
-            selectedFolderId === folder.id && "ring-2 ring-primary bg-primary/5"
+            "w-full p-3 rounded-lg border transition-all duration-200 text-left group",
+            "hover:bg-muted/50 active:scale-[0.98]",
+            selectedFolderId === folder.id 
+              ? "ring-2 ring-primary bg-primary/5 border-primary/30" 
+              : "bg-card border-border"
           )}
         >
           <div className="flex items-center gap-3">
@@ -241,11 +247,11 @@ export function FolderManager({
             </div>
 
             <ChevronRight className={cn(
-              "h-4 w-4 transition-transform",
-              selectedFolderId === folder.id && "rotate-90"
+              "h-4 w-4 transition-transform text-muted-foreground",
+              selectedFolderId === folder.id && "rotate-90 text-primary"
             )} />
           </div>
-        </Card>
+        </button>
       ))}
 
       {/* Create folder button */}
