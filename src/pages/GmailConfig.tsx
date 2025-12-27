@@ -79,6 +79,8 @@ export default function GmailConfig() {
   });
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ count: number; query: string } | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [newDomain, setNewDomain] = useState('');
   const [newKeyword, setNewKeyword] = useState('');
@@ -293,6 +295,41 @@ export default function GmailConfig() {
       console.error('Gmail sync error:', error);
       toast.error('Erreur lors de la synchronisation');
       setSyncing(false);
+    }
+  };
+
+  const handleTestFilters = async () => {
+    setTesting(true);
+    setTestResult(null);
+    
+    try {
+      const afterDate = syncFromDate ? format(syncFromDate, 'yyyy/MM/dd') : null;
+      
+      const { data, error } = await supabase.functions.invoke('gmail-sync', {
+        body: { 
+          domains: config.domains, 
+          keywords: config.keywords,
+          afterDate,
+          countOnly: true
+        }
+      });
+      
+      if (error) throw error;
+      
+      if (data?.status === 'count_complete') {
+        setTestResult({ count: data.count, query: data.query });
+        if (data.count === 0) {
+          toast.info('Aucun email ne correspond à vos filtres');
+        } else {
+          toast.success(`${data.count} emails correspondent à vos filtres`);
+        }
+      }
+      
+    } catch (error) {
+      console.error('Filter test error:', error);
+      toast.error('Erreur lors du test des filtres');
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -678,12 +715,45 @@ export default function GmailConfig() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-muted-foreground">Estimation:</span>
-                    <Badge variant="outline" className="text-xs bg-cyan-500/10 text-cyan-600 border-cyan-500/20">
-                      {config.domains.length > 0 || config.keywords.length > 0 
-                        ? "~100-500 emails" 
-                        : "⚠️ Tous les emails"}
-                    </Badge>
+                    {testResult ? (
+                      <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                        ✅ {testResult.count} emails trouvés
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs bg-cyan-500/10 text-cyan-600 border-cyan-500/20">
+                        {config.domains.length > 0 || config.keywords.length > 0 
+                          ? "~100-500 emails" 
+                          : "⚠️ Tous les emails"}
+                      </Badge>
+                    )}
                   </div>
+                </div>
+                
+                {/* Test Filters Button */}
+                <div className="flex items-center gap-2 pt-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={handleTestFilters}
+                    disabled={testing || !config.connected}
+                    className="text-xs"
+                  >
+                    {testing ? (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                        Test en cours...
+                      </>
+                    ) : (
+                      <>
+                        🔍 Tester les filtres
+                      </>
+                    )}
+                  </Button>
+                  {testResult && (
+                    <span className="text-xs text-muted-foreground">
+                      Requête: <code className="bg-muted px-1 py-0.5 rounded text-[10px]">{testResult.query.substring(0, 50)}...</code>
+                    </span>
+                  )}
                 </div>
                 
                 {config.domains.length === 0 && config.keywords.length === 0 && (

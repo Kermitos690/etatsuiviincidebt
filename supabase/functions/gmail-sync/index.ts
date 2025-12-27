@@ -657,6 +657,7 @@ serve(async (req) => {
     let requestDomains: string[] | null = null;
     let requestKeywords: string[] | null = null;
     let forceAll = false; // Explicit flag to override filters
+    let countOnly = false; // NEW: Just count emails without downloading
 
     try {
       const body = await req.json();
@@ -666,6 +667,7 @@ serve(async (req) => {
       if (body.domains) requestDomains = body.domains;
       if (body.keywords) requestKeywords = body.keywords;
       if (body.forceAll === true) forceAll = true;
+      if (body.countOnly === true) countOnly = true;
     } catch {
       // No body or invalid JSON - use defaults
     }
@@ -799,6 +801,27 @@ serve(async (req) => {
       pageCount++;
       
       if (!pageToken) break;
+    }
+
+    // COUNT ONLY MODE: Return count without downloading
+    if (countOnly) {
+      console.log(`[Count Only] Found ${allMessages.length} emails matching filters`);
+      return new Response(JSON.stringify({ 
+        status: "count_complete",
+        count: allMessages.length,
+        query: query || "(all emails)",
+        filters: {
+          domains: domains.length,
+          keywords: keywords.length,
+          afterDate: afterDate || null,
+          filtersAppliedAtApi: syncMode === 'filtered' && hasFilters,
+        },
+        message: allMessages.length === 0 
+          ? "Aucun email ne correspond à vos filtres" 
+          : `${allMessages.length} emails correspondent à vos filtres`
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     if (allMessages.length === 0) {
