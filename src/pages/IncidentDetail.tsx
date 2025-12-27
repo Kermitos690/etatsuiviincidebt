@@ -34,7 +34,7 @@ import { EmailViewer } from '@/components/email';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
-import jsPDF from 'jspdf';
+import { generateIncidentPDF } from '@/utils/generateIncidentPDF';
 
 const proofIcons = {
   email: Mail,
@@ -169,97 +169,34 @@ export default function IncidentDetail() {
   const exportPDF = async () => {
     setExportingPDF(true);
     try {
-      const doc = new jsPDF();
-      
-      // Header
-      doc.setFontSize(20);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`INCIDENT #${incident.numero}`, 20, 20);
-      
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(100);
-      doc.text(`Généré le ${formatDate(new Date().toISOString())} - Document confidentiel`, 20, 28);
-      
-      doc.line(20, 34, 190, 34);
-      doc.setTextColor(0);
-      let y = 44;
-      
-      // Informations générales
-      doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      doc.text('INFORMATIONS GÉNÉRALES', 20, y);
-      y += 10;
-      
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      
-      const info = [
-        ['Titre', incident.titre],
-        ['Date incident', formatDate(incident.dateIncident)],
-        ['Institution', incident.institution],
-        ['Type', incident.type],
-        ['Gravité', incident.gravite],
-        ['Priorité', incident.priorite],
-        ['Score', `${incident.score}/100`],
-        ['Statut', incident.statut],
-        ['Transmis JP', incident.transmisJP ? 'Oui' : 'Non'],
-      ];
-      
-      info.forEach(([label, value]) => {
-        doc.setFont('helvetica', 'bold');
-        doc.text(`${label}:`, 25, y);
-        doc.setFont('helvetica', 'normal');
-        const lines = doc.splitTextToSize(String(value), 120);
-        doc.text(lines, 60, y);
-        y += lines.length * 5 + 2;
+      await generateIncidentPDF({
+        id: incident.id,
+        numero: incident.numero,
+        titre: incident.titre,
+        dateIncident: incident.dateIncident,
+        dateCreation: incident.dateCreation,
+        institution: incident.institution,
+        type: incident.type,
+        gravite: incident.gravite,
+        priorite: incident.priorite,
+        score: incident.score,
+        statut: incident.statut,
+        faits: incident.faits,
+        dysfonctionnement: incident.dysfonctionnement,
+        transmisJP: incident.transmisJP,
+        dateTransmissionJP: incident.dateTransmissionJP,
+        preuves: incident.preuves.map(p => ({
+          id: p.id,
+          type: p.type,
+          label: p.label,
+          url: p.url,
+        })),
+      }, {
+        includeProofs: true,
+        includeLegalExplanations: true,
       });
       
-      y += 5;
-      
-      // Faits
-      doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      doc.text('FAITS CONSTATÉS', 20, y);
-      y += 8;
-      
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      const faitsLines = doc.splitTextToSize(incident.faits || 'Non renseigné', 165);
-      if (y + faitsLines.length * 5 > 270) {
-        doc.addPage();
-        y = 20;
-      }
-      doc.text(faitsLines, 25, y);
-      y += faitsLines.length * 5 + 10;
-      
-      // Dysfonctionnement
-      if (y > 250) {
-        doc.addPage();
-        y = 20;
-      }
-      
-      doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      doc.text('DYSFONCTIONNEMENT IDENTIFIÉ', 20, y);
-      y += 8;
-      
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      const dysfLines = doc.splitTextToSize(incident.dysfonctionnement || 'Non renseigné', 165);
-      doc.text(dysfLines, 25, y);
-      
-      // Footer on all pages
-      const pageCount = doc.getNumberOfPages();
-      for (let i = 1; i <= pageCount; i++) {
-        doc.setPage(i);
-        doc.setFontSize(8);
-        doc.setTextColor(150);
-        doc.text(`Page ${i}/${pageCount} - Incident #${incident.numero} - Confidentiel`, 20, 290);
-      }
-      
-      doc.save(`incident-${incident.numero}.pdf`);
-      toast.success('PDF généré avec succès');
+      toast.success('PDF Premium généré avec bases légales');
     } catch (error) {
       console.error('Erreur export PDF:', error);
       toast.error('Erreur lors de la génération du PDF');

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileText, Download, Loader2, BookOpen, Calendar, Scale, FolderArchive, AlertTriangle } from 'lucide-react';
+import { FileText, Download, Loader2, BookOpen, Calendar, Scale, FolderArchive, AlertTriangle, Gavel } from 'lucide-react';
 import { AppLayout, PageHeader } from '@/components/layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,6 +20,8 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import jsPDF from 'jspdf';
 import { formatDate } from '@/config/appConfig';
+import { generateIncidentPDF } from '@/utils/generateIncidentPDF';
+import { generateJuridiquePDF } from '@/utils/generateJuridiquePDF';
 
 export default function Exports() {
   const { toast } = useToast();
@@ -56,7 +58,118 @@ export default function Exports() {
     }
   });
 
-  // Export single incident with complete dossier
+  // Export single incident with ultra premium style
+  const exportIncidentPremiumPDF = async () => {
+    const incident = incidents.find(i => i.id === selectedIncident);
+    if (!incident) return;
+
+    setLoading('incident-premium');
+    
+    try {
+      await generateIncidentPDF({
+        id: incident.id,
+        numero: incident.numero,
+        titre: incident.titre,
+        dateIncident: incident.dateIncident,
+        dateCreation: incident.dateCreation,
+        institution: incident.institution,
+        type: incident.type,
+        gravite: incident.gravite,
+        priorite: incident.priorite,
+        score: incident.score,
+        statut: incident.statut,
+        faits: incident.faits,
+        dysfonctionnement: incident.dysfonctionnement,
+        transmisJP: incident.transmisJP,
+        dateTransmissionJP: incident.dateTransmissionJP,
+        preuves: incident.preuves.map(p => ({
+          id: p.id,
+          type: p.type,
+          label: p.label,
+          url: p.url,
+        })),
+      }, {
+        includeProofs: true,
+        includeLegalExplanations: true,
+      });
+      
+      toast({ title: "PDF Premium généré", description: `Fiche incident #${incident.numero} avec bases légales expliquées` });
+    } catch (error) {
+      console.error('PDF error:', error);
+      toast({ title: "Erreur", description: "Impossible de générer le PDF", variant: "destructive" });
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  // Export juridique formel pour Justice de Paix
+  const exportJuridiquePDF = async () => {
+    setLoading('juridique');
+    
+    try {
+      const transmisIncidents = incidents.filter(i => i.transmisJP || i.gravite === 'Critique' || i.gravite === 'Haute');
+      
+      const incidentsData = transmisIncidents.map(incident => ({
+        id: incident.id,
+        numero: incident.numero,
+        titre: incident.titre,
+        dateIncident: incident.dateIncident,
+        dateCreation: incident.dateCreation,
+        institution: incident.institution,
+        type: incident.type,
+        gravite: incident.gravite,
+        priorite: incident.priorite,
+        score: incident.score,
+        statut: incident.statut,
+        faits: incident.faits,
+        dysfonctionnement: incident.dysfonctionnement,
+        transmisJP: incident.transmisJP,
+        dateTransmissionJP: incident.dateTransmissionJP,
+        preuves: incident.preuves.map(p => ({
+          id: p.id,
+          type: p.type,
+          label: p.label,
+          url: p.url,
+        })),
+      }));
+
+      // Get date range
+      const dates = incidents.map(i => new Date(i.dateIncident));
+      const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
+      const maxDate = new Date(Math.max(...dates.map(d => d.getTime())));
+
+      await generateJuridiquePDF({
+        incidents: incidentsData,
+        threadAnalyses: threadAnalyses?.map(t => ({
+          id: t.id,
+          thread_id: t.thread_id,
+          chronological_summary: t.chronological_summary || undefined,
+          detected_issues: t.detected_issues,
+          citations: t.citations,
+          participants: t.participants,
+          severity: t.severity || undefined,
+        })) || [],
+        reportTitle: 'DOSSIER JURIDIQUE',
+        destinataire: 'Justice de Paix du Canton de Vaud',
+        period: {
+          start: minDate.toISOString(),
+          end: maxDate.toISOString(),
+        },
+      });
+      
+      toast({ 
+        title: "Dossier Juridique généré", 
+        description: `${transmisIncidents.length} incidents avec qualification juridique complète` 
+      });
+    } catch (error) {
+      console.error('PDF error:', error);
+      toast({ title: "Erreur", description: "Impossible de générer le PDF", variant: "destructive" });
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  // Export single incident with complete dossier (legacy)
   const exportIncidentCompletePDF = async () => {
     const incident = incidents.find(i => i.id === selectedIncident);
     if (!incident) return;
@@ -197,7 +310,7 @@ export default function Exports() {
             doc.addPage();
             y = 20;
           }
-          doc.text(`${idx + 1}. ${preuve.type || 'Document'}: ${preuve.description || 'Sans description'}`, 25, y);
+          doc.text(`${idx + 1}. ${preuve.type || 'Document'}: ${preuve.description || preuve.label || 'Sans description'}`, 25, y);
           y += 5;
         });
       }
@@ -791,6 +904,56 @@ export default function Exports() {
 
           <TabsContent value="incidents" className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
+              {/* Ultra Premium incident export */}
+              <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-transparent">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Gavel className="h-5 w-5 text-primary" />
+                    Fiche Incident Premium
+                  </CardTitle>
+                  <CardDescription className="text-sm">
+                    Export ultra premium avec bases légales expliquées par l'IA
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm">Sélectionner un incident</Label>
+                    <Select value={selectedIncident} onValueChange={setSelectedIncident}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choisir..." />
+                      </SelectTrigger>
+                      <SelectContent className="bg-popover z-50 max-h-[200px]">
+                        {incidents.map(inc => (
+                          <SelectItem key={inc.id} value={inc.id}>
+                            #{inc.numero} - {inc.titre.substring(0, 30)}...
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="bg-muted/50 p-2 rounded text-xs text-muted-foreground">
+                    <p className="font-medium mb-1">Contenu premium:</p>
+                    <ul className="list-disc list-inside space-y-0.5">
+                      <li>Bases légales avec texte intégral</li>
+                      <li>Explication contextuelle IA</li>
+                      <li>Hash de traçabilité des preuves</li>
+                    </ul>
+                  </div>
+                  <Button 
+                    onClick={exportIncidentPremiumPDF} 
+                    disabled={!selectedIncident || loading === 'incident-premium'}
+                    className="w-full"
+                  >
+                    {loading === 'incident-premium' ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4 mr-2" />
+                    )}
+                    Export Premium
+                  </Button>
+                </CardContent>
+              </Card>
+
               {/* Complete incident dossier */}
               <Card>
                 <CardHeader className="pb-3">
@@ -799,7 +962,7 @@ export default function Exports() {
                     Dossier incident complet
                   </CardTitle>
                   <CardDescription className="text-sm">
-                    Export avec bases légales et preuves
+                    Export standard avec bases légales
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -821,6 +984,7 @@ export default function Exports() {
                   <Button 
                     onClick={exportIncidentCompletePDF} 
                     disabled={!selectedIncident || loading === 'incident-complete'}
+                    variant="outline"
                     className="w-full"
                   >
                     {loading === 'incident-complete' ? (
@@ -828,50 +992,7 @@ export default function Exports() {
                     ) : (
                       <Download className="h-4 w-4 mr-2" />
                     )}
-                    Dossier Complet
-                  </Button>
-                </CardContent>
-              </Card>
-
-              {/* Basic incident export */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <FileText className="h-5 w-5" />
-                    Fiche incident simple
-                  </CardTitle>
-                  <CardDescription className="text-sm">
-                    Export rapide d'un incident
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label className="text-sm">Incident</Label>
-                    <Select value={selectedIncident} onValueChange={setSelectedIncident}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Choisir..." />
-                      </SelectTrigger>
-                      <SelectContent className="bg-popover z-50 max-h-[200px]">
-                        {incidents.map(inc => (
-                          <SelectItem key={inc.id} value={inc.id}>
-                            #{inc.numero} - {inc.titre.substring(0, 30)}...
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button 
-                    onClick={exportIncidentPDF} 
-                    disabled={!selectedIncident || loading === 'incident'}
-                    variant="outline"
-                    className="w-full"
-                  >
-                    {loading === 'incident' ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Download className="h-4 w-4 mr-2" />
-                    )}
-                    Fiche Simple
+                    Dossier Standard
                   </Button>
                 </CardContent>
               </Card>
@@ -981,42 +1102,80 @@ export default function Exports() {
           </TabsContent>
 
           <TabsContent value="probatoire" className="space-y-4">
-            <Card className="border-primary/20">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Scale className="h-5 w-5 text-primary" />
-                  Dossier probatoire pour le Juge de Paix
-                </CardTitle>
-                <CardDescription className="text-sm">
-                  Document complet avec table des matières, preuves indexées et bases légales
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="bg-muted/50 p-3 rounded-lg text-sm space-y-2">
-                  <p className="font-medium">Ce dossier contient:</p>
-                  <ul className="list-disc list-inside text-muted-foreground space-y-1">
-                    <li>Résumé exécutif</li>
-                    <li>Liste des incidents transmis au JP</li>
-                    <li>Chronologie des faits</li>
-                    <li>Bases légales applicables (CC, Cst., PA, LPD, LVPAE)</li>
-                    <li>Preuves documentaires indexées</li>
-                    <li>Recommandations</li>
-                  </ul>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <Badge variant="secondary">{incidents.filter(i => i.transmisJP).length} transmis JP</Badge>
-                  <Badge variant="destructive">{incidents.filter(i => i.gravite === 'Critique').length} critiques</Badge>
-                </div>
-                <Button onClick={exportDossierProbatoire} disabled={loading === 'probatoire'} className="w-full">
-                  {loading === 'probatoire' ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Download className="h-4 w-4 mr-2" />
-                  )}
-                  Générer Dossier Probatoire
-                </Button>
-              </CardContent>
-            </Card>
+            <div className="grid gap-4 md:grid-cols-2">
+              {/* Dossier Juridique Premium */}
+              <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-transparent">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Gavel className="h-5 w-5 text-primary" />
+                    Dossier Juridique Premium
+                  </CardTitle>
+                  <CardDescription className="text-sm">
+                    Format formel Justice de Paix avec qualification juridique complète
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="bg-muted/50 p-3 rounded-lg text-sm space-y-2">
+                    <p className="font-medium">Style juridique officiel:</p>
+                    <ul className="list-disc list-inside text-muted-foreground space-y-1">
+                      <li>Page de garde institutionnelle</li>
+                      <li>Table des matières numérotée</li>
+                      <li>Faits numérotés par gravité</li>
+                      <li>Qualification juridique avec explications IA</li>
+                      <li>Conclusions et demandes formelles</li>
+                    </ul>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Badge variant="secondary">{incidents.filter(i => i.transmisJP || i.gravite === 'Critique' || i.gravite === 'Haute').length} incidents</Badge>
+                    <Badge variant="destructive">{incidents.filter(i => i.gravite === 'Critique').length} critiques</Badge>
+                  </div>
+                  <Button onClick={exportJuridiquePDF} disabled={loading === 'juridique'} className="w-full">
+                    {loading === 'juridique' ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4 mr-2" />
+                    )}
+                    Générer Dossier Juridique
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Dossier probatoire standard */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Scale className="h-5 w-5" />
+                    Dossier probatoire standard
+                  </CardTitle>
+                  <CardDescription className="text-sm">
+                    Document avec preuves indexées
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="bg-muted/50 p-3 rounded-lg text-sm space-y-2">
+                    <p className="font-medium">Ce dossier contient:</p>
+                    <ul className="list-disc list-inside text-muted-foreground space-y-1">
+                      <li>Résumé exécutif</li>
+                      <li>Liste des incidents transmis au JP</li>
+                      <li>Chronologie des faits</li>
+                      <li>Bases légales applicables</li>
+                      <li>Preuves documentaires indexées</li>
+                    </ul>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Badge variant="secondary">{incidents.filter(i => i.transmisJP).length} transmis JP</Badge>
+                  </div>
+                  <Button onClick={exportDossierProbatoire} disabled={loading === 'probatoire'} variant="outline" className="w-full">
+                    {loading === 'probatoire' ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4 mr-2" />
+                    )}
+                    Dossier Standard
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
