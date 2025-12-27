@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import {
   Mail, AlertTriangle, Check, Clock, Brain, MessageSquare, ArrowRight,
   Scale, Paperclip, Download, Loader2, FileText, Image, File, X,
-  ChevronLeft, Building2, RefreshCw, Zap
+  ChevronLeft, Building2, RefreshCw, Zap, Trash2
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -26,6 +26,7 @@ interface EmailDetailProps {
   onGenerateResponse: () => void;
   onAnalyzeAttachment: (id: string) => void;
   onDownloadAttachment: (attachment: EmailAttachment) => void;
+  onDelete?: () => void;
 }
 
 const getConfidenceColor = (confidence: number) => {
@@ -70,6 +71,7 @@ function EmailDetailInner({
   onGenerateResponse,
   onAnalyzeAttachment,
   onDownloadAttachment,
+  onDelete,
 }: EmailDetailProps) {
   const analysis = email.ai_analysis;
   const threadAnalysis = email.thread_analysis;
@@ -394,6 +396,18 @@ function EmailDetailInner({
             <MessageSquare className="h-4 w-4 mr-1.5" />
             <span className="hidden sm:inline">Répondre</span>
           </Button>
+
+          {onDelete && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onDelete}
+              className="flex-1 sm:flex-none hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50"
+            >
+              <Trash2 className="h-4 w-4 mr-1.5" />
+              <span className="hidden sm:inline">Supprimer</span>
+            </Button>
+          )}
         </div>
       </div>
     </div>

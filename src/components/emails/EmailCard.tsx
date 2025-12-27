@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { Mail, AlertTriangle, Clock, Check, Building2, ChevronRight, Brain, Eye, Paperclip } from 'lucide-react';
+import { Mail, AlertTriangle, Clock, Check, Building2, ChevronRight, Brain, Eye, Paperclip, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -14,6 +14,7 @@ interface EmailCardProps {
   onToggle: () => void;
   onAnalyze: () => void;
   onView: () => void;
+  onDelete?: () => void;
   formatDate: (date: string) => string;
   animationDelay?: number;
 }
@@ -33,6 +34,7 @@ function EmailCardInner({
   onToggle,
   onAnalyze,
   onView,
+  onDelete,
   formatDate,
   animationDelay = 0,
 }: EmailCardProps) {
@@ -185,6 +187,19 @@ function EmailCardInner({
             <Eye className="h-4 w-4 mr-1.5" />
             <span className="hidden xs:inline">Détails</span>
           </Button>
+          {onDelete && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              className="h-9 text-xs hover:bg-destructive/10 hover:text-destructive"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
 

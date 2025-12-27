@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { Brain, MessageSquare, AlertTriangle, RefreshCw, Zap } from 'lucide-react';
+import { Brain, MessageSquare, AlertTriangle, RefreshCw, Zap, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Email } from './types';
@@ -12,6 +12,7 @@ interface EmailActionsProps {
   onAdvancedAnalyze: () => void;
   onCreateIncident: () => void;
   onGenerateResponse: () => void;
+  onDelete?: () => void;
 }
 
 function EmailActionsInner({
@@ -22,6 +23,7 @@ function EmailActionsInner({
   onAdvancedAnalyze,
   onCreateIncident,
   onGenerateResponse,
+  onDelete,
 }: EmailActionsProps) {
   if (!email) return null;
 
@@ -79,6 +81,18 @@ function EmailActionsInner({
           <MessageSquare className="h-5 w-5" />
           <span className="text-xs">Répondre</span>
         </Button>
+
+        {onDelete && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onDelete}
+            className="flex-1 flex-col h-auto py-2 gap-1 hover:bg-destructive/10 hover:text-destructive"
+          >
+            <Trash2 className="h-5 w-5" />
+            <span className="text-xs">Suppr.</span>
+          </Button>
+        )}
       </div>
     </div>
   );
