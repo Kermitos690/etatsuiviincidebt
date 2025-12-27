@@ -39,6 +39,7 @@ const EmailCleanup = lazy(() => import("./pages/EmailCleanup"));
 const AdvancedTraining = lazy(() => import("./pages/AdvancedTraining"));
 const RelationshipGraph = lazy(() => import("./pages/RelationshipGraph"));
 const AnomalyDetection = lazy(() => import("./pages/AnomalyDetection"));
+const RICalculator = lazy(() => import("./pages/RICalculator"));
 const Auth = lazy(() => import("./pages/Auth"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -109,6 +110,7 @@ const App = () => (
               <Route path="/advanced-training" element={<AuthGuard><AdvancedTraining /></AuthGuard>} />
               <Route path="/relationship-graph" element={<AuthGuard><RelationshipGraph /></AuthGuard>} />
               <Route path="/anomaly-detection" element={<AuthGuard><AnomalyDetection /></AuthGuard>} />
+              <Route path="/ri-calculator" element={<AuthGuard><RICalculator /></AuthGuard>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
