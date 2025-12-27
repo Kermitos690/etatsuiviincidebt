@@ -2,7 +2,7 @@
  * Token Encryption Utilities for Gmail OAuth Tokens
  * 
  * Uses AES-GCM for encryption with a server-side secret key.
- * The encryption key is stored in Supabase Secrets (GMAIL_TOKEN_ENCRYPTION_KEY).
+ * Supports key rotation via versioned keys (GMAIL_TOKEN_ENCRYPTION_KEY, GMAIL_TOKEN_ENCRYPTION_KEY_V2, etc.)
  */
 
 // Convert hex string to Uint8Array
@@ -41,18 +41,45 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 }
 
 /**
- * Get the encryption key from environment
- * Key should be a 32-byte (256-bit) hex string (64 characters)
+ * Key version mapping - allows graceful key rotation
  */
-async function getEncryptionKey(): Promise<CryptoKey> {
-  const keyHex = Deno.env.get('GMAIL_TOKEN_ENCRYPTION_KEY');
+const KEY_ENV_NAMES: Record<number, string> = {
+  1: 'GMAIL_TOKEN_ENCRYPTION_KEY',
+  2: 'GMAIL_TOKEN_ENCRYPTION_KEY_V2',
+};
+
+/**
+ * Get the current (latest) key version
+ */
+export function getCurrentKeyVersion(): number {
+  // Check for V2 key first (newest)
+  if (Deno.env.get('GMAIL_TOKEN_ENCRYPTION_KEY_V2')) {
+    return 2;
+  }
+  return 1;
+}
+
+/**
+ * Check if a new key version is configured for rotation
+ */
+export function isNewKeyConfigured(): boolean {
+  const keyHex = Deno.env.get('GMAIL_TOKEN_ENCRYPTION_KEY_V2');
+  return !!keyHex && keyHex.length === 64;
+}
+
+/**
+ * Get the encryption key for a specific version
+ */
+async function getEncryptionKeyForVersion(version: number): Promise<CryptoKey> {
+  const envName = KEY_ENV_NAMES[version] || KEY_ENV_NAMES[1];
+  const keyHex = Deno.env.get(envName);
+  
   if (!keyHex) {
-    throw new Error('GMAIL_TOKEN_ENCRYPTION_KEY is not configured');
+    throw new Error(`Encryption key not configured for version ${version}: ${envName}`);
   }
   
-  // Validate key length (should be 64 hex characters = 32 bytes = 256 bits)
   if (keyHex.length !== 64) {
-    throw new Error('GMAIL_TOKEN_ENCRYPTION_KEY must be 64 hex characters (256 bits)');
+    throw new Error(`${envName} must be 64 hex characters (256 bits)`);
   }
   
   const keyBytes = hexToBytes(keyHex);
@@ -64,6 +91,13 @@ async function getEncryptionKey(): Promise<CryptoKey> {
     false,
     ['encrypt', 'decrypt']
   );
+}
+
+/**
+ * Get the current encryption key
+ */
+async function getEncryptionKey(): Promise<CryptoKey> {
+  return getEncryptionKeyForVersion(getCurrentKeyVersion());
 }
 
 /**
@@ -87,6 +121,7 @@ export async function encryptToken(plaintext: string): Promise<EncryptedToken> {
   const nonce = generateNonce();
   const encoder = new TextEncoder();
   const data = encoder.encode(plaintext);
+  const currentVersion = getCurrentKeyVersion();
   
   const ciphertext = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv: toArrayBuffer(nonce) },
@@ -97,15 +132,16 @@ export async function encryptToken(plaintext: string): Promise<EncryptedToken> {
   return {
     ciphertext: bytesToBase64(new Uint8Array(ciphertext)),
     nonce: bytesToBase64(nonce),
-    keyVersion: 1,
+    keyVersion: currentVersion,
   };
 }
 
 /**
- * Decrypt a token using AES-GCM
+ * Decrypt a token using AES-GCM (supports versioned keys)
  */
 export async function decryptToken(encrypted: EncryptedToken): Promise<string> {
-  const key = await getEncryptionKey();
+  const keyVersion = encrypted.keyVersion || 1;
+  const key = await getEncryptionKeyForVersion(keyVersion);
   const nonce = base64ToBytes(encrypted.nonce);
   const ciphertext = base64ToBytes(encrypted.ciphertext);
   
@@ -134,6 +170,7 @@ export async function encryptGmailTokens(
   const key = await getEncryptionKey();
   const nonce = generateNonce();
   const encoder = new TextEncoder();
+  const currentVersion = getCurrentKeyVersion();
   
   // Encrypt access token
   const accessCiphertext = await crypto.subtle.encrypt(
@@ -160,22 +197,23 @@ export async function encryptGmailTokens(
     accessTokenEnc: bytesToBase64(new Uint8Array(accessCiphertext)),
     refreshTokenEnc: refreshCiphertext ? bytesToBase64(new Uint8Array(refreshCiphertext)) : null,
     nonce: bytesToBase64(nonce),
-    keyVersion: 1,
+    keyVersion: currentVersion,
   };
 }
 
 /**
- * Decrypt Gmail tokens
+ * Decrypt Gmail tokens (supports versioned keys)
  */
 export async function decryptGmailTokens(
   accessTokenEnc: string,
   refreshTokenEnc: string | null,
-  nonceBase64: string
+  nonceBase64: string,
+  keyVersion: number = 1
 ): Promise<{
   accessToken: string;
   refreshToken: string | null;
 }> {
-  const key = await getEncryptionKey();
+  const key = await getEncryptionKeyForVersion(keyVersion);
   const nonce = base64ToBytes(nonceBase64);
   const decoder = new TextDecoder();
   
@@ -210,6 +248,40 @@ export async function decryptGmailTokens(
 }
 
 /**
+ * Re-encrypt tokens with the current (latest) key version
+ * Returns null if already on latest version
+ */
+export async function rotateTokenEncryption(
+  accessTokenEnc: string,
+  refreshTokenEnc: string | null,
+  nonceBase64: string,
+  oldKeyVersion: number
+): Promise<{
+  accessTokenEnc: string;
+  refreshTokenEnc: string | null;
+  nonce: string;
+  keyVersion: number;
+} | null> {
+  const currentVersion = getCurrentKeyVersion();
+  
+  // Skip if already on latest version
+  if (oldKeyVersion >= currentVersion) {
+    return null;
+  }
+  
+  // Decrypt with old key
+  const { accessToken, refreshToken } = await decryptGmailTokens(
+    accessTokenEnc,
+    refreshTokenEnc,
+    nonceBase64,
+    oldKeyVersion
+  );
+  
+  // Re-encrypt with current key
+  return encryptGmailTokens(accessToken, refreshToken);
+}
+
+/**
  * Check if encryption is configured
  */
 export function isEncryptionConfigured(): boolean {
@@ -227,23 +299,28 @@ export async function getGmailTokens(config: {
   access_token_enc: string | null;
   refresh_token_enc: string | null;
   token_nonce: string | null;
+  token_key_version?: number;
 }): Promise<{
   accessToken: string | null;
   refreshToken: string | null;
   wasEncrypted: boolean;
+  keyVersion: number | null;
 }> {
   // If encrypted tokens are available and encryption is configured, use them
   if (config.access_token_enc && config.token_nonce && isEncryptionConfigured()) {
     try {
+      const keyVersion = config.token_key_version || 1;
       const decrypted = await decryptGmailTokens(
         config.access_token_enc,
         config.refresh_token_enc,
-        config.token_nonce
+        config.token_nonce,
+        keyVersion
       );
       return {
         accessToken: decrypted.accessToken,
         refreshToken: decrypted.refreshToken,
         wasEncrypted: true,
+        keyVersion,
       };
     } catch (error) {
       console.error('Failed to decrypt tokens, falling back to plaintext:', error);
@@ -255,5 +332,6 @@ export async function getGmailTokens(config: {
     accessToken: config.access_token,
     refreshToken: config.refresh_token,
     wasEncrypted: false,
+    keyVersion: null,
   };
 }
