@@ -3,13 +3,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-webhook-secret',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-const WEBHOOK_SECRET = Deno.env.get('RECEIVE_EMAIL_WEBHOOK_SECRET');
+const INTERNAL_CRON_SECRET = Deno.env.get('INTERNAL_CRON_SECRET');
 
 // Email validation regex
 const isValidEmail = (email: string): boolean => {
@@ -22,30 +23,49 @@ const sanitizeString = (str: string | undefined, maxLength: number): string => {
   return str.substring(0, maxLength).trim();
 };
 
-// Verify webhook secret
-const verifyWebhookAuth = (req: Request): boolean => {
-  if (!WEBHOOK_SECRET) {
-    console.warn('[Auth] RECEIVE_EMAIL_WEBHOOK_SECRET not configured - rejecting request');
-    return false;
+// Verify authentication using internal secrets only
+// Accepts: service_role key, anon key, or internal cron secret
+const verifyInternalAuth = (req: Request): boolean => {
+  const authHeader = req.headers.get('authorization');
+  const apiKey = req.headers.get('apikey');
+  const cronSecret = req.headers.get('x-cron-secret');
+  
+  // Check internal cron secret (for scheduled jobs)
+  if (INTERNAL_CRON_SECRET && cronSecret) {
+    if (cronSecret.length !== INTERNAL_CRON_SECRET.length) return false;
+    let result = 0;
+    for (let i = 0; i < cronSecret.length; i++) {
+      result |= cronSecret.charCodeAt(i) ^ INTERNAL_CRON_SECRET.charCodeAt(i);
+    }
+    if (result === 0) {
+      console.log('[Auth] Authenticated via internal cron secret');
+      return true;
+    }
   }
   
-  const providedSecret = req.headers.get('x-webhook-secret');
-  if (!providedSecret) {
-    console.log('[Auth] Missing x-webhook-secret header');
-    return false;
+  // Check Authorization Bearer token (service role or anon key)
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    if (token === SUPABASE_SERVICE_ROLE_KEY) {
+      console.log('[Auth] Authenticated via service role key');
+      return true;
+    }
+    if (token === SUPABASE_ANON_KEY) {
+      console.log('[Auth] Authenticated via anon key');
+      return true;
+    }
   }
   
-  // Timing-safe comparison
-  if (providedSecret.length !== WEBHOOK_SECRET.length) {
-    return false;
+  // Check apikey header
+  if (apiKey) {
+    if (apiKey === SUPABASE_SERVICE_ROLE_KEY || apiKey === SUPABASE_ANON_KEY) {
+      console.log('[Auth] Authenticated via apikey header');
+      return true;
+    }
   }
   
-  let result = 0;
-  for (let i = 0; i < providedSecret.length; i++) {
-    result |= providedSecret.charCodeAt(i) ^ WEBHOOK_SECRET.charCodeAt(i);
-  }
-  
-  return result === 0;
+  console.log('[Auth] No valid authentication provided');
+  return false;
 };
 
 serve(async (req) => {
@@ -53,11 +73,11 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Verify webhook authentication
-  if (!verifyWebhookAuth(req)) {
-    console.error('[Auth] Webhook authentication failed');
+  // Verify internal authentication
+  if (!verifyInternalAuth(req)) {
+    console.error('[Auth] Authentication failed - requires internal Supabase credentials');
     return new Response(
-      JSON.stringify({ error: 'Unauthorized - invalid or missing webhook secret' }),
+      JSON.stringify({ error: 'Unauthorized - requires valid internal authentication' }),
       { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
