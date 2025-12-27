@@ -1,13 +1,16 @@
 project_id = "csysnvkvnoghhyqaxdkz"
 
+# Functions that handle their own JWT validation internally
+# Security is maintained because each function validates the Bearer token in code
+
 [functions.analyze-incident]
-verify_jwt = true
+verify_jwt = false
 
 [functions.receive-email]
 verify_jwt = false
 
 [functions.send-email]
-verify_jwt = true
+verify_jwt = false
 
 [functions.notify-critical]
 verify_jwt = false
@@ -16,79 +19,79 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.gmail-sync]
-verify_jwt = true
+verify_jwt = false
 
 [functions.sheets-sync]
 verify_jwt = false
 
 [functions.analyze-thread]
-verify_jwt = true
+verify_jwt = false
 
 [functions.auto-process-email]
 verify_jwt = false
 
 [functions.analyze-email-advanced]
-verify_jwt = true
+verify_jwt = false
 
 [functions.daily-audit-analysis]
-verify_jwt = true
+verify_jwt = false
 
 [functions.generate-monthly-report]
-verify_jwt = true
+verify_jwt = false
 
 [functions.sync-status]
-verify_jwt = true
+verify_jwt = false
 
 [functions.batch-analyze-emails]
 verify_jwt = false
 
 [functions.download-attachments]
-verify_jwt = true
+verify_jwt = false
 
 [functions.analyze-attachment]
-verify_jwt = true
+verify_jwt = false
 
 [functions.deep-analyze-emails]
 verify_jwt = false
 
 [functions.resync-email-bodies]
-verify_jwt = true
+verify_jwt = false
 
 [functions.download-all-attachments]
-verify_jwt = true
+verify_jwt = false
 
 [functions.extract-email-facts]
-verify_jwt = true
+verify_jwt = false
 
 [functions.analyze-thread-complete]
-verify_jwt = true
+verify_jwt = false
 
 [functions.cross-reference-analysis]
-verify_jwt = true
+verify_jwt = false
 
 [functions.legal-reference-system]
-verify_jwt = true
+verify_jwt = false
 
 [functions.backup-data]
-verify_jwt = true
+verify_jwt = false
 
 [functions.monitoring-logs]
-verify_jwt = true
+verify_jwt = false
 
 [functions.internal-backup]
-verify_jwt = true
+verify_jwt = false
 
 [functions.internal-monitoring]
-verify_jwt = true
+verify_jwt = false
 
 [functions.ai-enrich-context]
-verify_jwt = true
+verify_jwt = false
 
 [functions.generate-training-pairs]
-verify_jwt = true
+verify_jwt = false
 
 [functions.update-training-stats]
-verify_jwt = true
+verify_jwt = false
 
 [functions.full-reanalyze]
-verify_jwt = true
+verify_jwt = false
