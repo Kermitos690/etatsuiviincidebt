@@ -1,11 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { FileText, Upload, Brain, Loader2, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { FileText, Upload, Brain, Loader2, RefreshCw, Columns2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { PDFUploader, PDFCard, FolderManager, PDFDetail, PDFDocument, PDFFolder } from '@/components/pdf';
+import { 
+  PDFUploader, PDFCard, FolderManager, PDFDetail, PDFDocument, PDFFolder,
+  PDFSearchFilters, filterDocuments, PDFFilters, PDFCompareView
+} from '@/components/pdf';
 
 export default function PDFDocuments() {
   const isMobile = useIsMobile();
@@ -17,6 +20,40 @@ export default function PDFDocuments() {
   const [analyzingIds, setAnalyzingIds] = useState<Set<string>>(new Set());
   const [extractingIds, setExtractingIds] = useState<Set<string>>(new Set());
   const [showUploader, setShowUploader] = useState(false);
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareIds, setCompareIds] = useState<[string | null, string | null]>([null, null]);
+  
+  // Filters
+  const [filters, setFilters] = useState<PDFFilters>({
+    search: '',
+    tags: [],
+    documentType: null,
+    severity: null,
+    dateFrom: null,
+    dateTo: null,
+    hasIncident: null,
+    hasAnalysis: null,
+  });
+
+  // Extract all unique tags and document types
+  const allTags = useMemo(() => {
+    const tags = new Set<string>();
+    documents.forEach(doc => doc.tags?.forEach(t => tags.add(t)));
+    return Array.from(tags).sort();
+  }, [documents]);
+
+  const documentTypes = useMemo(() => {
+    const types = new Set<string>();
+    documents.forEach(doc => {
+      if (doc.document_type) types.add(doc.document_type);
+    });
+    return Array.from(types).sort();
+  }, [documents]);
+
+  // Filtered documents
+  const filteredDocuments = useMemo(() => {
+    return filterDocuments(documents, filters);
+  }, [documents, filters]);
 
   const fetchFolders = useCallback(async () => {
     const { data, error } = await supabase
@@ -48,7 +85,6 @@ export default function PDFDocuments() {
       return;
     }
 
-    // Fetch analyses for documents
     if (docs && docs.length > 0) {
       const docIds = docs.map(d => d.id);
       const { data: analyses } = await supabase
@@ -58,8 +94,9 @@ export default function PDFDocuments() {
 
       const docsWithAnalyses = docs.map(doc => ({
         ...doc,
+        tags: doc.tags || [],
         analysis: analyses?.find(a => a.document_id === doc.id) || null,
-      })) as PDFDocument[];
+      })) as unknown as PDFDocument[];
 
       setDocuments(docsWithAnalyses);
     } else {
@@ -76,7 +113,6 @@ export default function PDFDocuments() {
 
   const handleExtractText = async (doc: PDFDocument) => {
     setExtractingIds(prev => new Set(prev).add(doc.id));
-    
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Non authentifié');
@@ -111,7 +147,6 @@ export default function PDFDocuments() {
 
   const handleAnalyze = async (doc: PDFDocument) => {
     setAnalyzingIds(prev => new Set(prev).add(doc.id));
-    
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Non authentifié');
@@ -169,6 +204,35 @@ export default function PDFDocuments() {
     }
   };
 
+  const handleCompareSelect = (doc: PDFDocument) => {
+    if (!compareMode) {
+      setSelectedDocument(doc);
+      return;
+    }
+
+    if (compareIds[0] === doc.id) {
+      setCompareIds([null, compareIds[1]]);
+    } else if (compareIds[1] === doc.id) {
+      setCompareIds([compareIds[0], null]);
+    } else if (!compareIds[0]) {
+      setCompareIds([doc.id, compareIds[1]]);
+    } else if (!compareIds[1]) {
+      setCompareIds([compareIds[0], doc.id]);
+    } else {
+      setCompareIds([compareIds[1], doc.id]);
+    }
+  };
+
+  const toggleCompareMode = () => {
+    if (compareMode) {
+      setCompareMode(false);
+      setCompareIds([null, null]);
+    } else {
+      setCompareMode(true);
+      setSelectedDocument(null);
+    }
+  };
+
   return (
     <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] gap-4 p-4">
       {/* Sidebar - Folders */}
@@ -190,6 +254,15 @@ export default function PDFDocuments() {
           <Upload className="h-4 w-4" />
           {showUploader ? 'Masquer upload' : 'Importer des PDFs'}
         </Button>
+
+        <Button 
+          variant={compareMode ? "secondary" : "outline"} 
+          className="w-full gap-2" 
+          onClick={toggleCompareMode}
+        >
+          <Columns2 className="h-4 w-4" />
+          {compareMode ? 'Quitter comparaison' : 'Comparer'}
+        </Button>
       </div>
 
       {/* Main content */}
@@ -206,9 +279,24 @@ export default function PDFDocuments() {
         )}
 
         {/* Documents list */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 flex flex-col">
+          {/* Search & Filters */}
+          <div className="mb-4">
+            <PDFSearchFilters
+              filters={filters}
+              onFiltersChange={setFilters}
+              allTags={allTags}
+              documentTypes={documentTypes}
+            />
+          </div>
+
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-medium">{documents.length} document(s)</h3>
+            <h3 className="font-medium">
+              {filteredDocuments.length} document(s)
+              {filteredDocuments.length !== documents.length && (
+                <span className="text-muted-foreground"> sur {documents.length}</span>
+              )}
+            </h3>
             <Button variant="ghost" size="sm" onClick={fetchDocuments}>
               <RefreshCw className="h-4 w-4" />
             </Button>
@@ -218,23 +306,31 @@ export default function PDFDocuments() {
             <div className="flex items-center justify-center h-64">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-          ) : documents.length === 0 ? (
+          ) : filteredDocuments.length === 0 ? (
             <Card className="p-8 text-center">
               <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">Aucun document</p>
-              <Button className="mt-4" onClick={() => setShowUploader(true)}>
-                <Upload className="h-4 w-4 mr-2" />
-                Importer
-              </Button>
+              <p className="text-muted-foreground">
+                {documents.length === 0 ? 'Aucun document' : 'Aucun résultat'}
+              </p>
+              {documents.length === 0 && (
+                <Button className="mt-4" onClick={() => setShowUploader(true)}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Importer
+                </Button>
+              )}
             </Card>
           ) : (
-            <div className="space-y-3">
-              {documents.map(doc => (
+            <div className="space-y-3 overflow-auto flex-1">
+              {filteredDocuments.map(doc => (
                 <PDFCard
                   key={doc.id}
                   document={doc}
-                  isSelected={selectedDocument?.id === doc.id}
-                  onSelect={() => setSelectedDocument(doc)}
+                  isSelected={
+                    compareMode 
+                      ? compareIds.includes(doc.id)
+                      : selectedDocument?.id === doc.id
+                  }
+                  onSelect={() => handleCompareSelect(doc)}
                   onAnalyze={() => handleAnalyze(doc)}
                   onDelete={() => handleDelete(doc)}
                   onDownload={() => handleDownload(doc)}
@@ -245,21 +341,38 @@ export default function PDFDocuments() {
           )}
         </div>
 
-        {/* Detail panel */}
-        {selectedDocument && !isMobile && (
-          <Card className="w-96 flex-shrink-0 overflow-hidden animate-slide-in-right">
-            <PDFDetail
-              document={selectedDocument}
-              onClose={() => setSelectedDocument(null)}
-              onAnalyze={() => handleAnalyze(selectedDocument)}
-              onExtractText={() => handleExtractText(selectedDocument)}
-              onDelete={() => handleDelete(selectedDocument)}
-              onDownload={() => handleDownload(selectedDocument)}
-              onCreateIncident={() => toast.info('Création incident à implémenter')}
-              isAnalyzing={analyzingIds.has(selectedDocument.id)}
-              isExtracting={extractingIds.has(selectedDocument.id)}
-            />
-          </Card>
+        {/* Detail/Compare panel */}
+        {!isMobile && (
+          <>
+            {compareMode && compareIds[0] && compareIds[1] ? (
+              <Card className="w-[500px] flex-shrink-0 overflow-hidden animate-slide-in-right">
+                <PDFCompareView
+                  documents={documents}
+                  selectedIds={compareIds as [string, string]}
+                  onClose={() => setCompareIds([null, null])}
+                  onDocumentSelect={(pos, id) => {
+                    const newIds = [...compareIds] as [string | null, string | null];
+                    newIds[pos] = id;
+                    setCompareIds(newIds);
+                  }}
+                />
+              </Card>
+            ) : selectedDocument && !compareMode ? (
+              <Card className="w-96 flex-shrink-0 overflow-hidden animate-slide-in-right">
+                <PDFDetail
+                  document={selectedDocument}
+                  onClose={() => setSelectedDocument(null)}
+                  onAnalyze={() => handleAnalyze(selectedDocument)}
+                  onExtractText={() => handleExtractText(selectedDocument)}
+                  onDelete={() => handleDelete(selectedDocument)}
+                  onDownload={() => handleDownload(selectedDocument)}
+                  onCreateIncident={() => toast.info('Utilisez le panneau de liaison')}
+                  isAnalyzing={analyzingIds.has(selectedDocument.id)}
+                  isExtracting={extractingIds.has(selectedDocument.id)}
+                />
+              </Card>
+            ) : null}
+          </>
         )}
       </div>
     </div>
