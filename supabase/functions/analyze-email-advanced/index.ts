@@ -994,6 +994,34 @@ serve(async (req) => {
         .order("created_at", { ascending: false })
         .limit(30);
 
+      // Récupérer les références légales vérifiées de l'utilisateur
+      const { data: legalRefs } = await supabase
+        .from("legal_references")
+        .select("code_name, article_number, article_text, domain, keywords, notes")
+        .eq("user_id", userId)
+        .eq("is_verified", true)
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      // Récupérer les situations validées comme correctes (apprentissage positif)
+      const { data: correctSituations } = await supabase
+        .from("ai_situation_training")
+        .select("situation_summary, detected_violation_type, detected_legal_refs")
+        .eq("user_id", userId)
+        .eq("validation_status", "correct")
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      // Récupérer les emails supprimés (non pertinents)
+      const { data: deletedEmails } = await supabase
+        .from("ai_training_feedback")
+        .select("original_detection, notes")
+        .eq("user_id", userId)
+        .eq("entity_type", "email")
+        .eq("feedback_type", "email_deleted")
+        .order("created_at", { ascending: false })
+        .limit(30);
+
       if (rejectedIncidents && rejectedIncidents.length > 0) {
         const rejectedPatterns = rejectedIncidents.map((r: any) => {
           const d = r.original_detection || {};
@@ -1014,7 +1042,53 @@ serve(async (req) => {
         }
       }
 
-      console.log(`Training context loaded: ${trainingContext.length} chars from ${(rejectedIncidents?.length || 0)} rejected incidents, ${(swipeResults?.length || 0)} swipe results`);
+      // Ajouter les références légales vérifiées au contexte
+      if (legalRefs && legalRefs.length > 0) {
+        const legalContext = legalRefs.map((r: any) => {
+          let ref = `- ${r.code_name} art. ${r.article_number}`;
+          if (r.domain) ref += ` (domaine: ${r.domain})`;
+          if (r.notes) ref += ` | Note: ${r.notes.slice(0, 100)}`;
+          if (r.keywords && r.keywords.length > 0) ref += ` | Mots-clés: ${r.keywords.slice(0, 5).join(', ')}`;
+          return ref;
+        }).join("\n");
+        trainingContext += `\n\n===== RÉFÉRENCES LÉGALES VÉRIFIÉES PAR L'UTILISATEUR =====\nUtilise PRIORITAIREMENT ces références légales validées par l'utilisateur:\n${legalContext}\n`;
+      }
+
+      // Ajouter les situations correctement identifiées (renforcement positif)
+      if (correctSituations && correctSituations.length > 0) {
+        const correctPatterns = correctSituations.slice(0, 10).map((s: any) => {
+          let pattern = `- Violation: "${s.detected_violation_type || 'non spécifié'}"`;
+          if (s.situation_summary) pattern += ` | Résumé: "${s.situation_summary.slice(0, 80)}"`;
+          return pattern;
+        }).join("\n");
+        trainingContext += `\n\n===== APPRENTISSAGE POSITIF: SITUATIONS CORRECTEMENT IDENTIFIÉES =====\nL'utilisateur a validé ces types de détections comme CORRECTES:\n${correctPatterns}\n`;
+      }
+
+      // Ajouter les patterns d'emails non pertinents
+      if (deletedEmails && deletedEmails.length > 0) {
+        const deletedPatterns: string[] = [];
+        const senderCounts: Record<string, number> = {};
+        
+        deletedEmails.forEach((d: any) => {
+          const detection = d.original_detection || {};
+          if (detection.sender) {
+            senderCounts[detection.sender] = (senderCounts[detection.sender] || 0) + 1;
+          }
+        });
+
+        // Identifier les expéditeurs fréquemment supprimés
+        Object.entries(senderCounts).forEach(([sender, count]) => {
+          if (count >= 2) {
+            deletedPatterns.push(`- Expéditeur "${sender}" (${count} emails supprimés)`);
+          }
+        });
+
+        if (deletedPatterns.length > 0) {
+          trainingContext += `\n\n===== APPRENTISSAGE: SOURCES NON PERTINENTES =====\nCes expéditeurs sont souvent hors périmètre:\n${deletedPatterns.join("\n")}\n`;
+        }
+      }
+
+      console.log(`Training context loaded: ${trainingContext.length} chars from ${(rejectedIncidents?.length || 0)} rejected incidents, ${(swipeResults?.length || 0)} swipe results, ${(legalRefs?.length || 0)} legal refs, ${(correctSituations?.length || 0)} correct situations, ${(deletedEmails?.length || 0)} deleted emails`);
     } catch (trainingErr) {
       console.error("Error loading training data (non-blocking):", trainingErr);
     }
