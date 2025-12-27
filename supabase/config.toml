@@ -137,3 +137,9 @@ verify_jwt = false
 
 [functions.check-curatelle-contact]
 verify_jwt = false
+
+[functions.scrape-legal-sources]
+verify_jwt = false
+
+[functions.extract-legal-content]
+verify_jwt = false
