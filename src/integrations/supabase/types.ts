@@ -330,6 +330,33 @@ export type Database = {
           },
         ]
       }
+      email_blacklist: {
+        Row: {
+          created_at: string
+          domain: string | null
+          id: string
+          reason: string | null
+          sender_email: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          domain?: string | null
+          id?: string
+          reason?: string | null
+          sender_email?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          domain?: string | null
+          id?: string
+          reason?: string | null
+          sender_email?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       email_facts: {
         Row: {
           action_items: string[] | null
