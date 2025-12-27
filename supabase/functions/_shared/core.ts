@@ -10,13 +10,22 @@ const ALLOWED_ORIGINS = [
   "http://localhost:3000",
 ];
 
+// Security headers for all responses
+const SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "X-XSS-Protection": "1; mode=block",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+};
+
 // Get dynamic CORS headers based on request origin
 export function getCorsHeaders(req?: Request): Record<string, string> {
   const origin = req?.headers?.get("origin") || "";
   
   // For development or if origin matches allowed list
   const isAllowedOrigin = ALLOWED_ORIGINS.some(allowed => 
-    origin === allowed || origin.endsWith(".lovableproject.com")
+    origin === allowed || origin.endsWith(".lovableproject.com") || origin.endsWith(".lovable.app")
   );
   
   return {
@@ -24,6 +33,7 @@ export function getCorsHeaders(req?: Request): Record<string, string> {
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Access-Control-Allow-Credentials": "true",
+    ...SECURITY_HEADERS,
   };
 }
 
@@ -32,6 +42,7 @@ export const corsHeaders = {
   "Access-Control-Allow-Origin": ALLOWED_ORIGINS[0],
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  ...SECURITY_HEADERS,
 };
 
 // ============= Types =============
