@@ -28,7 +28,7 @@ serve(async (req) => {
     }
 
     if (!entityContent) {
-      return errorResponse(`Entity not found: ${entity_type}/${entity_id}`, 404, req);
+      return errorResponse(`Entity not found: ${entity_type}/${entity_id}`, "NOT_FOUND", 404, req);
     }
 
     // Get previous proof
@@ -70,6 +70,6 @@ serve(async (req) => {
     return successResponse({ entity_id, proof_id: newProof?.id, combined_hash: proofData.combined_hash }, 200, req);
   } catch (error) {
     log("error", "seal-evidence error", { error: (error as Error).message });
-    return errorResponse((error as Error).message, 500, req);
+    return errorResponse((error as Error).message, "INTERNAL_ERROR", 500, req);
   }
 });
