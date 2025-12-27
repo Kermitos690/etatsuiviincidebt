@@ -25,7 +25,7 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.auto-process-email]
-verify_jwt = true
+verify_jwt = false
 
 [functions.analyze-email-advanced]
 verify_jwt = true
