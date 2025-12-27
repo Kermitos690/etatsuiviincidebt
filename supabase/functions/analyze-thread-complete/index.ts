@@ -443,7 +443,8 @@ serve(async (req) => {
     } else {
       const { data: existingAnalyses } = await supabase
         .from('thread_analyses')
-        .select('thread_id');
+        .select('thread_id')
+        .eq('user_id', user.id);
       
       const analyzedThreads = new Set(existingAnalyses?.map(a => a.thread_id) || []);
 
@@ -451,6 +452,7 @@ serve(async (req) => {
       const { data: emails } = await supabase
         .from('emails')
         .select('gmail_thread_id, sender, recipient, subject, body')
+        .eq('user_id', user.id)
         .not('gmail_thread_id', 'is', null)
         .not('body', 'is', null)
         .not('body', 'eq', '');
@@ -496,6 +498,7 @@ serve(async (req) => {
         const { data: threadEmails, error: emailsError } = await supabase
           .from('emails')
           .select('id, sender, recipient, subject, body, received_at')
+          .eq('user_id', user.id)
           .eq('gmail_thread_id', currentThreadId)
           .not('body', 'is', null)
           .not('body', 'eq', '')

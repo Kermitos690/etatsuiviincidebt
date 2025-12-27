@@ -940,7 +940,7 @@ serve(async (req) => {
         .from("emails")
         .select("id, subject, sender, recipient, body, received_at, gmail_thread_id, is_sent, email_type, user_id")
         .eq("gmail_thread_id", threadId)
-        .or(`user_id.eq.${userId},user_id.is.null`)
+        .eq("user_id", userId)
         .order("received_at", { ascending: true })
         .limit(MAX_EMAILS);
 
@@ -951,7 +951,7 @@ serve(async (req) => {
         .from("emails")
         .select("id, subject, sender, recipient, body, received_at, gmail_thread_id, is_sent, email_type, user_id")
         .eq("id", emailId)
-        .or(`user_id.eq.${userId},user_id.is.null`)
+        .eq("user_id", userId)
         .single();
 
       if (error) throw error;
@@ -1067,7 +1067,9 @@ serve(async (req) => {
       .update({
         processed: true,
         thread_analysis: analysis,
+        user_id: userId,
       })
+      .eq("user_id", userId)
       .in("id", emailIds);
 
     if (updErr) {

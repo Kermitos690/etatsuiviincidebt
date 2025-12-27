@@ -16,7 +16,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.gmail-sync]
-verify_jwt = false
+verify_jwt = true
 
 [functions.sheets-sync]
 verify_jwt = false

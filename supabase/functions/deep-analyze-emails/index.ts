@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { verifyAuth } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -213,15 +214,17 @@ async function analyzeWithPerspective(
 
 async function checkRecurrence(
   supabase: any,
+  userId: string,
   emailId: string,
   institution: string,
   incidentType: string,
   severity: string
 ): Promise<RecurrencePattern> {
-  // Check for existing patterns
+  // Check for existing patterns (scoped to current user)
   const { data: existing } = await supabase
     .from("recurrence_tracking")
     .select("*")
+    .eq("user_id", userId)
     .eq("institution", institution)
     .eq("violation_type", incidentType)
     .maybeSingle();
@@ -241,11 +244,13 @@ async function checkRecurrence(
         occurrence_count: existing.occurrence_count + 1,
         last_occurrence: now,
         related_incidents: relatedIncidents,
-        legal_implications: severity === "critical" || severity === "high" 
-          ? "Récurrence aggravante - Art. 2 CC (abus de droit)" 
-          : existing.legal_implications
+        legal_implications:
+          severity === "critical" || severity === "high"
+            ? "Récurrence aggravante - Art. 2 CC (abus de droit)"
+            : existing.legal_implications,
       })
-      .eq("id", existing.id);
+      .eq("id", existing.id)
+      .eq("user_id", userId);
 
     return {
       pattern_type: incidentType,
@@ -255,32 +260,31 @@ async function checkRecurrence(
       last_seen: now,
       is_new: false,
       is_repeated: true,
-      related_emails: relatedIncidents
-    };
-  } else {
-    // Create new pattern
-    await supabase
-      .from("recurrence_tracking")
-      .insert({
-        institution,
-        violation_type: incidentType,
-        occurrence_count: 1,
-        first_occurrence: now,
-        last_occurrence: now,
-        related_incidents: [emailId]
-      });
-
-    return {
-      pattern_type: incidentType,
-      institution,
-      count: 1,
-      first_seen: now,
-      last_seen: now,
-      is_new: true,
-      is_repeated: false,
-      related_emails: [emailId]
+      related_emails: relatedIncidents,
     };
   }
+
+  // Create new pattern
+  await supabase.from("recurrence_tracking").insert({
+    user_id: userId,
+    institution,
+    violation_type: incidentType,
+    occurrence_count: 1,
+    first_occurrence: now,
+    last_occurrence: now,
+    related_incidents: [emailId],
+  });
+
+  return {
+    pattern_type: incidentType,
+    institution,
+    count: 1,
+    first_seen: now,
+    last_seen: now,
+    is_new: true,
+    is_repeated: false,
+    related_emails: [emailId],
+  };
 }
 
 serve(async (req) => {
@@ -289,15 +293,27 @@ serve(async (req) => {
   }
 
   try {
+    const { user, error: authError } = await verifyAuth(req);
+    if (authError || !user) {
+      console.error('[Auth] deep-analyze-emails unauthorized:', authError);
+      return new Response(JSON.stringify({ error: 'Non autorisé' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const { batchSize = 10, minConfidence = 50 } = await req.json();
+    const userId = user.id;
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    console.log(`Starting deep multi-perspective analysis (batch: ${batchSize})`);
+    console.log(`Starting deep multi-perspective analysis for user ${userId} (batch: ${batchSize})`);
 
-    // Get emails that need deep analysis
+    // Get emails that need deep analysis (scoped to this user)
     const { data: emails, error: fetchError } = await supabase
       .from("emails")
       .select("id, subject, sender, recipient, body, received_at, gmail_thread_id, is_sent, ai_analysis")
+      .eq("user_id", userId)
       .eq("is_sent", false)
       .order("received_at", { ascending: false })
       .limit(batchSize);
@@ -330,6 +346,7 @@ serve(async (req) => {
         const { data: threadEmails } = await supabase
           .from("emails")
           .select("subject, sender, body, received_at, is_sent")
+          .eq("user_id", userId)
           .eq("gmail_thread_id", email.gmail_thread_id)
           .neq("id", email.id)
           .order("received_at", { ascending: true })
@@ -347,6 +364,7 @@ serve(async (req) => {
       const { data: previousIncidents } = await supabase
         .from("emails")
         .select("ai_analysis")
+        .eq("user_id", userId)
         .ilike("sender", `%${senderDomain}%`)
         .not("ai_analysis", "is", null)
         .limit(10);
@@ -388,6 +406,7 @@ ${email.body}`;
         const institution = email.sender.match(/@([^>]+)/)?.[1] || email.sender;
         const pattern = await checkRecurrence(
           supabase,
+          userId,
           email.id,
           institution,
           incident.type,
@@ -425,11 +444,13 @@ ${email.body}`;
       // Update email with deep analysis
       await supabase
         .from("emails")
-        .update({ 
+        .update({
           ai_analysis: deepAnalysis,
-          processed: true 
+          processed: true,
+          user_id: userId,
         })
-        .eq("id", email.id);
+        .eq("id", email.id)
+        .eq("user_id", userId);
 
       totalIncidents += incidentsDetected.length;
 
@@ -440,6 +461,7 @@ ${email.body}`;
         const { data: existingIncident } = await supabase
           .from("incidents")
           .select("id")
+          .eq("user_id", userId)
           .eq("email_source_id", email.id)
           .eq("type", incident.type)
           .maybeSingle();
@@ -448,15 +470,24 @@ ${email.body}`;
           const { data: newIncident } = await supabase
             .from("incidents")
             .insert({
+              user_id: userId,
               titre: `[${incident.type.toUpperCase()}] ${email.subject?.substring(0, 80)}`,
               faits: incident.description,
               dysfonctionnement: incident.evidence.join("\n"),
               institution: email.sender.match(/@([^>]+)/)?.[1] || email.sender,
               type: incident.type,
-              gravite: incident.severity === "critical" ? "Critique" : 
-                       incident.severity === "high" ? "Haute" : "Moyenne",
-              priorite: incident.severity === "critical" ? "critique" : 
-                        incident.severity === "high" ? "haute" : "normale",
+              gravite:
+                incident.severity === "critical"
+                  ? "Critique"
+                  : incident.severity === "high"
+                    ? "Haute"
+                    : "Moyenne",
+              priorite:
+                incident.severity === "critical"
+                  ? "critique"
+                  : incident.severity === "high"
+                    ? "haute"
+                    : "normale",
               date_incident: new Date(email.received_at).toISOString().split("T")[0],
               email_source_id: email.id,
               confidence_level: `${incident.confidence}%`,
@@ -464,8 +495,8 @@ ${email.body}`;
               preuves: {
                 articles: incident.articles_violes,
                 evidence: incident.evidence,
-                recurrence: recurrencePatterns.find(p => p.pattern_type === incident.type)
-              }
+                recurrence: recurrencePatterns.find((p) => p.pattern_type === incident.type),
+              },
             })
             .select()
             .single();
@@ -478,13 +509,14 @@ ${email.body}`;
               await supabase
                 .from("audit_alerts")
                 .insert({
+                  user_id: userId,
                   title: `${incident.type}: ${email.subject?.substring(0, 50)}`,
                   description: incident.description,
                   alert_type: incident.type,
                   severity: incident.severity === "critical" ? "critical" : "warning",
                   related_incident_id: newIncident.id,
                   related_email_id: email.id,
-                  legal_reference: { articles: incident.articles_violes }
+                  legal_reference: { articles: incident.articles_violes },
                 });
             }
           }
