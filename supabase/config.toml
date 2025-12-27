@@ -101,3 +101,6 @@ verify_jwt = false
 
 [functions.rotate-gmail-tokens]
 verify_jwt = false
+
+[functions.generate-active-learning]
+verify_jwt = false
