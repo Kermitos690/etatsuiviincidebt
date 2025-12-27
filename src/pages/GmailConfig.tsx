@@ -50,6 +50,13 @@ interface SyncStatus {
     emails_analyzed?: number;
     incidents_created?: number;
     analysis_error?: boolean;
+    // API filtering stats
+    api_emails_found?: number;
+    domains_count?: number;
+    keywords_count?: number;
+    filters_applied_at_api?: boolean;
+    skippedByFilter?: number;
+    skippedByBlacklist?: number;
   };
   progress: number;
   error_message?: string;
@@ -425,6 +432,43 @@ export default function GmailConfig() {
                           🚨 {syncStatus.stats.incidents_created} incidents
                         </Badge>
                       )}
+                    </div>
+                  )}
+                  
+                  {/* API Filtering Statistics */}
+                  {syncStatus.stats && syncStatus.stats.api_emails_found !== undefined && (
+                    <div className="pt-3 border-t border-border/50 mt-2">
+                      <p className="text-xs text-muted-foreground mb-2 font-medium">📊 Statistiques de filtrage API</p>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant="outline" className="bg-cyan-500/10 text-cyan-600 border-cyan-500/20">
+                          🔍 {syncStatus.stats.api_emails_found} trouvés par Gmail
+                        </Badge>
+                        {syncStatus.stats.filters_applied_at_api && (
+                          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                            ✅ Filtres API actifs
+                          </Badge>
+                        )}
+                        {syncStatus.stats.domains_count !== undefined && syncStatus.stats.domains_count > 0 && (
+                          <Badge variant="outline" className="bg-indigo-500/10 text-indigo-600 border-indigo-500/20">
+                            🏢 {syncStatus.stats.domains_count} domaines
+                          </Badge>
+                        )}
+                        {syncStatus.stats.keywords_count !== undefined && syncStatus.stats.keywords_count > 0 && (
+                          <Badge variant="outline" className="bg-pink-500/10 text-pink-600 border-pink-500/20">
+                            🔑 {syncStatus.stats.keywords_count} mots-clés
+                          </Badge>
+                        )}
+                        {(syncStatus.stats.skippedByFilter || 0) > 0 && (
+                          <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20">
+                            🚫 {syncStatus.stats.skippedByFilter} filtrés localement
+                          </Badge>
+                        )}
+                        {(syncStatus.stats.skippedByBlacklist || 0) > 0 && (
+                          <Badge variant="outline" className="bg-gray-500/10 text-gray-600 border-gray-500/20">
+                            ⛔ {syncStatus.stats.skippedByBlacklist} blacklistés
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
