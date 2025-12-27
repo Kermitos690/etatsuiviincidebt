@@ -220,6 +220,65 @@ async function downloadAttachments(
   return downloaded;
 }
 
+// ===== Email Relevance Filtering =====
+function normalize(v: string): string {
+  return v.trim().toLowerCase();
+}
+
+function normalizeDomain(input: string): string {
+  const d = normalize(input);
+  const at = d.lastIndexOf("@");
+  const domain = at >= 0 ? d.slice(at + 1) : d;
+  return domain.replace(/^\.+|\.+$/g, "");
+}
+
+function emailHasDomain(
+  email: { sender?: string | null; recipient?: string | null },
+  domain: string
+): boolean {
+  const d = normalizeDomain(domain);
+  if (!d) return false;
+  const s = normalize(email.sender || "");
+  const r = normalize(email.recipient || "");
+  return s.includes(`@${d}`) || s.endsWith(d) || r.includes(`@${d}`) || r.endsWith(d);
+}
+
+function emailHasKeyword(
+  email: { subject?: string | null; body?: string | null },
+  keyword: string
+): boolean {
+  const k = normalize(keyword);
+  if (!k) return false;
+  const subject = normalize(email.subject || "");
+  const body = normalize(email.body || "");
+  return subject.includes(k) || body.includes(k);
+}
+
+interface EmailFilters {
+  domains: string[];
+  keywords: string[];
+}
+
+function isEmailRelevant(
+  email: { sender?: string | null; recipient?: string | null; subject?: string | null; body?: string | null },
+  filters: EmailFilters
+): boolean {
+  const domains = (filters.domains || []).map(normalizeDomain).filter(Boolean);
+  const keywords = (filters.keywords || []).map(normalize).filter(Boolean);
+
+  const hasDomains = domains.length > 0;
+  const hasKeywords = keywords.length > 0;
+
+  // No filters => treat everything as relevant (fallback)
+  if (!hasDomains && !hasKeywords) return true;
+
+  const domainMatch = hasDomains ? domains.some((d) => emailHasDomain(email, d)) : true;
+  const keywordMatch = hasKeywords ? keywords.some((k) => emailHasKeyword(email, k)) : true;
+
+  // Require BOTH domain AND keyword match when both are configured
+  return domainMatch && keywordMatch;
+}
+
 // Background task for processing emails
 async function processEmailsInBackground(
   syncId: string,
@@ -227,11 +286,17 @@ async function processEmailsInBackground(
   allMessages: any[],
   accessToken: string,
   config: any,
-  supabase: any
+  supabase: any,
+  filters: EmailFilters
 ) {
   console.log(`[Background] Starting processing of ${allMessages.length} emails for sync ${syncId}`);
+  console.log(`[Background] Filters: ${filters.domains.length} domains, ${filters.keywords.length} keywords`);
   
-  const stats = { received: 0, sent: 0, replied: 0, forwarded: 0, attachments: 0, spam: 0, trash: 0, drafts: 0, custom_folders: 0 };
+  const stats = { 
+    received: 0, sent: 0, replied: 0, forwarded: 0, attachments: 0, 
+    spam: 0, trash: 0, drafts: 0, custom_folders: 0,
+    skippedByFilter: 0  // NEW: track filtered out emails
+  };
   let processedCount = 0;
   let newEmailsCount = 0;
   let attachmentsCount = 0;
@@ -312,6 +377,13 @@ async function processEmailsInBackground(
             }
           }
 
+          // ===== FILTER CHECK: Skip irrelevant emails =====
+          const emailForFilter = { sender, recipient, subject, body };
+          if (!isEmailRelevant(emailForFilter, filters)) {
+            console.log(`[Filter] Skipping email ${msg.id} - not relevant (subject: ${subject.substring(0, 50)}...)`);
+            return { success: true, skipped: true };
+          }
+
           // Check if email already exists (scoped to this user)
           const { data: existingEmail } = await supabase
             .from("emails")
@@ -384,6 +456,10 @@ async function processEmailsInBackground(
       
       for (const result of results) {
         if (result.success) {
+          if (result.skipped) {
+            stats.skippedByFilter++;
+            continue;
+          }
           processedCount++;
           if (result.isNew) newEmailsCount++;
           if (result.attachmentsCount) attachmentsCount += result.attachmentsCount;
@@ -690,8 +766,9 @@ serve(async (req) => {
       throw new Error("Failed to initialize sync");
     }
 
-    // Start background processing
-    EdgeRuntime.waitUntil(processEmailsInBackground(syncStatus.id, user.id, allMessages, accessToken, config, supabase));
+    // Start background processing with filters
+    const filters: EmailFilters = { domains, keywords };
+    EdgeRuntime.waitUntil(processEmailsInBackground(syncStatus.id, user.id, allMessages, accessToken, config, supabase, filters));
 
     // Return immediate response
     return new Response(JSON.stringify({ 
