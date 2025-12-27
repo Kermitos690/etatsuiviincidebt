@@ -8,8 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAnomalyDetection } from '@/hooks/useAnomalyDetection';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { 
   AlertTriangle, 
   RefreshCw, 
@@ -51,6 +51,7 @@ const STATUS_CONFIG = {
 };
 
 export default function AnomalyDetection() {
+  const isMobile = useIsMobile();
   const { 
     anomalies, 
     stats, 
@@ -243,8 +244,7 @@ export default function AnomalyDetection() {
                   </p>
                 </Card>
               ) : (
-                <ScrollArea className="h-[500px]">
-                  <div className="space-y-3">
+              <div className={isMobile ? "space-y-3 pb-4" : "space-y-3 max-h-[500px] overflow-y-auto pr-2"}>
                     {filteredAnomalies.map(anomaly => {
                       const typeConfig = TYPE_CONFIG[anomaly.anomaly_type as keyof typeof TYPE_CONFIG] || TYPE_CONFIG.behavior_change;
                       const severityConfig = SEVERITY_CONFIG[anomaly.severity as keyof typeof SEVERITY_CONFIG] || SEVERITY_CONFIG.medium;
@@ -299,8 +299,7 @@ export default function AnomalyDetection() {
                         </Card>
                       );
                     })}
-                  </div>
-                </ScrollArea>
+              </div>
               )}
             </TabsContent>
 

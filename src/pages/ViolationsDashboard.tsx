@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { 
   AlertTriangle, 
   UserX, 
@@ -79,6 +79,7 @@ const SEVERITY_COLORS = {
 
 export default function ViolationsDashboard() {
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<ViolationStats>({
     consentViolations: 0,
@@ -580,8 +581,7 @@ export default function ViolationsDashboard() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-[600px]">
-                  <div className="space-y-3">
+                <div className={isMobile ? "space-y-3 pb-4" : "space-y-3 max-h-[600px] overflow-y-auto pr-2"}>
                     {violations.length > 0 ? violations.map((violation) => (
                       <div
                         key={violation.id}
@@ -591,7 +591,7 @@ export default function ViolationsDashboard() {
                           <div className="flex items-start gap-3 flex-1">
                             {getTypeIcon(violation.type)}
                             <div className="space-y-1 flex-1">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <Badge variant="outline">{violation.type}</Badge>
                                 {getSeverityBadge(violation.severity)}
                                 <span className="text-xs text-muted-foreground">
@@ -600,7 +600,7 @@ export default function ViolationsDashboard() {
                               </div>
                               <p className="font-medium text-sm">{violation.subject}</p>
                               <p className="text-sm text-muted-foreground">{violation.description}</p>
-                              <div className="flex items-center gap-2 mt-2">
+                              <div className="flex items-center gap-2 mt-2 flex-wrap">
                                 <Building2 className="h-3 w-3 text-muted-foreground" />
                                 <span className="text-xs text-muted-foreground">{violation.institution}</span>
                                 {violation.legalBasis.length > 0 && (
@@ -630,8 +630,7 @@ export default function ViolationsDashboard() {
                         <p className="text-sm mt-2">Lancez une analyse des emails pour détecter les violations</p>
                       </div>
                     )}
-                  </div>
-                </ScrollArea>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

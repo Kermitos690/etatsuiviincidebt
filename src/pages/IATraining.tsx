@@ -266,14 +266,14 @@ export default function IATraining() {
           <TabsContent value="validate" className="space-y-4">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Thread List */}
-              <Card className="h-[600px] overflow-hidden">
-                <CardHeader>
+              <Card className="lg:h-[600px] flex flex-col">
+                <CardHeader className="shrink-0">
                   <CardTitle className="text-lg">Analyses de threads à valider</CardTitle>
                   <CardDescription>
                     Cliquez sur une analyse pour la valider ou la rejeter
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="overflow-y-auto h-[500px] space-y-2">
+                <CardContent className="flex-1 min-h-0 overflow-y-auto space-y-2">
                   {loadingThreads ? (
                     <p className="text-muted-foreground">Chargement...</p>
                   ) : threadsWithIssues.length === 0 ? (
@@ -315,14 +315,14 @@ export default function IATraining() {
               </Card>
 
               {/* Validation Panel */}
-              <Card className="h-[600px] overflow-hidden">
-                <CardHeader>
+              <Card className="lg:h-[600px] flex flex-col">
+                <CardHeader className="shrink-0">
                   <CardTitle className="text-lg">Validation</CardTitle>
                   <CardDescription>
                     Examinez l'analyse et donnez votre feedback
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="overflow-y-auto h-[500px]">
+                <CardContent className="flex-1 min-h-0 overflow-y-auto">
                   {selectedThread ? (
                     <div className="space-y-4">
                       <div>

@@ -268,11 +268,7 @@ export default function EmailsInbox() {
 
   return (
     <AppLayout>
-      <div className="flex flex-col h-[calc(100vh-4rem)] p-4 md:p-6 lg:p-8">
-        {/* Background */}
-        <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
-          <div className="orb-bg orb-1" /><div className="orb-bg orb-2" />
-        </div>
+      <div className="flex flex-col h-full min-h-0 p-4 md:p-6 lg:p-8">
 
         <PageHeader 
           title="Boîte de réception" 

@@ -30,13 +30,13 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import { EmailLink } from '@/components/email';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface MonthlyReport {
   id: string;
@@ -84,6 +84,7 @@ const SEVERITY_COLORS: Record<string, string> = {
 };
 
 export default function AuditDashboard() {
+  const isMobile = useIsMobile();
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [runningAnalysis, setRunningAnalysis] = useState(false);
@@ -607,8 +608,7 @@ export default function AuditDashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-[500px]">
-                  <div className="space-y-3">
+                <div className={isMobile ? "space-y-3 pb-4" : "space-y-3 max-h-[500px] overflow-y-auto pr-2"}>
                     {alerts.filter(a => !a.is_resolved).map(alert => (
                       <div 
                         key={alert.id} 
@@ -620,7 +620,7 @@ export default function AuditDashboard() {
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
                               <Badge className={SEVERITY_COLORS[alert.severity]}>
                                 {alert.severity === 'critical' ? 'Critique' : 
                                  alert.severity === 'warning' ? 'Attention' : 'Info'}
@@ -666,8 +666,7 @@ export default function AuditDashboard() {
                         <p>Aucune alerte active</p>
                       </div>
                     )}
-                  </div>
-                </ScrollArea>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -768,8 +767,7 @@ export default function AuditDashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-[500px]">
-                  <div className="relative border-l-2 border-muted ml-4 space-y-6 py-4">
+                <div className={isMobile ? "relative border-l-2 border-muted ml-4 space-y-6 py-4 pb-8" : "relative border-l-2 border-muted ml-4 space-y-6 py-4 max-h-[500px] overflow-y-auto pr-2"}>
                     {incidents.slice(0, 30).map((incident, idx) => (
                       <div key={incident.id} className="relative pl-6">
                         <div className={`absolute -left-2 w-4 h-4 rounded-full ${
@@ -779,7 +777,7 @@ export default function AuditDashboard() {
                           'bg-green-500'
                         }`} />
                         <div className="p-3 rounded-lg bg-muted/50">
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1 flex-wrap">
                             <Calendar className="h-3 w-3" />
                             {format(parseISO(incident.date_incident), 'dd MMMM yyyy', { locale: fr })}
                             <Badge variant="outline" className="text-xs">{incident.gravite}</Badge>
@@ -789,8 +787,7 @@ export default function AuditDashboard() {
                         </div>
                       </div>
                     ))}
-                  </div>
-                </ScrollArea>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
