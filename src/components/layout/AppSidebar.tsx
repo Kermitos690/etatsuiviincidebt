@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -325,8 +325,8 @@ function NavContent({ onItemClick }: { onItemClick?: () => void }) {
   
   const navCategories = getNavCategories(mode);
   
-  // Auto-open categories with active items
-  const getInitialOpenState = () => {
+  // Memoize getInitialOpenState to avoid useEffect dependency issues
+  const getInitialOpenState = useCallback(() => {
     const openState: Record<string, boolean> = {};
     navCategories.forEach(cat => {
       openState[cat.id] = cat.items.some(item => 
@@ -339,14 +339,14 @@ function NavContent({ onItemClick }: { onItemClick?: () => void }) {
       openState['dashboard'] = true;
     }
     return openState;
-  };
+  }, [navCategories, location.pathname]);
 
-  const [openCategories, setOpenCategories] = useState<Record<string, boolean>>(getInitialOpenState);
+  const [openCategories, setOpenCategories] = useState<Record<string, boolean>>(() => getInitialOpenState());
   
   // Update open state when mode changes
   useEffect(() => {
     setOpenCategories(getInitialOpenState());
-  }, [mode]);
+  }, [getInitialOpenState]);
 
   const toggleCategory = (id: string) => {
     setOpenCategories(prev => ({ ...prev, [id]: !prev[id] }));
