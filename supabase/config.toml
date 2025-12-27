@@ -131,3 +131,6 @@ verify_jwt = false
 
 [functions.compare-pdfs]
 verify_jwt = false
+
+[functions.explain-legal-context]
+verify_jwt = false
