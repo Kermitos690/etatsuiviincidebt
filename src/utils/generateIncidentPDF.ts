@@ -20,6 +20,7 @@ import {
   checkPageBreak,
   formatPDFDate,
   formatPDFDateTime,
+  normalizeTextForPdf,
 } from './pdfStyles';
 import {
   extractLegalReferences,
@@ -359,28 +360,40 @@ function drawDeepAnalysisSection(
     y += 8;
 
     for (const link of analysis.causal_chain) {
-      y = checkPageBreak(doc, y, 30);
+      // Normalize all text from AI analysis
+      const cause = normalizeTextForPdf(link.cause || '', { maxLength: 200 });
+      const citation = normalizeTextForPdf(link.citation || '', { maxLength: 300 });
+      const consequence = normalizeTextForPdf(link.consequence || '', { maxLength: 150 });
+      const impact = normalizeTextForPdf(link.impact || '', { maxLength: 150 });
       
-      // Cause box
+      // Calculate dynamic height based on citation length
+      doc.setFontSize(8);
+      const citationLines = doc.splitTextToSize(`"${citation}"`, contentWidth - 10);
+      const displayedCitationLines = citationLines.slice(0, 3);
+      const dynamicHeight = 18 + (displayedCitationLines.length * 4);
+      
+      y = checkPageBreak(doc, y, dynamicHeight + 5);
+      
+      // Cause box with dynamic height
       setColor(doc, PDF_COLORS.background, 'fill');
-      doc.roundedRect(marginLeft, y - 2, contentWidth, 24, 2, 2, 'F');
+      doc.roundedRect(marginLeft, y - 2, contentWidth, dynamicHeight, 2, 2, 'F');
       
       doc.setFontSize(8);
       doc.setFont('helvetica', 'bold');
       setColor(doc, PDF_COLORS.critique);
-      doc.text(`CAUSE: ${link.cause}`, marginLeft + 3, y + 4);
+      doc.text(`CAUSE: ${cause}`, marginLeft + 3, y + 4);
       
       doc.setFont('helvetica', 'normal');
       setColor(doc, PDF_COLORS.text);
-      const citationLines = doc.splitTextToSize(`"${link.citation}"`, contentWidth - 10);
-      doc.text(citationLines.slice(0, 2), marginLeft + 3, y + 10);
+      doc.text(displayedCitationLines, marginLeft + 3, y + 10);
       
+      const bottomY = y + 10 + (displayedCitationLines.length * 4);
       doc.setFontSize(7);
       setColor(doc, PDF_COLORS.muted);
-      doc.text(`→ ${link.consequence}`, marginLeft + 3, y + 18);
-      doc.text(`⚠ Impact: ${link.impact}`, marginLeft + contentWidth/2, y + 18);
+      doc.text(`→ ${consequence}`, marginLeft + 3, bottomY);
+      doc.text(`⚠ Impact: ${impact}`, marginLeft + contentWidth/2, bottomY);
       
-      y += 28;
+      y += dynamicHeight + 4;
     }
     y += 5;
   }
@@ -396,6 +409,13 @@ function drawDeepAnalysisSection(
     y += 8;
 
     for (const excuse of analysis.excuses_detected) {
+      // Normalize all text
+      const actor = normalizeTextForPdf(excuse.actor || '', { maxLength: 50 });
+      const excuseText = normalizeTextForPdf(excuse.excuse || '', { maxLength: 100 });
+      const citation = normalizeTextForPdf(excuse.citation || '', { maxLength: 200 });
+      const legalObligation = normalizeTextForPdf(excuse.legal_obligation || '', { maxLength: 150 });
+      const counterArg = normalizeTextForPdf(excuse.counter_argument || '', { maxLength: 200 });
+      
       y = checkPageBreak(doc, y, 40);
       
       const isValid = excuse.is_valid;
@@ -411,17 +431,17 @@ function drawDeepAnalysisSection(
       doc.setFontSize(8);
       doc.setFont('helvetica', 'bold');
       setColor(doc, PDF_COLORS.text);
-      doc.text(`${excuse.actor} - Excuse: "${excuse.excuse}"`, marginLeft + 8, y + 4);
+      doc.text(`${actor} - Excuse: "${excuseText}"`, marginLeft + 8, y + 4);
       
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(7);
       setColor(doc, PDF_COLORS.muted);
-      const excuseCitation = doc.splitTextToSize(`Citation: "${excuse.citation}"`, contentWidth - 15);
+      const excuseCitation = doc.splitTextToSize(`Citation: "${citation}"`, contentWidth - 15);
       doc.text(excuseCitation.slice(0, 2), marginLeft + 8, y + 10);
       
       doc.setFont('helvetica', 'normal');
       setColor(doc, PDF_COLORS.legal);
-      doc.text(`Obligation: ${excuse.legal_obligation} (${excuse.legal_article})`, marginLeft + 8, y + 20);
+      doc.text(`Obligation: ${legalObligation} (${excuse.legal_article || 'N/A'})`, marginLeft + 8, y + 20);
       
       doc.setFont('helvetica', 'bold');
       setColor(doc, statusColor);
@@ -431,7 +451,7 @@ function drawDeepAnalysisSection(
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       setColor(doc, PDF_COLORS.text);
-      const counterLines = doc.splitTextToSize(excuse.counter_argument, contentWidth - 50);
+      const counterLines = doc.splitTextToSize(counterArg, contentWidth - 50);
       doc.text(counterLines[0] || '', marginLeft + 40, y + 26);
       
       y += 38;
@@ -450,6 +470,12 @@ function drawDeepAnalysisSection(
     y += 8;
 
     for (const contradiction of analysis.behavioral_contradictions) {
+      // Normalize text
+      const actor = normalizeTextForPdf(contradiction.actor || '', { maxLength: 50 });
+      const action1 = normalizeTextForPdf(contradiction.action_1 || '', { maxLength: 150 });
+      const action2 = normalizeTextForPdf(contradiction.action_2 || '', { maxLength: 150 });
+      const contradictionText = normalizeTextForPdf(contradiction.contradiction || '', { maxLength: 150 });
+      
       y = checkPageBreak(doc, y, 30);
       
       const severityColors = {
@@ -460,21 +486,21 @@ function drawDeepAnalysisSection(
       
       setColor(doc, PDF_COLORS.background, 'fill');
       doc.roundedRect(marginLeft, y - 2, contentWidth, 24, 2, 2, 'F');
-      setColor(doc, severityColors[contradiction.severity], 'fill');
+      setColor(doc, severityColors[contradiction.severity] || PDF_COLORS.muted, 'fill');
       doc.rect(marginLeft, y - 2, 4, 24, 'F');
       
       doc.setFontSize(8);
       doc.setFont('helvetica', 'bold');
       setColor(doc, PDF_COLORS.text);
-      doc.text(`${contradiction.actor}`, marginLeft + 8, y + 4);
+      doc.text(`${actor}`, marginLeft + 8, y + 4);
       
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
-      doc.text(`Action 1: ${contradiction.action_1}`, marginLeft + 8, y + 10);
-      doc.text(`Action 2: ${contradiction.action_2}`, marginLeft + 8, y + 15);
+      doc.text(`Action 1: ${action1}`, marginLeft + 8, y + 10);
+      doc.text(`Action 2: ${action2}`, marginLeft + 8, y + 15);
       
-      setColor(doc, severityColors[contradiction.severity]);
-      doc.text(`⚠ ${contradiction.contradiction}`, marginLeft + 8, y + 20);
+      setColor(doc, severityColors[contradiction.severity] || PDF_COLORS.muted);
+      doc.text(`⚠ ${contradictionText}`, marginLeft + 8, y + 20);
       
       y += 28;
     }
@@ -492,6 +518,11 @@ function drawDeepAnalysisSection(
     y += 8;
 
     for (const deadline of analysis.deadline_analysis) {
+      // Normalize text
+      const event = normalizeTextForPdf(deadline.event || '', { maxLength: 100 });
+      const impact = normalizeTextForPdf(deadline.impact || '', { maxLength: 150 });
+      const legalBasis = normalizeTextForPdf(deadline.legal_basis || '', { maxLength: 100 });
+      
       y = checkPageBreak(doc, y, 35);
       
       const isUrgent = (deadline.remaining_days || 999) < 10;
@@ -507,7 +538,7 @@ function drawDeepAnalysisSection(
       doc.setFontSize(8);
       doc.setFont('helvetica', 'bold');
       setColor(doc, PDF_COLORS.text);
-      doc.text(deadline.event, marginLeft + 8, y + 4);
+      doc.text(event, marginLeft + 8, y + 4);
       
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
@@ -526,10 +557,10 @@ function drawDeepAnalysisSection(
       
       doc.setFont('helvetica', 'normal');
       setColor(doc, PDF_COLORS.muted);
-      doc.text(`Base légale: ${deadline.legal_basis}`, marginLeft + 60, y + 16);
+      doc.text(`Base légale: ${legalBasis}`, marginLeft + 60, y + 16);
       
       setColor(doc, PDF_COLORS.text);
-      const impactLines = doc.splitTextToSize(`Impact: ${deadline.impact}`, contentWidth - 15);
+      const impactLines = doc.splitTextToSize(`Impact: ${impact}`, contentWidth - 15);
       doc.text(impactLines[0] || '', marginLeft + 8, y + 22);
       
       y += 32;
@@ -548,21 +579,26 @@ function drawDeepAnalysisSection(
     y += 8;
 
     for (const cascade of analysis.cascade_failures) {
+      // Normalize text
+      const failure = normalizeTextForPdf(cascade.failure || '', { maxLength: 150 });
+      const leadsTo = normalizeTextForPdf(cascade.leads_to || '', { maxLength: 100 });
+      const responsibility = normalizeTextForPdf(cascade.responsibility || '', { maxLength: 50 });
+      
       y = checkPageBreak(doc, y, 20);
       
       doc.setFontSize(8);
       doc.setFont('helvetica', 'bold');
       setColor(doc, PDF_COLORS.critique);
-      doc.text(`${cascade.step}.`, marginLeft, y);
+      doc.text(`${cascade.step || '•'}.`, marginLeft, y);
       
       setColor(doc, PDF_COLORS.text);
-      doc.text(cascade.failure, marginLeft + 8, y);
+      doc.text(failure, marginLeft + 8, y);
       
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       setColor(doc, PDF_COLORS.muted);
-      doc.text(`→ ${cascade.leads_to}`, marginLeft + 15, y + 5);
-      doc.text(`Responsable: ${cascade.responsibility}`, marginLeft + 100, y + 5);
+      doc.text(`→ ${leadsTo}`, marginLeft + 15, y + 5);
+      doc.text(`Responsable: ${responsibility}`, marginLeft + 100, y + 5);
       
       y += 12;
     }
@@ -580,9 +616,17 @@ function drawDeepAnalysisSection(
     y += 8;
 
     for (const resp of analysis.responsibilities) {
+      // Normalize text
+      const actor = normalizeTextForPdf(resp.actor || '', { maxLength: 50 });
+      const role = normalizeTextForPdf(resp.role || '', { maxLength: 30 });
+      const failures = (resp.failures || []).map(f => normalizeTextForPdf(f, { maxLength: 50 }));
+      const violations = (resp.legal_violations || []).map(v => normalizeTextForPdf(v, { maxLength: 50 }));
+      const mitigating = (resp.mitigating_factors || []).map(m => normalizeTextForPdf(m, { maxLength: 50 }));
+      
       y = checkPageBreak(doc, y, 40);
       
-      const severityPercent = resp.severity_score * 10;
+      const severityScore = resp.severity_score || 0;
+      const severityPercent = severityScore * 10;
       
       setColor(doc, PDF_COLORS.background, 'fill');
       doc.roundedRect(marginLeft, y - 2, contentWidth, 32, 2, 2, 'F');
@@ -590,29 +634,29 @@ function drawDeepAnalysisSection(
       // Severity bar
       setColor(doc, PDF_COLORS.border, 'fill');
       doc.rect(marginLeft + contentWidth - 45, y, 40, 4, 'F');
-      setColor(doc, resp.severity_score >= 7 ? PDF_COLORS.critique : resp.severity_score >= 4 ? PDF_COLORS.haute : PDF_COLORS.faible, 'fill');
+      setColor(doc, severityScore >= 7 ? PDF_COLORS.critique : severityScore >= 4 ? PDF_COLORS.haute : PDF_COLORS.faible, 'fill');
       doc.rect(marginLeft + contentWidth - 45, y, severityPercent * 0.4, 4, 'F');
       
       doc.setFontSize(8);
       doc.setFont('helvetica', 'bold');
       setColor(doc, PDF_COLORS.text);
-      doc.text(`${resp.actor} (${resp.role})`, marginLeft + 5, y + 4);
+      doc.text(`${actor} (${role})`, marginLeft + 5, y + 4);
       
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       
-      if (resp.failures.length > 0) {
-        doc.text(`Manquements: ${resp.failures.join(', ')}`, marginLeft + 5, y + 12);
+      if (failures.length > 0) {
+        doc.text(`Manquements: ${failures.join(', ')}`, marginLeft + 5, y + 12);
       }
       
-      if (resp.legal_violations.length > 0) {
+      if (violations.length > 0) {
         setColor(doc, PDF_COLORS.legal);
-        doc.text(`Violations: ${resp.legal_violations.join(', ')}`, marginLeft + 5, y + 18);
+        doc.text(`Violations: ${violations.join(', ')}`, marginLeft + 5, y + 18);
       }
       
-      if (resp.mitigating_factors.length > 0) {
+      if (mitigating.length > 0) {
         setColor(doc, PDF_COLORS.muted);
-        doc.text(`Facteurs atténuants: ${resp.mitigating_factors.join(', ')}`, marginLeft + 5, y + 24);
+        doc.text(`Facteurs atténuants: ${mitigating.join(', ')}`, marginLeft + 5, y + 24);
       }
       
       y += 36;
@@ -622,6 +666,13 @@ function drawDeepAnalysisSection(
 
   // G. SYNTHÈSE ET CONCLUSIONS
   if (analysis.synthesis) {
+    // Normalize all synthesis text
+    const mainDysfunction = normalizeTextForPdf(analysis.synthesis.main_dysfunction || '', { maxLength: 300 });
+    const rootCause = normalizeTextForPdf(analysis.synthesis.root_cause || '', { maxLength: 200 });
+    const severityAssessment = normalizeTextForPdf(analysis.synthesis.severity_assessment || '', { maxLength: 300 });
+    const rightsViolated = (analysis.synthesis.rights_violated || []).map(r => normalizeTextForPdf(r, { maxLength: 50 }));
+    const recommendedActions = (analysis.synthesis.recommended_actions || []).map(a => normalizeTextForPdf(a, { maxLength: 80 }));
+    
     y = checkPageBreak(doc, y, 80);
     
     doc.setFontSize(10);
@@ -641,20 +692,21 @@ function drawDeepAnalysisSection(
     setColor(doc, PDF_COLORS.text);
     doc.text('Dysfonctionnement principal:', marginLeft + 8, y + 5);
     doc.setFont('helvetica', 'normal');
-    const mainDysfLines = doc.splitTextToSize(analysis.synthesis.main_dysfunction, contentWidth - 20);
+    const mainDysfLines = doc.splitTextToSize(mainDysfunction, contentWidth - 20);
     doc.text(mainDysfLines.slice(0, 2), marginLeft + 8, y + 11);
     
     doc.setFont('helvetica', 'bold');
     doc.text('Cause racine:', marginLeft + 8, y + 22);
     doc.setFont('helvetica', 'normal');
-    doc.text(analysis.synthesis.root_cause, marginLeft + 35, y + 22);
+    const rootLines = doc.splitTextToSize(rootCause, contentWidth - 45);
+    doc.text(rootLines[0] || '', marginLeft + 35, y + 22);
     
-    if (analysis.synthesis.rights_violated.length > 0) {
+    if (rightsViolated.length > 0) {
       doc.setFont('helvetica', 'bold');
       setColor(doc, PDF_COLORS.critique);
       doc.text('Droits violés:', marginLeft + 8, y + 30);
       doc.setFont('helvetica', 'normal');
-      doc.text(analysis.synthesis.rights_violated.join(', '), marginLeft + 35, y + 30);
+      doc.text(rightsViolated.join(', '), marginLeft + 35, y + 30);
     }
     
     doc.setFont('helvetica', 'bold');
@@ -662,15 +714,15 @@ function drawDeepAnalysisSection(
     doc.text('Évaluation:', marginLeft + 8, y + 40);
     doc.setFont('helvetica', 'normal');
     setColor(doc, PDF_COLORS.text);
-    const sevLines = doc.splitTextToSize(analysis.synthesis.severity_assessment, contentWidth - 35);
+    const sevLines = doc.splitTextToSize(severityAssessment, contentWidth - 35);
     doc.text(sevLines.slice(0, 2), marginLeft + 35, y + 40);
     
-    if (analysis.synthesis.recommended_actions.length > 0) {
+    if (recommendedActions.length > 0) {
       doc.setFont('helvetica', 'bold');
       setColor(doc, PDF_COLORS.faible);
       doc.text('Actions recommandées:', marginLeft + 8, y + 52);
       doc.setFont('helvetica', 'normal');
-      doc.text(analysis.synthesis.recommended_actions.slice(0, 2).join(' | '), marginLeft + 50, y + 52);
+      doc.text(recommendedActions.slice(0, 2).join(' | '), marginLeft + 50, y + 52);
     }
     
     y += synthHeight + 8;
@@ -717,7 +769,7 @@ async function searchLegalContext(
 export async function generateIncidentPDF(
   incident: IncidentData,
   options: GenerateIncidentPDFOptions = {}
-): Promise<void> {
+): Promise<Blob> {
   const {
     includeProofs = true,
     includeLegalExplanations = true,
@@ -1115,6 +1167,92 @@ export async function generateIncidentPDF(
   if (includeLegalSearch) filename += '-juridique';
   
   doc.save(`${filename}.pdf`);
+  
+  // Return blob for storage if needed
+  return doc.output('blob');
+}
+
+/**
+ * Génère et stocke le PDF dans Supabase Storage
+ */
+export async function generateAndStoreIncidentPDF(
+  incident: IncidentData,
+  options: GenerateIncidentPDFOptions = {},
+  userId: string
+): Promise<{ storagePath: string; fileName: string; fileSize: number } | null> {
+  try {
+    // Generate PDF blob (doesn't save automatically)
+    const blob = await generateIncidentPDFBlob(incident, options);
+    
+    // Create filename
+    let filename = `fiche-incident-${incident.numero}`;
+    if (options.includeEmails) filename += '-emails';
+    if (options.includeLegalSearch) filename += '-juridique';
+    filename += `-${Date.now()}.pdf`;
+    
+    const storagePath = `${userId}/${filename}`;
+    
+    // Upload to Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from('incident-exports')
+      .upload(storagePath, blob, {
+        contentType: 'application/pdf',
+        upsert: false
+      });
+    
+    if (uploadError) {
+      console.error('Upload error:', uploadError);
+      return null;
+    }
+    
+    // Save record in database
+    const { error: dbError } = await supabase
+      .from('incident_exports')
+      .insert([{
+        incident_id: incident.id,
+        user_id: userId,
+        file_name: filename,
+        storage_path: storagePath,
+        file_size_bytes: blob.size,
+        export_options: options as any
+      }]);
+    
+    if (dbError) {
+      console.error('DB error:', dbError);
+    }
+    
+    return { storagePath, fileName: filename, fileSize: blob.size };
+  } catch (e) {
+    console.error('Error storing PDF:', e);
+    return null;
+  }
+}
+
+/**
+ * Génère le PDF, le sauvegarde localement et retourne le blob
+ */
+export async function generateAndDownloadIncidentPDF(
+  incident: IncidentData,
+  options: GenerateIncidentPDFOptions = {}
+): Promise<Blob> {
+  const blob = await generateIncidentPDF(incident, options);
+  
+  // Create download link
+  let filename = `fiche-incident-${incident.numero}`;
+  if (options.includeEmails) filename += '-emails';
+  if (options.includeLegalSearch) filename += '-juridique';
+  filename += '.pdf';
+  
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  
+  return blob;
 }
 
 /**
