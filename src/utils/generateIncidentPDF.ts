@@ -83,7 +83,83 @@ interface GenerateIncidentPDFOptions {
   includeEmails?: boolean;
   includeEmailCitations?: boolean;
   includeLegalSearch?: boolean;
+  includeDeepAnalysis?: boolean;
   emails?: EmailData[];
+}
+
+// Deep Analysis Types
+interface CausalLink {
+  cause: string;
+  citation: string;
+  consequence: string;
+  impact: string;
+  date?: string;
+}
+
+interface ExcuseAnalysis {
+  actor: string;
+  excuse: string;
+  citation: string;
+  legal_obligation: string;
+  legal_article: string;
+  is_valid: boolean;
+  counter_argument: string;
+}
+
+interface BehavioralContradiction {
+  actor: string;
+  action_1: string;
+  action_1_date?: string;
+  action_2: string;
+  action_2_date?: string;
+  contradiction: string;
+  severity: 'minor' | 'moderate' | 'major';
+}
+
+interface DeadlineAnalysis {
+  event: string;
+  event_date?: string;
+  discovery_date?: string;
+  deadline_date?: string;
+  legal_deadline_days?: number;
+  remaining_days?: number;
+  impact: string;
+  citation: string;
+  legal_basis: string;
+}
+
+interface CascadeFailure {
+  step: number;
+  failure: string;
+  date?: string;
+  leads_to: string;
+  responsibility: string;
+}
+
+interface ResponsibilityAssessment {
+  actor: string;
+  role: string;
+  failures: string[];
+  legal_violations: string[];
+  mitigating_factors: string[];
+  severity_score: number;
+}
+
+interface DeepAnalysisResult {
+  causal_chain: CausalLink[];
+  excuses_detected: ExcuseAnalysis[];
+  behavioral_contradictions: BehavioralContradiction[];
+  deadline_analysis: DeadlineAnalysis[];
+  cascade_failures: CascadeFailure[];
+  responsibilities: ResponsibilityAssessment[];
+  synthesis: {
+    main_dysfunction: string;
+    root_cause: string;
+    aggravating_factors: string[];
+    rights_violated: string[];
+    recommended_actions: string[];
+    severity_assessment: string;
+  };
 }
 
 interface ExtractedCitation {
@@ -217,8 +293,393 @@ async function extractEmailCitations(
 }
 
 /**
- * Recherche juridique automatique pour l'incident
+ * Effectue une analyse approfondie de l'incident via IA
  */
+async function performDeepAnalysis(
+  emails: EmailData[],
+  faits: string,
+  dysfonctionnement: string,
+  incidentType: string,
+  institution: string
+): Promise<DeepAnalysisResult | null> {
+  try {
+    const { data, error } = await supabase.functions.invoke('deep-incident-analysis', {
+      body: { emails, faits, dysfonctionnement, incidentType, institution }
+    });
+
+    if (error || !data?.success) {
+      console.error('Deep analysis error:', error || data?.error);
+      return null;
+    }
+
+    return data.analysis as DeepAnalysisResult;
+  } catch (e) {
+    console.error('Error in deep analysis:', e);
+    return null;
+  }
+}
+
+/**
+ * Dessine la section d'analyse approfondie dans le PDF
+ */
+function drawDeepAnalysisSection(
+  doc: jsPDF,
+  y: number,
+  analysis: DeepAnalysisResult,
+  sectionNumber: number
+): { y: number; nextSection: number } {
+  const { marginLeft, contentWidth } = PDF_DIMENSIONS;
+  let currentSection = sectionNumber;
+
+  // ============================================
+  // SECTION: ANALYSE CONTEXTUELLE APPROFONDIE
+  // ============================================
+  
+  y = checkPageBreak(doc, y, 80);
+  y = drawSectionTitle(doc, 'ANALYSE CONTEXTUELLE APPROFONDIE', y, { 
+    numbered: true, 
+    number: currentSection++, 
+    color: PDF_COLORS.critique 
+  });
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'italic');
+  setColor(doc, PDF_COLORS.muted);
+  doc.text('Analyse narrative et rhétorique par intelligence artificielle', marginLeft, y);
+  y += 10;
+
+  // A. CHAÎNE DE CAUSALITÉ
+  if (analysis.causal_chain && analysis.causal_chain.length > 0) {
+    y = checkPageBreak(doc, y, 50);
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    setColor(doc, PDF_COLORS.primary);
+    doc.text('A. CHAÎNE DE CAUSALITÉ', marginLeft, y);
+    y += 8;
+
+    for (const link of analysis.causal_chain) {
+      y = checkPageBreak(doc, y, 30);
+      
+      // Cause box
+      setColor(doc, PDF_COLORS.background, 'fill');
+      doc.roundedRect(marginLeft, y - 2, contentWidth, 24, 2, 2, 'F');
+      
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      setColor(doc, PDF_COLORS.critique);
+      doc.text(`CAUSE: ${link.cause}`, marginLeft + 3, y + 4);
+      
+      doc.setFont('helvetica', 'normal');
+      setColor(doc, PDF_COLORS.text);
+      const citationLines = doc.splitTextToSize(`"${link.citation}"`, contentWidth - 10);
+      doc.text(citationLines.slice(0, 2), marginLeft + 3, y + 10);
+      
+      doc.setFontSize(7);
+      setColor(doc, PDF_COLORS.muted);
+      doc.text(`→ ${link.consequence}`, marginLeft + 3, y + 18);
+      doc.text(`⚠ Impact: ${link.impact}`, marginLeft + contentWidth/2, y + 18);
+      
+      y += 28;
+    }
+    y += 5;
+  }
+
+  // B. EXCUSES VS OBLIGATIONS LÉGALES
+  if (analysis.excuses_detected && analysis.excuses_detected.length > 0) {
+    y = checkPageBreak(doc, y, 50);
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    setColor(doc, PDF_COLORS.legal);
+    doc.text('B. EXCUSES VS OBLIGATIONS LÉGALES', marginLeft, y);
+    y += 8;
+
+    for (const excuse of analysis.excuses_detected) {
+      y = checkPageBreak(doc, y, 40);
+      
+      const isValid = excuse.is_valid;
+      const statusColor = isValid ? PDF_COLORS.faible : PDF_COLORS.critique;
+      
+      setColor(doc, PDF_COLORS.background, 'fill');
+      doc.roundedRect(marginLeft, y - 2, contentWidth, 34, 2, 2, 'F');
+      
+      // Status indicator
+      setColor(doc, statusColor, 'fill');
+      doc.rect(marginLeft, y - 2, 4, 34, 'F');
+      
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      setColor(doc, PDF_COLORS.text);
+      doc.text(`${excuse.actor} - Excuse: "${excuse.excuse}"`, marginLeft + 8, y + 4);
+      
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(7);
+      setColor(doc, PDF_COLORS.muted);
+      const excuseCitation = doc.splitTextToSize(`Citation: "${excuse.citation}"`, contentWidth - 15);
+      doc.text(excuseCitation.slice(0, 2), marginLeft + 8, y + 10);
+      
+      doc.setFont('helvetica', 'normal');
+      setColor(doc, PDF_COLORS.legal);
+      doc.text(`Obligation: ${excuse.legal_obligation} (${excuse.legal_article})`, marginLeft + 8, y + 20);
+      
+      doc.setFont('helvetica', 'bold');
+      setColor(doc, statusColor);
+      const verdict = isValid ? '✓ VALABLE' : '✗ NON VALABLE';
+      doc.text(verdict, marginLeft + 8, y + 26);
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      setColor(doc, PDF_COLORS.text);
+      const counterLines = doc.splitTextToSize(excuse.counter_argument, contentWidth - 50);
+      doc.text(counterLines[0] || '', marginLeft + 40, y + 26);
+      
+      y += 38;
+    }
+    y += 5;
+  }
+
+  // C. CONTRADICTIONS COMPORTEMENTALES
+  if (analysis.behavioral_contradictions && analysis.behavioral_contradictions.length > 0) {
+    y = checkPageBreak(doc, y, 50);
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    setColor(doc, PDF_COLORS.haute);
+    doc.text('C. CONTRADICTIONS COMPORTEMENTALES', marginLeft, y);
+    y += 8;
+
+    for (const contradiction of analysis.behavioral_contradictions) {
+      y = checkPageBreak(doc, y, 30);
+      
+      const severityColors = {
+        minor: PDF_COLORS.muted,
+        moderate: PDF_COLORS.haute,
+        major: PDF_COLORS.critique
+      };
+      
+      setColor(doc, PDF_COLORS.background, 'fill');
+      doc.roundedRect(marginLeft, y - 2, contentWidth, 24, 2, 2, 'F');
+      setColor(doc, severityColors[contradiction.severity], 'fill');
+      doc.rect(marginLeft, y - 2, 4, 24, 'F');
+      
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      setColor(doc, PDF_COLORS.text);
+      doc.text(`${contradiction.actor}`, marginLeft + 8, y + 4);
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.text(`Action 1: ${contradiction.action_1}`, marginLeft + 8, y + 10);
+      doc.text(`Action 2: ${contradiction.action_2}`, marginLeft + 8, y + 15);
+      
+      setColor(doc, severityColors[contradiction.severity]);
+      doc.text(`⚠ ${contradiction.contradiction}`, marginLeft + 8, y + 20);
+      
+      y += 28;
+    }
+    y += 5;
+  }
+
+  // D. DÉLAIS CRITIQUES
+  if (analysis.deadline_analysis && analysis.deadline_analysis.length > 0) {
+    y = checkPageBreak(doc, y, 50);
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    setColor(doc, PDF_COLORS.critique);
+    doc.text('D. DÉLAIS CRITIQUES', marginLeft, y);
+    y += 8;
+
+    for (const deadline of analysis.deadline_analysis) {
+      y = checkPageBreak(doc, y, 35);
+      
+      const isUrgent = (deadline.remaining_days || 999) < 10;
+      
+      setColor(doc, PDF_COLORS.background, 'fill');
+      doc.roundedRect(marginLeft, y - 2, contentWidth, 28, 2, 2, 'F');
+      
+      if (isUrgent) {
+        setColor(doc, PDF_COLORS.critique, 'fill');
+        doc.rect(marginLeft, y - 2, 4, 28, 'F');
+      }
+      
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      setColor(doc, PDF_COLORS.text);
+      doc.text(deadline.event, marginLeft + 8, y + 4);
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      
+      const dates = [];
+      if (deadline.event_date) dates.push(`Événement: ${deadline.event_date}`);
+      if (deadline.discovery_date) dates.push(`Découverte: ${deadline.discovery_date}`);
+      if (deadline.deadline_date) dates.push(`Échéance: ${deadline.deadline_date}`);
+      doc.text(dates.join(' | '), marginLeft + 8, y + 10);
+      
+      if (deadline.remaining_days !== undefined) {
+        setColor(doc, isUrgent ? PDF_COLORS.critique : PDF_COLORS.faible);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${deadline.remaining_days} jours restants`, marginLeft + 8, y + 16);
+      }
+      
+      doc.setFont('helvetica', 'normal');
+      setColor(doc, PDF_COLORS.muted);
+      doc.text(`Base légale: ${deadline.legal_basis}`, marginLeft + 60, y + 16);
+      
+      setColor(doc, PDF_COLORS.text);
+      const impactLines = doc.splitTextToSize(`Impact: ${deadline.impact}`, contentWidth - 15);
+      doc.text(impactLines[0] || '', marginLeft + 8, y + 22);
+      
+      y += 32;
+    }
+    y += 5;
+  }
+
+  // E. DYSFONCTIONNEMENTS EN CASCADE
+  if (analysis.cascade_failures && analysis.cascade_failures.length > 0) {
+    y = checkPageBreak(doc, y, 50);
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    setColor(doc, PDF_COLORS.critique);
+    doc.text('E. DYSFONCTIONNEMENTS EN CASCADE', marginLeft, y);
+    y += 8;
+
+    for (const cascade of analysis.cascade_failures) {
+      y = checkPageBreak(doc, y, 20);
+      
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      setColor(doc, PDF_COLORS.critique);
+      doc.text(`${cascade.step}.`, marginLeft, y);
+      
+      setColor(doc, PDF_COLORS.text);
+      doc.text(cascade.failure, marginLeft + 8, y);
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      setColor(doc, PDF_COLORS.muted);
+      doc.text(`→ ${cascade.leads_to}`, marginLeft + 15, y + 5);
+      doc.text(`Responsable: ${cascade.responsibility}`, marginLeft + 100, y + 5);
+      
+      y += 12;
+    }
+    y += 5;
+  }
+
+  // F. RESPONSABILITÉS IDENTIFIÉES
+  if (analysis.responsibilities && analysis.responsibilities.length > 0) {
+    y = checkPageBreak(doc, y, 60);
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    setColor(doc, PDF_COLORS.legal);
+    doc.text('F. RESPONSABILITÉS IDENTIFIÉES', marginLeft, y);
+    y += 8;
+
+    for (const resp of analysis.responsibilities) {
+      y = checkPageBreak(doc, y, 40);
+      
+      const severityPercent = resp.severity_score * 10;
+      
+      setColor(doc, PDF_COLORS.background, 'fill');
+      doc.roundedRect(marginLeft, y - 2, contentWidth, 32, 2, 2, 'F');
+      
+      // Severity bar
+      setColor(doc, PDF_COLORS.border, 'fill');
+      doc.rect(marginLeft + contentWidth - 45, y, 40, 4, 'F');
+      setColor(doc, resp.severity_score >= 7 ? PDF_COLORS.critique : resp.severity_score >= 4 ? PDF_COLORS.haute : PDF_COLORS.faible, 'fill');
+      doc.rect(marginLeft + contentWidth - 45, y, severityPercent * 0.4, 4, 'F');
+      
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      setColor(doc, PDF_COLORS.text);
+      doc.text(`${resp.actor} (${resp.role})`, marginLeft + 5, y + 4);
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      
+      if (resp.failures.length > 0) {
+        doc.text(`Manquements: ${resp.failures.join(', ')}`, marginLeft + 5, y + 12);
+      }
+      
+      if (resp.legal_violations.length > 0) {
+        setColor(doc, PDF_COLORS.legal);
+        doc.text(`Violations: ${resp.legal_violations.join(', ')}`, marginLeft + 5, y + 18);
+      }
+      
+      if (resp.mitigating_factors.length > 0) {
+        setColor(doc, PDF_COLORS.muted);
+        doc.text(`Facteurs atténuants: ${resp.mitigating_factors.join(', ')}`, marginLeft + 5, y + 24);
+      }
+      
+      y += 36;
+    }
+    y += 5;
+  }
+
+  // G. SYNTHÈSE ET CONCLUSIONS
+  if (analysis.synthesis) {
+    y = checkPageBreak(doc, y, 80);
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    setColor(doc, PDF_COLORS.primary);
+    doc.text('G. SYNTHÈSE ET CONCLUSIONS', marginLeft, y);
+    y += 8;
+
+    setColor(doc, PDF_COLORS.background, 'fill');
+    const synthHeight = 60;
+    doc.roundedRect(marginLeft, y - 2, contentWidth, synthHeight, 2, 2, 'F');
+    setColor(doc, PDF_COLORS.primary, 'fill');
+    doc.rect(marginLeft, y - 2, 4, synthHeight, 'F');
+    
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    setColor(doc, PDF_COLORS.text);
+    doc.text('Dysfonctionnement principal:', marginLeft + 8, y + 5);
+    doc.setFont('helvetica', 'normal');
+    const mainDysfLines = doc.splitTextToSize(analysis.synthesis.main_dysfunction, contentWidth - 20);
+    doc.text(mainDysfLines.slice(0, 2), marginLeft + 8, y + 11);
+    
+    doc.setFont('helvetica', 'bold');
+    doc.text('Cause racine:', marginLeft + 8, y + 22);
+    doc.setFont('helvetica', 'normal');
+    doc.text(analysis.synthesis.root_cause, marginLeft + 35, y + 22);
+    
+    if (analysis.synthesis.rights_violated.length > 0) {
+      doc.setFont('helvetica', 'bold');
+      setColor(doc, PDF_COLORS.critique);
+      doc.text('Droits violés:', marginLeft + 8, y + 30);
+      doc.setFont('helvetica', 'normal');
+      doc.text(analysis.synthesis.rights_violated.join(', '), marginLeft + 35, y + 30);
+    }
+    
+    doc.setFont('helvetica', 'bold');
+    setColor(doc, PDF_COLORS.legal);
+    doc.text('Évaluation:', marginLeft + 8, y + 40);
+    doc.setFont('helvetica', 'normal');
+    setColor(doc, PDF_COLORS.text);
+    const sevLines = doc.splitTextToSize(analysis.synthesis.severity_assessment, contentWidth - 35);
+    doc.text(sevLines.slice(0, 2), marginLeft + 35, y + 40);
+    
+    if (analysis.synthesis.recommended_actions.length > 0) {
+      doc.setFont('helvetica', 'bold');
+      setColor(doc, PDF_COLORS.faible);
+      doc.text('Actions recommandées:', marginLeft + 8, y + 52);
+      doc.setFont('helvetica', 'normal');
+      doc.text(analysis.synthesis.recommended_actions.slice(0, 2).join(' | '), marginLeft + 50, y + 52);
+    }
+    
+    y += synthHeight + 8;
+  }
+
+  return { y, nextSection: currentSection };
+}
+
+
 async function searchLegalContext(
   incidentType: string,
   faits: string,
@@ -263,8 +724,21 @@ export async function generateIncidentPDF(
     includeEmails = false,
     includeEmailCitations = false,
     includeLegalSearch = false,
+    includeDeepAnalysis = false,
     emails = [],
   } = options;
+
+  // Perform deep analysis if requested
+  let deepAnalysis: DeepAnalysisResult | null = null;
+  if (includeDeepAnalysis && emails.length > 0) {
+    deepAnalysis = await performDeepAnalysis(
+      emails,
+      incident.faits,
+      incident.dysfonctionnement,
+      incident.type,
+      incident.institution
+    );
+  }
 
   const doc = new jsPDF();
   const { marginLeft, contentWidth } = PDF_DIMENSIONS;
@@ -542,7 +1016,17 @@ export async function generateIncidentPDF(
   }
 
   // ============================================
-  // SECTION 8: RECHERCHE JURIDIQUE EN LIGNE
+  // SECTION 8: ANALYSE CONTEXTUELLE APPROFONDIE
+  // ============================================
+  
+  if (deepAnalysis) {
+    const deepResult = drawDeepAnalysisSection(doc, y, deepAnalysis, sectionNumber);
+    y = deepResult.y;
+    sectionNumber = deepResult.nextSection;
+  }
+
+  // ============================================
+  // SECTION 9: RECHERCHE JURIDIQUE EN LIGNE
   // ============================================
   
   if (includeLegalSearch) {
