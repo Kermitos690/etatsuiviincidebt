@@ -181,7 +181,7 @@ export const legalSearchApi = {
   async saveToLegalArticles(
     result: LegalSearchResult & { full_text?: string },
     userId: string
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; id?: string }> {
     // Generate content hash
     const contentToHash = result.full_text || result.summary || result.title;
     const encoder = new TextEncoder();
@@ -189,6 +189,18 @@ export const legalSearchApi = {
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const contentHash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+
+    // Check if article already exists with same hash
+    const { data: existing } = await supabase
+      .from('legal_articles')
+      .select('id')
+      .eq('content_hash', contentHash)
+      .maybeSingle();
+
+    if (existing) {
+      // Already exists, return success with existing ID
+      return { success: true, id: existing.id };
+    }
 
     // Determine code name from source
     let codeName = 'Jurisprudence';
@@ -200,24 +212,24 @@ export const legalSearchApi = {
       codeName = 'ATF';
     }
 
-    const { error } = await supabase.from('legal_articles').insert({
+    const { data: inserted, error } = await supabase.from('legal_articles').insert({
       code_name: codeName,
       article_number: result.reference_number || 'N/A',
       article_title: result.title,
       article_text: result.full_text || result.summary || '',
-      domain: result.legal_domain || null,
+      domain: result.legal_domain || 'protection_adulte',
       keywords: result.keywords || [],
       source_url: result.source_url,
       content_hash: contentHash,
       user_id: userId,
       version_date: result.date_decision || new Date().toISOString().split('T')[0],
-    });
+    }).select('id').single();
 
     if (error) {
       console.error('Error saving to legal_articles:', error);
       return { success: false, error: error.message };
     }
 
-    return { success: true };
+    return { success: true, id: inserted?.id };
   },
 };
