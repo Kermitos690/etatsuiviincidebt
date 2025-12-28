@@ -1,10 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { verifyAuth, corsHeaders } from "../_shared/auth.ts";
 
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID");
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET");
@@ -25,9 +21,43 @@ serve(async (req) => {
 
   try {
     // Handle OAuth callback (GET request with code parameter)
+    // Note: OAuth callbacks cannot have auth headers, so we use state parameter for security
     if (req.method === "GET" && url.searchParams.has("code")) {
       const code = url.searchParams.get("code")!;
+      const state = url.searchParams.get("state");
+      
       console.log("Received OAuth callback with code");
+
+      // Validate state parameter to prevent CSRF attacks
+      if (!state) {
+        console.error("OAuth callback missing state parameter - potential CSRF attack");
+        return new Response("Invalid OAuth request: missing state", { 
+          status: 400,
+          headers: { "Content-Type": "text/plain" }
+        });
+      }
+
+      // Decode and validate state (contains user_id and timestamp)
+      let stateData: { user_id: string; timestamp: number };
+      try {
+        stateData = JSON.parse(atob(state));
+        
+        // Check state is not too old (15 minutes max)
+        const stateAge = Date.now() - stateData.timestamp;
+        if (stateAge > 15 * 60 * 1000) {
+          throw new Error("State expired");
+        }
+        
+        if (!stateData.user_id) {
+          throw new Error("Invalid state: missing user_id");
+        }
+      } catch (e) {
+        console.error("Invalid OAuth state:", e);
+        return new Response("Invalid OAuth request: corrupted state", { 
+          status: 400,
+          headers: { "Content-Type": "text/plain" }
+        });
+      }
 
       // Exchange code for tokens
       const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
@@ -56,27 +86,28 @@ serve(async (req) => {
       });
       const userInfo = await userInfoResponse.json();
       const userEmail = userInfo.email;
-      console.log("User email:", userEmail);
+      console.log("Gmail connected for user:", stateData.user_id, "email:", userEmail);
 
       // Calculate token expiry
       const tokenExpiry = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
 
-      // Store tokens in gmail_config table
+      // Store tokens in gmail_config table - associate with the authenticated user
       const { error: upsertError } = await supabase
         .from("gmail_config")
         .upsert({
+          user_id: stateData.user_id,
           user_email: userEmail,
           access_token: tokenData.access_token,
           refresh_token: tokenData.refresh_token || null,
           token_expiry: tokenExpiry,
-        }, { onConflict: "user_email" });
+        }, { onConflict: "user_id" });
 
       if (upsertError) {
         console.error("Failed to store tokens:", upsertError);
         throw new Error("Failed to store OAuth tokens");
       }
 
-      console.log("Tokens stored successfully for:", userEmail);
+      console.log("Tokens stored successfully for user:", stateData.user_id);
 
       // Get the app URL for redirect
       const appUrl = Deno.env.get("SITE_URL") || "https://68b94080-8702-44ad-92ac-e956f60a1e94.lovableproject.com";
@@ -114,10 +145,20 @@ serve(async (req) => {
       });
     }
 
-    // Handle POST requests for actions
+    // Handle POST requests for actions - REQUIRE AUTHENTICATION
     if (req.method !== "POST") {
       return new Response(JSON.stringify({ error: "Method not allowed" }), {
         status: 405,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Verify user authentication for all POST actions
+    const { user, error: authError } = await verifyAuth(req);
+    if (authError || !user) {
+      console.error("Authentication failed for gmail-oauth POST:", authError);
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -138,29 +179,37 @@ serve(async (req) => {
         "https://www.googleapis.com/auth/userinfo.email",
       ].join(" ");
 
+      // Generate state parameter with user ID and timestamp for CSRF protection
+      const state = btoa(JSON.stringify({
+        user_id: user.id,
+        timestamp: Date.now()
+      }));
+
       const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
         `client_id=${GOOGLE_CLIENT_ID}` +
         `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
         `&response_type=code` +
         `&scope=${encodeURIComponent(scopes)}` +
         `&access_type=offline` +
-        `&prompt=consent`;
+        `&prompt=consent` +
+        `&state=${encodeURIComponent(state)}`;
 
-      console.log("Generated auth URL with redirect:", REDIRECT_URI);
+      console.log("Generated auth URL for user:", user.id);
       return new Response(JSON.stringify({ url: authUrl }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     if (action === "get-config") {
-      // Get the stored configuration
+      // Get the stored configuration FOR THIS USER ONLY
       const { data: configData, error: configError } = await supabase
         .from("gmail_config")
         .select("*")
-        .limit(1)
+        .eq("user_id", user.id)
         .maybeSingle();
 
       if (configError) {
+        console.error("Failed to fetch config for user:", user.id, configError);
         throw new Error("Failed to fetch config");
       }
 
@@ -176,10 +225,11 @@ serve(async (req) => {
       const parsedBody = JSON.parse(body);
       const { domains, keywords, syncEnabled } = parsedBody;
 
+      // Update only the current user's config
       const { data: existingConfig } = await supabase
         .from("gmail_config")
         .select("id")
-        .limit(1)
+        .eq("user_id", user.id)
         .maybeSingle();
 
       if (existingConfig) {
@@ -190,22 +240,29 @@ serve(async (req) => {
             keywords: keywords || [],
             sync_enabled: syncEnabled || false
           })
-          .eq("id", existingConfig.id);
+          .eq("id", existingConfig.id)
+          .eq("user_id", user.id); // Extra safety check
 
         if (error) throw error;
+      } else {
+        return new Response(JSON.stringify({ error: "No Gmail config found for this user" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
+      console.log("Config updated for user:", user.id);
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     if (action === "refresh-token") {
-      // Get stored config
+      // Get stored config FOR THIS USER ONLY
       const { data: config, error: configError } = await supabase
         .from("gmail_config")
         .select("*")
-        .limit(1)
+        .eq("user_id", user.id)
         .maybeSingle();
 
       if (configError || !config?.refresh_token) {
@@ -238,8 +295,10 @@ serve(async (req) => {
           access_token: tokenData.access_token,
           token_expiry: tokenExpiry
         })
-        .eq("id", config.id);
+        .eq("id", config.id)
+        .eq("user_id", user.id); // Extra safety check
 
+      console.log("Token refreshed for user:", user.id);
       return new Response(JSON.stringify({ 
         success: true,
         access_token: tokenData.access_token 

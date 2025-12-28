@@ -4,11 +4,10 @@ import { useAuth, AppRole } from '@/hooks/useAuth';
 import { Loader2, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-// Tutorial mode: bypass authentication when enabled
-// Add ?tutorial=true to any URL to enable (for screenshot capture)
-// Or set VITE_TUTORIAL_MODE=true in environment
-const TUTORIAL_MODE = import.meta.env.VITE_TUTORIAL_MODE === 'true' || 
-  (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tutorial') === 'true');
+// Tutorial mode: bypass authentication ONLY via environment variable (not URL parameter)
+// This prevents attackers from bypassing auth by adding ?tutorial=true
+// SECURITY: Only enable in development/staging, NEVER in production
+const TUTORIAL_MODE = import.meta.env.VITE_TUTORIAL_MODE === 'true';
 
 interface AuthGuardProps {
   children: ReactNode;
