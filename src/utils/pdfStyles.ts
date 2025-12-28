@@ -102,7 +102,7 @@ export const PDF_TYPE_CONFIG: Record<PDFDocumentType, {
     title: 'DOSSIER JURIDIQUE',
     headerColor: PDF_COLORS.primary,
     accentColor: PDF_COLORS.legal,
-    confidentialNote: 'Destiné à la Justice de Paix - Confidentiel',
+    confidentialNote: 'Destine a la Justice de Paix - Confidentiel',
     showLegalDisclaimer: true,
   },
   chronologique: {
@@ -116,7 +116,7 @@ export const PDF_TYPE_CONFIG: Record<PDFDocumentType, {
     title: 'DOSSIER COMPLET',
     headerColor: PDF_COLORS.primary,
     accentColor: PDF_COLORS.evidence,
-    confidentialNote: 'Mémoire juridique - Art. 13 LPD',
+    confidentialNote: 'Memoire juridique - Art. 13 LPD',
     showLegalDisclaimer: true,
   },
 };
@@ -149,7 +149,7 @@ export function getSeverityColor(gravite: string): typeof PDF_COLORS[keyof typeo
     case 'grave':
       return PDF_COLORS.haute;
     case 'moyenne':
-    case 'modéré':
+    case 'modere':
       return PDF_COLORS.moyenne;
     case 'faible':
     case 'mineur':
@@ -170,8 +170,8 @@ export function getStatusColor(statut: string): typeof PDF_COLORS[keyof typeof P
       return PDF_COLORS.moyenne;
     case 'transmis':
       return PDF_COLORS.legal;
-    case 'fermé':
-    case 'résolu':
+    case 'ferme':
+    case 'resolu':
       return PDF_COLORS.faible;
     default:
       return PDF_COLORS.muted;
@@ -302,6 +302,199 @@ export function drawSectionTitle(
 }
 
 /**
+ * Normalise TOUT texte pour affichage PDF propre
+ * - Nettoie les artefacts d'encodage UTF-8 (double encodage, mojibake)
+ * - Corrige les entités HTML
+ * - Supprime les signatures répétées (optionnel)
+ * - Limite les espaces multiples
+ * - Supprime les lignes de citation excessives (optionnel)
+ */
+export function normalizeTextForPdf(text: string, options: { 
+  removeQuotes?: boolean; 
+  removeSignatures?: boolean;
+  maxLength?: number;
+} = {}): string {
+  if (!text) return '';
+  
+  const { removeQuotes = false, removeSignatures = false, maxLength } = options;
+  
+  let normalized = text;
+  
+  // Fix UTF-8 double encoding (mojibake) - Extended mapping
+  const encodingFixes: [RegExp, string][] = [
+    // Common UTF-8 double-encoded characters -> ASCII equivalents
+    [/Ã©/g, 'e'],
+    [/Ã¨/g, 'e'],
+    [/Ã /g, 'a'],
+    [/Ã¢/g, 'a'],
+    [/Ãª/g, 'e'],
+    [/Ã®/g, 'i'],
+    [/Ã´/g, 'o'],
+    [/Ã»/g, 'u'],
+    [/Ã§/g, 'c'],
+    [/Ã¹/g, 'u'],
+    [/Ã¼/g, 'u'],
+    [/Ã¤/g, 'a'],
+    [/Ã¶/g, 'o'],
+    [/Ã«/g, 'e'],
+    [/Ã¯/g, 'i'],
+    [/Ã¿/g, 'y'],
+    [/Ã€/g, 'A'],
+    [/Ã‰/g, 'E'],
+    [/Ã‹/g, 'E'],
+    [/Ãˆ/g, 'E'],
+    [/Ã"/g, 'O'],
+    [/Ãœ/g, 'U'],
+    [/Å"/g, 'oe'],
+    [/Å'/g, 'OE'],
+    [/Â©/g, '(c)'],
+    [/Â«/g, '"'],
+    [/Â»/g, '"'],
+    [/Â°/g, 'deg'],
+    [/Â€/g, 'EUR'],
+    
+    // Smart quotes and dashes (Windows-1252 to UTF-8)
+    [/â€™/g, "'"],
+    [/â€˜/g, "'"],
+    [/â€œ/g, '"'],
+    [/â€/g, '"'],
+    [/â€"/g, '-'],
+    [/â€¦/g, '...'],
+    [/Â·/g, '.'],
+    [/â€¢/g, '-'],
+    [/â‚¬/g, 'EUR'],
+    
+    // Corrupted UTF-8 bytes (Â prefix issue)
+    [/Â\s/g, ' '],
+    [/Â(?=[a-zA-Z])/gi, ''],
+    
+    // HTML entities
+    [/&amp;/g, '&'],
+    [/&lt;/g, '<'],
+    [/&gt;/g, '>'],
+    [/&quot;/g, '"'],
+    [/&#39;/g, "'"],
+    [/&apos;/g, "'"],
+    [/&nbsp;/g, ' '],
+    [/&#x26;/g, '&'],
+    [/&#x27;/g, "'"],
+    [/&#x22;/g, '"'],
+    [/&#xA0;/g, ' '],
+    [/&#160;/g, ' '],
+    
+    // Non-breaking spaces
+    [/\u00A0/g, ' '],
+    [/\u200B/g, ''], // Zero-width space
+    [/\u200C/g, ''], // Zero-width non-joiner
+    [/\u200D/g, ''], // Zero-width joiner
+    [/\uFEFF/g, ''], // BOM
+    
+    // Fix common Windows line endings issues
+    [/\r\n/g, '\n'],
+    [/\r/g, '\n'],
+  ];
+  
+  for (const [pattern, replacement] of encodingFixes) {
+    normalized = normalized.replace(pattern, replacement);
+  }
+  
+  // Remove excessive citation lines (> character at start)
+  if (removeQuotes) {
+    const lines = normalized.split('\n');
+    const cleanedLines: string[] = [];
+    let consecutiveCitations = 0;
+    
+    for (const line of lines) {
+      if (line.trim().startsWith('>')) {
+        consecutiveCitations++;
+        // Keep max 3 citation lines, then skip
+        if (consecutiveCitations <= 3) {
+          cleanedLines.push(line);
+        } else if (consecutiveCitations === 4) {
+          cleanedLines.push('[... citations precedentes omises ...]');
+        }
+      } else {
+        consecutiveCitations = 0;
+        cleanedLines.push(line);
+      }
+    }
+    
+    normalized = cleanedLines.join('\n');
+  }
+  
+  // Remove duplicate signatures (common pattern: same block appears twice)
+  if (removeSignatures) {
+    const signaturePatterns = [
+      /--\s*\n[\s\S]*?(?=--\s*\n|$)/g, // -- signature blocks
+      /Cordialement[\s\S]*?(?=Cordialement|$)/gi,
+      /Meilleures salutations[\s\S]*?(?=Meilleures salutations|$)/gi,
+    ];
+    
+    for (const pattern of signaturePatterns) {
+      const matches = normalized.match(pattern);
+      if (matches && matches.length > 1) {
+        // Keep only the first occurrence
+        let first = true;
+        normalized = normalized.replace(pattern, (match) => {
+          if (first) {
+            first = false;
+            return match;
+          }
+          return '';
+        });
+      }
+    }
+  }
+  
+  // Replace glyphs that jsPDF default fonts cannot render reliably (use Unicode escapes)
+  const glyphSafeReplacements: [RegExp, string][] = [
+    [/[\u2713\u2714]/g, 'OK'],
+    [/[\u2717\u2718]/g, 'X'],
+    [/\u26A0/g, '!'],
+    [/\u2192/g, '->'],
+    [/[\u2013\u2014]/g, '-'],
+    [/\u2026/g, '...'],
+    [/\u20AC/g, 'EUR'],
+    [/[\u2018\u2019]/g, "'"],
+    [/[\u201C\u201D]/g, '"'],
+    [/\u2022/g, '-'],
+    [/\u00AB/g, '"'],
+    [/\u00BB/g, '"'],
+  ];
+
+  for (const [pattern, replacement] of glyphSafeReplacements) {
+    normalized = normalized.replace(pattern, replacement);
+  }
+
+  // Remove any remaining non-Latin1 chars (jsPDF default font limitation)
+  // Keeps: tab (\x09), newline (\x0A), carriage return (\x0D), printable ASCII (\x20-\x7E), Latin-1 Supplement (\xA0-\xFF)
+  normalized = normalized.replace(/[^\x09\x0A\x0D\x20-\x7E\xA0-\xFF]/g, '');
+
+  // Collapse multiple blank lines to max 2
+  normalized = normalized.replace(/\n{4,}/g, '\n\n\n');
+
+  // Collapse multiple spaces
+  normalized = normalized.replace(/[ \t]{3,}/g, '  ');
+
+  // Trim each line
+  normalized = normalized.split('\n').map(l => l.trim()).join('\n');
+
+  // Apply max length if specified
+  if (maxLength && normalized.length > maxLength) {
+    normalized = normalized.substring(0, maxLength) + '...';
+  }
+
+  return normalized.trim();
+}
+
+/**
+ * Alias for backward compatibility - normalizes email body
+ */
+export function normalizeEmailBodyForPdf(body: string): string {
+  return normalizeTextForPdf(body, { removeQuotes: true, removeSignatures: true });
+}
+
+/**
  * Dessine un encadré de base légale avec explication
  */
 export function drawLegalBox(
@@ -367,7 +560,7 @@ export function drawLegalBox(
     currentY += 3;
     doc.setFont('helvetica', 'bolditalic');
     setColor(doc, PDF_COLORS.secondary);
-    doc.text('Application au cas présent :', marginLeft + 8, currentY);
+    doc.text('Application au cas present :', marginLeft + 8, currentY);
     currentY += 5;
     
     doc.setFont('helvetica', 'italic');
@@ -501,7 +694,7 @@ export function drawCitation(
     doc.setFontSize(7);
     doc.setFont('helvetica', 'normal');
     setColor(doc, PDF_COLORS.muted);
-    doc.text(`— ${source}`, marginLeft + 15, currentY + 3);
+    doc.text(`- ${source}`, marginLeft + 15, currentY + 3);
     currentY += 6;
   }
   
@@ -567,195 +760,6 @@ export function formatPDFDateTime(dateStr: string): string {
   } catch {
     return dateStr;
   }
-}
-
-/**
- * Normalise TOUT texte pour affichage PDF propre
- * - Nettoie les artefacts d'encodage UTF-8 (double encodage, mojibake)
- * - Corrige les entités HTML
- * - Supprime les signatures répétées (optionnel)
- * - Limite les espaces multiples
- * - Supprime les lignes de citation excessives (optionnel)
- */
-export function normalizeTextForPdf(text: string, options: { 
-  removeQuotes?: boolean; 
-  removeSignatures?: boolean;
-  maxLength?: number;
-} = {}): string {
-  if (!text) return '';
-  
-  const { removeQuotes = false, removeSignatures = false, maxLength } = options;
-  
-  let normalized = text;
-  
-  // Fix UTF-8 double encoding (mojibake) - Extended mapping
-  const encodingFixes: [RegExp, string][] = [
-    // Common UTF-8 double-encoded characters
-    [/Ã©/g, 'é'],
-    [/Ã¨/g, 'è'],
-    [/Ã /g, 'à'],
-    [/Ã¢/g, 'â'],
-    [/Ãª/g, 'ê'],
-    [/Ã®/g, 'î'],
-    [/Ã´/g, 'ô'],
-    [/Ã»/g, 'û'],
-    [/Ã§/g, 'ç'],
-    [/Ã¹/g, 'ù'],
-    [/Ã¼/g, 'ü'],
-    [/Ã¤/g, 'ä'],
-    [/Ã¶/g, 'ö'],
-    [/Ã«/g, 'ë'],
-    [/Ã¯/g, 'ï'],
-    [/Ã¿/g, 'ÿ'],
-    [/Ã€/g, 'À'],
-    [/Ã‰/g, 'É'],
-    [/Ã‹/g, 'Ë'],
-    [/Ãˆ/g, 'È'],
-    [/Ã"/g, 'Ó'],
-    [/Ãœ/g, 'Ü'],
-    [/Å"/g, 'œ'],
-    [/Å'/g, 'Œ'],
-    [/Â©/g, '©'],
-    [/Â«/g, '«'],
-    [/Â»/g, '»'],
-    [/Â°/g, '°'],
-    [/Â€/g, '€'],
-    [/â‚¬/g, '€'],
-    
-    // Smart quotes and dashes (Windows-1252 to UTF-8)
-    [/â€™/g, "'"],
-    [/â€˜/g, "'"],
-    [/â€œ/g, '"'],
-    [/â€/g, '"'],
-    [/â€"/g, '–'],
-    [/â€"/g, '—'],
-    [/â€¦/g, '…'],
-    [/Â·/g, '·'],
-    [/â€¢/g, '•'],
-    
-    // Corrupted UTF-8 bytes (Â prefix issue)
-    [/Â\s/g, ' '],
-    [/Â(?=[a-zéèêëàâäùûüôöïîç])/gi, ''],
-    
-    // HTML entities
-    [/&amp;/g, '&'],
-    [/&lt;/g, '<'],
-    [/&gt;/g, '>'],
-    [/&quot;/g, '"'],
-    [/&#39;/g, "'"],
-    [/&apos;/g, "'"],
-    [/&nbsp;/g, ' '],
-    [/&#x26;/g, '&'],
-    [/&#x27;/g, "'"],
-    [/&#x22;/g, '"'],
-    [/&#xA0;/g, ' '],
-    [/&#160;/g, ' '],
-    
-    // Non-breaking spaces
-    [/\u00A0/g, ' '],
-    [/\u200B/g, ''], // Zero-width space
-    [/\u200C/g, ''], // Zero-width non-joiner
-    [/\u200D/g, ''], // Zero-width joiner
-    [/\uFEFF/g, ''], // BOM
-    
-    // Fix common Windows line endings issues
-    [/\r\n/g, '\n'],
-    [/\r/g, '\n'],
-  ];
-  
-  for (const [pattern, replacement] of encodingFixes) {
-    normalized = normalized.replace(pattern, replacement);
-  }
-  
-  // Remove excessive citation lines (> character at start)
-  if (removeQuotes) {
-    const lines = normalized.split('\n');
-    const cleanedLines: string[] = [];
-    let consecutiveCitations = 0;
-    
-    for (const line of lines) {
-      if (line.trim().startsWith('>')) {
-        consecutiveCitations++;
-        // Keep max 3 citation lines, then skip
-        if (consecutiveCitations <= 3) {
-          cleanedLines.push(line);
-        } else if (consecutiveCitations === 4) {
-          cleanedLines.push('[... citations précédentes omises ...]');
-        }
-      } else {
-        consecutiveCitations = 0;
-        cleanedLines.push(line);
-      }
-    }
-    
-    normalized = cleanedLines.join('\n');
-  }
-  
-  // Remove duplicate signatures (common pattern: same block appears twice)
-  if (removeSignatures) {
-    const signaturePatterns = [
-      /--\s*\n[\s\S]*?(?=--\s*\n|$)/g, // -- signature blocks
-      /Cordialement[\s\S]*?(?=Cordialement|$)/gi,
-      /Meilleures salutations[\s\S]*?(?=Meilleures salutations|$)/gi,
-    ];
-    
-    for (const pattern of signaturePatterns) {
-      const matches = normalized.match(pattern);
-      if (matches && matches.length > 1) {
-        // Keep only the first occurrence
-        let first = true;
-        normalized = normalized.replace(pattern, (match) => {
-          if (first) {
-            first = false;
-            return match;
-          }
-          return '';
-        });
-      }
-    }
-  }
-  
-  // Replace glyphs that jsPDF default fonts can't render reliably
-  const glyphSafeReplacements: [RegExp, string][] = [
-    [/✓|✔/g, 'OK'],
-    [/✗|✘/g, 'X'],
-    [/⚠️|⚠/g, '!'],
-    [/→/g, '->'],
-    [/–|—/g, '-'],
-    [/…/g, '...'],
-    [/€/g, 'EUR'],
-  ];
-
-  for (const [pattern, replacement] of glyphSafeReplacements) {
-    normalized = normalized.replace(pattern, replacement);
-  }
-
-  // Remove any remaining non-Latin1 chars (jsPDF default font limitation)
-  normalized = normalized.replace(/[^	
-0- A0- FF]/g, '');
-
-  // Collapse multiple blank lines to max 2
-  normalized = normalized.replace(/\n{4,}/g, '\n\n\n');
-
-  // Collapse multiple spaces
-  normalized = normalized.replace(/[ \t]{3,}/g, '  ');
-
-  // Trim each line
-  normalized = normalized.split('\n').map(l => l.trim()).join('\n');
-
-  // Apply max length if specified
-  if (maxLength && normalized.length > maxLength) {
-    normalized = normalized.substring(0, maxLength) + '...';
-  }
-
-  return normalized.trim();
-}
-
-/**
- * Alias for backward compatibility - normalizes email body
- */
-export function normalizeEmailBodyForPdf(body: string): string {
-  return normalizeTextForPdf(body, { removeQuotes: true, removeSignatures: true });
 }
 
 /**
@@ -843,7 +847,7 @@ export function drawEmailBlock(
   if (recipient) {
     doc.setFontSize(8);
     setColor(doc, PDF_COLORS.muted);
-    doc.text(`À: ${recipient}`, marginLeft + 8, currentY);
+    doc.text(`A: ${recipient}`, marginLeft + 8, currentY);
     currentY += 4;
   }
   
@@ -865,7 +869,7 @@ export function drawEmailBlock(
   if (hasMoreLines) {
     doc.setFont('helvetica', 'italic');
     setColor(doc, PDF_COLORS.muted);
-    doc.text(`[...${bodyLines.length - maxBodyLines} lignes supplémentaires]`, marginLeft + 8, currentY + 2);
+    doc.text(`[...${bodyLines.length - maxBodyLines} lignes supplementaires]`, marginLeft + 8, currentY + 2);
   }
   
   return y + blockHeight + 5;
@@ -892,7 +896,7 @@ export function drawLegalSearchResult(
   
   doc.setFontSize(9);
 
-  const reference = normalizeTextForPdf(result.reference_number || 'Réf. N/A', { maxLength: 60 });
+  const reference = normalizeTextForPdf(result.reference_number || 'Ref. N/A', { maxLength: 60 });
   const title = normalizeTextForPdf(result.title, { maxLength: 180 });
   const summary = normalizeTextForPdf(result.summary, { maxLength: 800 });
   const sourceName = normalizeTextForPdf(result.source_name, { maxLength: 60 });
@@ -925,7 +929,7 @@ export function drawLegalSearchResult(
   doc.setFontSize(7);
   doc.setFont('helvetica', 'normal');
   setColor(doc, PDF_COLORS.muted);
-  const typeLabel = result.source_type === 'jurisprudence' ? 'JURISPRUDENCE' : 'LÉGISLATION';
+  const typeLabel = result.source_type === 'jurisprudence' ? 'JURISPRUDENCE' : 'LEGISLATION';
   doc.text(typeLabel, marginLeft + contentWidth - 5, currentY, { align: 'right' });
   currentY += 5;
   
@@ -1001,7 +1005,7 @@ export function drawEmailCitation(
   doc.setFontSize(7);
   doc.setFont('helvetica', 'normal');
   setColor(doc, PDF_COLORS.muted);
-  doc.text(`— ${citation.emailSender}, ${citation.emailDate}`, marginLeft + 12, currentY);
+  doc.text(`- ${citation.emailSender}, ${citation.emailDate}`, marginLeft + 12, currentY);
   
   // Pertinence si indiquée
   if (citation.relevance) {
