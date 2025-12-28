@@ -169,6 +169,46 @@ export function SituationManager({
 
     setIsLoading(true);
     try {
+      // 1. Orpheliner les documents PDF (mettre folder_id = null)
+      const { error: docError } = await supabase
+        .from('pdf_documents')
+        .update({ folder_id: null })
+        .eq('folder_id', editingFolder.id);
+
+      if (docError) {
+        console.error('Error orphaning documents:', docError);
+      }
+
+      // 2. Supprimer les analyses de situation liées
+      const { error: analysisError } = await supabase
+        .from('situation_analyses')
+        .delete()
+        .eq('folder_id', editingFolder.id);
+
+      if (analysisError) {
+        console.error('Error deleting situation analyses:', analysisError);
+      }
+
+      // 3. Supprimer les comparaisons de situations liées
+      const { error: compError1 } = await supabase
+        .from('situation_comparisons')
+        .delete()
+        .eq('folder_id_1', editingFolder.id);
+
+      if (compError1) {
+        console.error('Error deleting comparisons (folder_id_1):', compError1);
+      }
+
+      const { error: compError2 } = await supabase
+        .from('situation_comparisons')
+        .delete()
+        .eq('folder_id_2', editingFolder.id);
+
+      if (compError2) {
+        console.error('Error deleting comparisons (folder_id_2):', compError2);
+      }
+
+      // 4. Supprimer le dossier
       const { error } = await supabase
         .from('pdf_folders')
         .delete()

@@ -32,7 +32,7 @@ export default function IATraining() {
   const queryClient = useQueryClient();
   const [selectedThread, setSelectedThread] = useState<any>(null);
   const [feedbackNotes, setFeedbackNotes] = useState("");
-
+  const [showOnlyWithIssues, setShowOnlyWithIssues] = useState(false);
   // Fetch thread analyses for validation
   const { data: threadAnalyses, isLoading: loadingThreads } = useQuery({
     queryKey: ['thread-analyses-training'],
@@ -167,6 +167,9 @@ export default function IATraining() {
     (t.detected_issues as any[])?.length > 0
   ) || [];
 
+  // Afficher toutes les analyses ou seulement celles avec problèmes
+  const displayedThreads = showOnlyWithIssues ? threadsWithIssues : (threadAnalyses || []);
+
   return (
     <AppLayout>
       <div className="container mx-auto py-6 space-y-6">
@@ -257,7 +260,7 @@ export default function IATraining() {
           <TabsList>
             <TabsTrigger value="validate" className="flex items-center gap-2">
               <Eye className="h-4 w-4" />
-              Valider les analyses ({threadsWithIssues.length})
+              Valider les analyses ({threadAnalyses?.length || 0})
             </TabsTrigger>
             <TabsTrigger value="actors" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
@@ -278,19 +281,34 @@ export default function IATraining() {
               {/* Thread List */}
               <Card className="lg:h-[600px] flex flex-col">
                 <CardHeader className="shrink-0">
-                  <CardTitle className="text-lg">Analyses de threads à valider</CardTitle>
-                  <CardDescription>
-                    Cliquez sur une analyse pour la valider ou la rejeter
-                  </CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-lg">Analyses de threads à valider</CardTitle>
+                      <CardDescription>
+                        Cliquez sur une analyse pour la valider ou la rejeter
+                      </CardDescription>
+                    </div>
+                    <Button
+                      variant={showOnlyWithIssues ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setShowOnlyWithIssues(!showOnlyWithIssues)}
+                    >
+                      <AlertTriangle className="h-4 w-4 mr-2" />
+                      {showOnlyWithIssues ? `Problèmes (${threadsWithIssues.length})` : 'Filtrer problèmes'}
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="flex-1 min-h-0 overflow-y-auto space-y-2">
                   {loadingThreads ? (
                     <p className="text-muted-foreground">Chargement...</p>
-                  ) : threadsWithIssues.length === 0 ? (
-                    <p className="text-muted-foreground">Aucune analyse avec problèmes détectés</p>
+                  ) : displayedThreads.length === 0 ? (
+                    <p className="text-muted-foreground">
+                      {showOnlyWithIssues ? 'Aucune analyse avec problèmes détectés' : 'Aucune analyse disponible'}
+                    </p>
                   ) : (
-                    threadsWithIssues.map((thread) => {
+                    displayedThreads.map((thread) => {
                       const issues = thread.detected_issues as any[];
+                      const hasIssues = issues?.length > 0;
                       return (
                         <div
                           key={thread.id}
@@ -307,7 +325,14 @@ export default function IATraining() {
                                 <Badge variant={getSeverityColor(thread.severity)}>
                                   {thread.severity || 'Non défini'}
                                 </Badge>
-                                <Badge variant="outline">{issues?.length || 0} problèmes</Badge>
+                                {hasIssues ? (
+                                  <Badge variant="outline">{issues.length} problèmes</Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-green-600 bg-green-50">
+                                    <CheckCircle className="h-3 w-3 mr-1" />
+                                    OK
+                                  </Badge>
+                                )}
                               </div>
                               <p className="font-medium text-sm truncate max-w-[300px]">
                                 {thread.chronological_summary?.slice(0, 100) || 'Pas de résumé'}...
