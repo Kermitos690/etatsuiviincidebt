@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { verifyAuth, corsHeaders } from "../_shared/auth.ts";
+import { encryptGmailTokens, isEncryptionConfigured, getGmailTokens } from "../_shared/encryption.ts";
 
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID");
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET");
@@ -91,16 +92,50 @@ serve(async (req) => {
       // Calculate token expiry
       const tokenExpiry = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
 
-      // Store tokens in gmail_config table - associate with the authenticated user
-      const { error: upsertError } = await supabase
-        .from("gmail_config")
-        .upsert({
-          user_id: stateData.user_id,
-          user_email: userEmail,
+      // Store tokens - encrypted if encryption is configured, otherwise plaintext
+      let upsertData: any = {
+        user_id: stateData.user_id,
+        user_email: userEmail,
+        token_expiry: tokenExpiry,
+      };
+
+      if (isEncryptionConfigured()) {
+        try {
+          const encrypted = await encryptGmailTokens(
+            tokenData.access_token,
+            tokenData.refresh_token || null
+          );
+          upsertData = {
+            ...upsertData,
+            access_token_enc: encrypted.accessTokenEnc,
+            refresh_token_enc: encrypted.refreshTokenEnc,
+            token_nonce: encrypted.nonce,
+            token_key_version: encrypted.keyVersion,
+            access_token: null, // Clear plaintext
+            refresh_token: null, // Clear plaintext
+          };
+          console.log("Tokens will be stored encrypted (key version", encrypted.keyVersion, ")");
+        } catch (encError) {
+          console.error("Encryption failed, falling back to plaintext:", encError);
+          upsertData = {
+            ...upsertData,
+            access_token: tokenData.access_token,
+            refresh_token: tokenData.refresh_token || null,
+          };
+        }
+      } else {
+        // Fallback to plaintext storage
+        upsertData = {
+          ...upsertData,
           access_token: tokenData.access_token,
           refresh_token: tokenData.refresh_token || null,
-          token_expiry: tokenExpiry,
-        }, { onConflict: "user_id" });
+        };
+        console.log("Encryption not configured - storing tokens in plaintext");
+      }
+
+      const { error: upsertError } = await supabase
+        .from("gmail_config")
+        .upsert(upsertData, { onConflict: "user_id" });
 
       if (upsertError) {
         console.error("Failed to store tokens:", upsertError);
@@ -265,7 +300,13 @@ serve(async (req) => {
         .eq("user_id", user.id)
         .maybeSingle();
 
-      if (configError || !config?.refresh_token) {
+      if (configError || !config) {
+        throw new Error("No Gmail config available");
+      }
+
+      // Get refresh token (decrypted if encrypted)
+      const tokens = await getGmailTokens(config);
+      if (!tokens.refreshToken) {
         throw new Error("No refresh token available");
       }
 
@@ -276,7 +317,7 @@ serve(async (req) => {
         body: new URLSearchParams({
           client_id: GOOGLE_CLIENT_ID!,
           client_secret: GOOGLE_CLIENT_SECRET!,
-          refresh_token: config.refresh_token,
+          refresh_token: tokens.refreshToken,
           grant_type: "refresh_token",
         }),
       });
@@ -287,16 +328,47 @@ serve(async (req) => {
         throw new Error(tokenData.error_description || "Token refresh failed");
       }
 
-      // Update stored token
+      // Update stored token - encrypted if encryption is configured
       const tokenExpiry = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
-      await supabase
-        .from("gmail_config")
-        .update({ 
-          access_token: tokenData.access_token,
-          token_expiry: tokenExpiry
-        })
-        .eq("id", config.id)
-        .eq("user_id", user.id); // Extra safety check
+
+      if (isEncryptionConfigured()) {
+        try {
+          const encrypted = await encryptGmailTokens(tokenData.access_token, tokens.refreshToken);
+          await supabase
+            .from("gmail_config")
+            .update({ 
+              access_token_enc: encrypted.accessTokenEnc,
+              refresh_token_enc: encrypted.refreshTokenEnc,
+              token_nonce: encrypted.nonce,
+              token_key_version: encrypted.keyVersion,
+              access_token: null,
+              refresh_token: null,
+              token_expiry: tokenExpiry
+            })
+            .eq("id", config.id)
+            .eq("user_id", user.id);
+          console.log("Token refreshed and stored encrypted");
+        } catch (encError) {
+          console.error("Encryption failed, storing plaintext:", encError);
+          await supabase
+            .from("gmail_config")
+            .update({ 
+              access_token: tokenData.access_token,
+              token_expiry: tokenExpiry
+            })
+            .eq("id", config.id)
+            .eq("user_id", user.id);
+        }
+      } else {
+        await supabase
+          .from("gmail_config")
+          .update({ 
+            access_token: tokenData.access_token,
+            token_expiry: tokenExpiry
+          })
+          .eq("id", config.id)
+          .eq("user_id", user.id);
+      }
 
       console.log("Token refreshed for user:", user.id);
       return new Response(JSON.stringify({ 
