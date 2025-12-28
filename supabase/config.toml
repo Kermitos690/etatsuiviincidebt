@@ -161,3 +161,9 @@ verify_jwt = false
 
 [functions.deep-incident-analysis]
 verify_jwt = false
+
+[functions.link-threads]
+verify_jwt = false
+
+[functions.detect-thread-breaks]
+verify_jwt = false
