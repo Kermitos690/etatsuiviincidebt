@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useIncidentStore } from '@/stores/incidentStore';
 import type { Incident, Proof } from '@/types/incident';
@@ -23,14 +23,39 @@ const mapDbToIncident = (inc: any): Incident => ({
 });
 
 export function useRealtimeIncidents() {
-  const { incidents, setIncidents, loadFromSupabase } = useIncidentStore();
+  const { loadFromSupabase } = useIncidentStore();
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  // Use a callback that always gets fresh state from store
+  const handleRealtimeChange = useCallback((payload: any) => {
+    const { incidents, setIncidents } = useIncidentStore.getState();
+    
+    if (payload.eventType === 'INSERT') {
+      const newIncident = mapDbToIncident(payload.new);
+      const exists = incidents.some(inc => inc.id === newIncident.id);
+      if (!exists) {
+        setIncidents([newIncident, ...incidents]);
+      }
+    } else if (payload.eventType === 'UPDATE') {
+      const updatedIncident = mapDbToIncident(payload.new);
+      setIncidents(
+        incidents.map(inc => 
+          inc.id === updatedIncident.id ? updatedIncident : inc
+        )
+      );
+    } else if (payload.eventType === 'DELETE') {
+      setIncidents(
+        incidents.filter(inc => inc.id !== payload.old.id)
+      );
+    }
+  }, []);
 
   useEffect(() => {
     // Initial load
     loadFromSupabase();
 
-    // Subscribe to realtime changes
-    const channel = supabase
+    // Subscribe to realtime changes (single subscription)
+    channelRef.current = supabase
       .channel('incidents-realtime')
       .on(
         'postgres_changes',
@@ -39,68 +64,14 @@ export function useRealtimeIncidents() {
           schema: 'public',
           table: 'incidents'
         },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const newIncident = mapDbToIncident(payload.new);
-            setIncidents([...incidents, newIncident]);
-          } else if (payload.eventType === 'UPDATE') {
-            const updatedIncident = mapDbToIncident(payload.new);
-            setIncidents(
-              incidents.map(inc => 
-                inc.id === updatedIncident.id ? updatedIncident : inc
-              )
-            );
-          } else if (payload.eventType === 'DELETE') {
-            setIncidents(
-              incidents.filter(inc => inc.id !== payload.old.id)
-            );
-          }
-        }
+        handleRealtimeChange
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+      }
     };
-  }, []);
-
-  // Re-subscribe when incidents change to have fresh state in callback
-  useEffect(() => {
-    const channel = supabase
-      .channel('incidents-realtime-sync')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'incidents'
-        },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const newIncident = mapDbToIncident(payload.new);
-            // Check if already exists to avoid duplicates
-            const exists = incidents.some(inc => inc.id === newIncident.id);
-            if (!exists) {
-              setIncidents([...incidents, newIncident]);
-            }
-          } else if (payload.eventType === 'UPDATE') {
-            const updatedIncident = mapDbToIncident(payload.new);
-            setIncidents(
-              incidents.map(inc => 
-                inc.id === updatedIncident.id ? updatedIncident : inc
-              )
-            );
-          } else if (payload.eventType === 'DELETE') {
-            setIncidents(
-              incidents.filter(inc => inc.id !== payload.old.id)
-            );
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [incidents, setIncidents]);
+  }, [loadFromSupabase, handleRealtimeChange]);
 }
