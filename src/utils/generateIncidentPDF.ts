@@ -73,9 +73,31 @@ interface IncidentData {
     label: string;
     url?: string;
     hash?: string;
+    filename?: string;
+    ai_analysis?: any;
+    size_bytes?: number;
+    mime_type?: string;
   }>;
   gmailReferences?: any;
   confidenceLevel?: string;
+  email_source_id?: string;
+}
+
+interface AttachmentData {
+  id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  email_id: string;
+  email_sender?: string;
+  email_received_at?: string;
+  ai_analysis?: {
+    extracted_text?: string;
+    legal_analysis?: string;
+    severity?: string;
+    violations?: string[];
+    summary?: string;
+  };
 }
 
 interface GenerateIncidentPDFOptions {
@@ -85,7 +107,9 @@ interface GenerateIncidentPDFOptions {
   includeEmailCitations?: boolean;
   includeLegalSearch?: boolean;
   includeDeepAnalysis?: boolean;
+  includeAttachments?: boolean;
   emails?: EmailData[];
+  attachments?: AttachmentData[];
 }
 
 // Deep Analysis Types
@@ -500,7 +524,7 @@ function drawDeepAnalysisSection(
       doc.text(`Action 2: ${action2}`, marginLeft + 8, y + 15);
       
       setColor(doc, severityColors[contradiction.severity] || PDF_COLORS.muted);
-      doc.text(`⚠ ${contradictionText}`, marginLeft + 8, y + 20);
+      doc.text(`[!] ${contradictionText}`, marginLeft + 8, y + 20);
       
       y += 28;
     }
@@ -597,7 +621,7 @@ function drawDeepAnalysisSection(
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       setColor(doc, PDF_COLORS.muted);
-      doc.text(`→ ${leadsTo}`, marginLeft + 15, y + 5);
+      doc.text(`=> ${leadsTo}`, marginLeft + 15, y + 5);
       doc.text(`Responsable: ${responsibility}`, marginLeft + 100, y + 5);
       
       y += 12;
@@ -777,8 +801,17 @@ export async function generateIncidentPDF(
     includeEmailCitations = false,
     includeLegalSearch = false,
     includeDeepAnalysis = false,
+    includeAttachments = false,
     emails = [],
+    attachments = [],
   } = options;
+
+  // Normalize incident text fields
+  const normalizedTitre = normalizeTextForPdf(incident.titre || '', { maxLength: 200 });
+  const normalizedFaits = normalizeTextForPdf(incident.faits || '', { maxLength: 5000 });
+  const normalizedDysfonctionnement = normalizeTextForPdf(incident.dysfonctionnement || '', { maxLength: 3000 });
+  const normalizedInstitution = normalizeTextForPdf(incident.institution || '', { maxLength: 100 });
+  const normalizedType = normalizeTextForPdf(incident.type || '', { maxLength: 100 });
 
   // Perform deep analysis if requested
   let deepAnalysis: DeepAnalysisResult | null = null;
@@ -804,7 +837,7 @@ export async function generateIncidentPDF(
   let y = drawPremiumHeader(
     doc, 
     'incident', 
-    incident.titre,
+    normalizedTitre,
     incident.numero
   );
 
@@ -832,16 +865,16 @@ export async function generateIncidentPDF(
 
   // Tableau d'informations
   y = drawInfoTable(doc, y + 5, [
-    { label: 'Numéro', value: `INC-${String(incident.numero).padStart(4, '0')}`, highlight: true },
+    { label: 'Numero', value: `INC-${String(incident.numero).padStart(4, '0')}`, highlight: true },
     { label: 'Date incident', value: formatPDFDate(incident.dateIncident) },
-    { label: 'Date création', value: formatPDFDate(incident.dateCreation) },
-    { label: 'Institution', value: incident.institution },
-    { label: 'Type', value: incident.type },
-    { label: 'Gravité', value: incident.gravite },
-    { label: 'Priorité', value: `${incident.priorite} (Score: ${incident.score}/100)` },
+    { label: 'Date creation', value: formatPDFDate(incident.dateCreation) },
+    { label: 'Institution', value: normalizedInstitution },
+    { label: 'Type', value: normalizedType },
+    { label: 'Gravite', value: incident.gravite },
+    { label: 'Priorite', value: `${incident.priorite} (Score: ${incident.score}/100)` },
     { label: 'Statut', value: incident.statut },
     { label: 'Transmis JP', value: incident.transmisJP 
-      ? `Oui - ${incident.dateTransmissionJP ? formatPDFDate(incident.dateTransmissionJP) : 'Date non spécifiée'}`
+      ? `Oui - ${incident.dateTransmissionJP ? formatPDFDate(incident.dateTransmissionJP) : 'Date non specifiee'}`
       : 'Non' 
     },
   ]);
@@ -849,17 +882,17 @@ export async function generateIncidentPDF(
   y += 5;
 
   // ============================================
-  // SECTION 2: EXPOSÉ DES FAITS
+  // SECTION 2: EXPOSE DES FAITS
   // ============================================
   
   y = checkPageBreak(doc, y, 60);
-  y = drawSectionTitle(doc, 'EXPOSÉ DES FAITS', y, { numbered: true, number: sectionNumber++ });
+  y = drawSectionTitle(doc, 'EXPOSE DES FAITS', y, { numbered: true, number: sectionNumber++ });
 
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
   setColor(doc, PDF_COLORS.text);
   
-  const faitsText = incident.faits || 'Aucun fait renseigné.';
+  const faitsText = normalizedFaits || 'Aucun fait renseigne.';
   const faitsLines = doc.splitTextToSize(faitsText, contentWidth - 10);
   
   const faitsHeight = faitsLines.length * 5 + 10;
@@ -872,17 +905,17 @@ export async function generateIncidentPDF(
   y += faitsHeight + 5;
 
   // ============================================
-  // SECTION 3: DYSFONCTIONNEMENT IDENTIFIÉ
+  // SECTION 3: DYSFONCTIONNEMENT IDENTIFIE
   // ============================================
   
   y = checkPageBreak(doc, y, 60);
-  y = drawSectionTitle(doc, 'DYSFONCTIONNEMENT IDENTIFIÉ', y, { numbered: true, number: sectionNumber++ });
+  y = drawSectionTitle(doc, 'DYSFONCTIONNEMENT IDENTIFIE', y, { numbered: true, number: sectionNumber++ });
 
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
   setColor(doc, PDF_COLORS.text);
   
-  const dysfText = incident.dysfonctionnement || 'Aucun dysfonctionnement renseigné.';
+  const dysfText = normalizedDysfonctionnement || 'Aucun dysfonctionnement renseigne.';
   const dysfLines = doc.splitTextToSize(dysfText, contentWidth - 10);
   
   const dysfHeight = dysfLines.length * 5 + 10;
@@ -897,14 +930,14 @@ export async function generateIncidentPDF(
   y += dysfHeight + 5;
 
   // ============================================
-  // SECTION 4: BASES LÉGALES APPLICABLES
+  // SECTION 4: BASES LEGALES APPLICABLES
   // ============================================
   
   if (includeLegalExplanations) {
     y = checkPageBreak(doc, y, 80);
-    y = drawSectionTitle(doc, 'BASES LÉGALES APPLICABLES', y, { numbered: true, number: sectionNumber++, color: PDF_COLORS.legal });
+    y = drawSectionTitle(doc, 'BASES LEGALES APPLICABLES', y, { numbered: true, number: sectionNumber++, color: PDF_COLORS.legal });
 
-    const allText = `${incident.faits} ${incident.dysfonctionnement}`;
+    const allText = `${normalizedFaits} ${normalizedDysfonctionnement}`;
     let legalRefs = extractLegalReferences(allText);
     
     if (legalRefs.length === 0) {
@@ -915,9 +948,9 @@ export async function generateIncidentPDF(
     try {
       legalExplanations = await fetchLegalExplanations(
         legalRefs,
-        incident.faits,
-        incident.dysfonctionnement,
-        incident.type
+        normalizedFaits,
+        normalizedDysfonctionnement,
+        normalizedType
       );
     } catch (e) {
       console.error('Failed to fetch legal explanations:', e);
@@ -927,11 +960,11 @@ export async function generateIncidentPDF(
       for (const legal of legalExplanations) {
         y = checkPageBreak(doc, y, 60);
         y = drawLegalBox(doc, y, {
-          code: legal.code,
-          article: legal.article,
-          title: legal.title || undefined,
-          text: legal.text,
-          contextExplanation: legal.contextExplanation || undefined,
+          code: normalizeTextForPdf(legal.code || '', { maxLength: 50 }),
+          article: normalizeTextForPdf(legal.article || '', { maxLength: 20 }),
+          title: legal.title ? normalizeTextForPdf(legal.title, { maxLength: 100 }) : undefined,
+          text: normalizeTextForPdf(legal.text || '', { maxLength: 1000 }),
+          contextExplanation: legal.contextExplanation ? normalizeTextForPdf(legal.contextExplanation, { maxLength: 500 }) : undefined,
         });
       }
     } else {
@@ -940,10 +973,10 @@ export async function generateIncidentPDF(
       setColor(doc, PDF_COLORS.text);
       
       const defaultBases = [
-        `• ${incident.type === 'Délai non respecté' ? 'Art. 406 CC - Accomplissement diligent des tâches' : 'Art. 404 CC - Obligation du curateur'}`,
-        '• Art. 29 Cst. - Garanties de procédure judiciaire et administrative',
-        '• Art. 35 PA - Motivation des décisions',
-        '• Art. 13 LPD - Obligation de confidentialité',
+        `- ${incident.type === 'Delai non respecte' ? 'Art. 406 CC - Accomplissement diligent des taches' : 'Art. 404 CC - Obligation du curateur'}`,
+        '- Art. 29 Cst. - Garanties de procedure judiciaire et administrative',
+        '- Art. 35 PA - Motivation des decisions',
+        '- Art. 13 LPD - Obligation de confidentialite',
       ];
       
       for (const base of defaultBases) {
@@ -957,19 +990,19 @@ export async function generateIncidentPDF(
   }
 
   // ============================================
-  // SECTION 5: PREUVES RÉFÉRENCÉES
+  // SECTION 5: PREUVES REFERENCEES
   // ============================================
   
   if (includeProofs && incident.preuves && incident.preuves.length > 0) {
     y = checkPageBreak(doc, y, 60);
-    y = drawSectionTitle(doc, 'PREUVES RÉFÉRENCÉES', y, { numbered: true, number: sectionNumber++, color: PDF_COLORS.evidence });
+    y = drawSectionTitle(doc, 'PREUVES REFERENCEES', y, { numbered: true, number: sectionNumber++, color: PDF_COLORS.evidence });
 
     doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     setColor(doc, PDF_COLORS.secondary);
     
     const colX = { num: marginLeft, type: marginLeft + 15, label: marginLeft + 40, hash: marginLeft + 120 };
-    doc.text('N°', colX.num, y);
+    doc.text('No', colX.num, y);
     doc.text('Type', colX.type, y);
     doc.text('Description', colX.label, y);
     doc.text('Hash', colX.hash, y);
@@ -986,9 +1019,10 @@ export async function generateIncidentPDF(
       y = checkPageBreak(doc, y, 10);
       
       doc.text(`P${idx + 1}`, colX.num, y);
-      doc.text(preuve.type || 'doc', colX.type, y);
+      doc.text(normalizeTextForPdf(preuve.type || 'doc', { maxLength: 20 }), colX.type, y);
       
-      const labelLines = doc.splitTextToSize(preuve.label || 'Sans description', 75);
+      const labelNormalized = normalizeTextForPdf(preuve.label || 'Sans description', { maxLength: 75 });
+      const labelLines = doc.splitTextToSize(labelNormalized, 75);
       doc.text(labelLines[0], colX.label, y);
       
       const hash = preuve.hash || generateProofHash(preuve);
@@ -1015,17 +1049,17 @@ export async function generateIncidentPDF(
     doc.setFontSize(9);
     doc.setFont('helvetica', 'italic');
     setColor(doc, PDF_COLORS.muted);
-    doc.text(`${emails.length} email(s) lié(s) à cet incident`, marginLeft, y);
+    doc.text(`${emails.length} email(s) lie(s) a cet incident`, marginLeft, y);
     y += 8;
 
     for (let i = 0; i < emails.length; i++) {
       const email = emails[i];
       y = drawEmailBlock(doc, y, {
-        sender: email.sender,
-        recipient: email.recipient,
+        sender: normalizeTextForPdf(email.sender || '', { maxLength: 80 }),
+        recipient: normalizeTextForPdf(email.recipient || '', { maxLength: 80 }),
         date: formatPDFDateTime(email.received_at),
-        subject: email.subject,
-        body: email.body,
+        subject: normalizeTextForPdf(email.subject || '', { maxLength: 150 }),
+        body: normalizeTextForPdf(email.body || '', { maxLength: 5000 }),
         isReceived: !email.is_sent,
         citationNumber: i + 1
       });
@@ -1043,20 +1077,20 @@ export async function generateIncidentPDF(
     doc.setFontSize(9);
     doc.setFont('helvetica', 'italic');
     setColor(doc, PDF_COLORS.muted);
-    doc.text('Passages clés extraits des emails prouvant les faits allégués', marginLeft, y);
+    doc.text('Passages cles extraits des emails prouvant les faits allegues', marginLeft, y);
     y += 8;
 
-    const citations = await extractEmailCitations(emails, incident.faits, incident.dysfonctionnement);
+    const citations = await extractEmailCitations(emails, normalizedFaits, normalizedDysfonctionnement);
     
     if (citations.length > 0) {
       for (let i = 0; i < citations.length; i++) {
         const citation = citations[i];
         y = drawEmailCitation(doc, y, {
           number: i + 1,
-          text: citation.text,
+          text: normalizeTextForPdf(citation.text || '', { maxLength: 300 }),
           emailDate: citation.emailDate,
-          emailSender: citation.emailSender,
-          relevance: citation.relevance
+          emailSender: normalizeTextForPdf(citation.emailSender || '', { maxLength: 60 }),
+          relevance: normalizeTextForPdf(citation.relevance || '', { maxLength: 50 })
         });
       }
     } else {
@@ -1088,14 +1122,14 @@ export async function generateIncidentPDF(
     doc.setFontSize(9);
     doc.setFont('helvetica', 'italic');
     setColor(doc, PDF_COLORS.muted);
-    doc.text('Jurisprudence et législation trouvées automatiquement', marginLeft, y);
+    doc.text('Jurisprudence et legislation trouvees automatiquement', marginLeft, y);
     y += 8;
 
     const legalResults = await searchLegalContext(
-      incident.type,
-      incident.faits,
-      incident.dysfonctionnement,
-      incident.institution
+      normalizedType,
+      normalizedFaits,
+      normalizedDysfonctionnement,
+      normalizedInstitution
     );
 
     // Jurisprudence
@@ -1108,21 +1142,34 @@ export async function generateIncidentPDF(
       y += 8;
 
       for (const result of legalResults.jurisprudence) {
-        y = drawLegalSearchResult(doc, y, result);
+        // Normalize result fields
+        const normalizedResult = {
+          ...result,
+          title: normalizeTextForPdf(result.title || '', { maxLength: 150 }),
+          summary: normalizeTextForPdf(result.summary || '', { maxLength: 400 }),
+          reference_number: normalizeTextForPdf(result.reference_number || '', { maxLength: 50 }),
+        };
+        y = drawLegalSearchResult(doc, y, normalizedResult);
       }
     }
 
-    // Législation
+    // Legislation
     if (legalResults.legislation.length > 0) {
       y = checkPageBreak(doc, y, 40);
       doc.setFontSize(11);
       doc.setFont('helvetica', 'bold');
       setColor(doc, PDF_COLORS.evidence);
-      doc.text('Législation applicable', marginLeft, y);
+      doc.text('Legislation applicable', marginLeft, y);
       y += 8;
 
       for (const result of legalResults.legislation) {
-        y = drawLegalSearchResult(doc, y, result);
+        const normalizedResult = {
+          ...result,
+          title: normalizeTextForPdf(result.title || '', { maxLength: 150 }),
+          summary: normalizeTextForPdf(result.summary || '', { maxLength: 400 }),
+          reference_number: normalizeTextForPdf(result.reference_number || '', { maxLength: 50 }),
+        };
+        y = drawLegalSearchResult(doc, y, normalizedResult);
       }
     }
 
@@ -1130,13 +1177,129 @@ export async function generateIncidentPDF(
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
       setColor(doc, PDF_COLORS.muted);
-      doc.text('Aucun résultat de recherche juridique disponible.', marginLeft, y);
+      doc.text('Aucun resultat de recherche juridique disponible.', marginLeft, y);
       y += 10;
     }
   }
 
   // ============================================
-  // AVERTISSEMENT LÉGAL
+  // SECTION 10: PIECES JOINTES (ANALYSE IA)
+  // ============================================
+  
+  if (includeAttachments && attachments.length > 0) {
+    y = checkPageBreak(doc, y, 80);
+    y = drawSectionTitle(doc, 'PIECES JOINTES (ANALYSE IA)', y, { numbered: true, number: sectionNumber++, color: PDF_COLORS.evidence });
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'italic');
+    setColor(doc, PDF_COLORS.muted);
+    doc.text(`${attachments.length} piece(s) jointe(s) analysee(s)`, marginLeft, y);
+    y += 10;
+
+    for (let i = 0; i < attachments.length; i++) {
+      const attachment = attachments[i];
+      const filename = normalizeTextForPdf(attachment.filename || 'Document sans nom', { maxLength: 60 });
+      const analysis = attachment.ai_analysis;
+      
+      // Calculate box height based on content
+      let boxHeight = 35;
+      if (analysis?.violations && analysis.violations.length > 0) boxHeight += 12;
+      if (analysis?.legal_analysis) boxHeight += 20;
+      if (analysis?.extracted_text) boxHeight += 25;
+      
+      y = checkPageBreak(doc, y, boxHeight + 10);
+      
+      // Draw attachment box
+      setColor(doc, PDF_COLORS.background, 'fill');
+      doc.roundedRect(marginLeft, y - 2, contentWidth, boxHeight, 2, 2, 'F');
+      
+      // Severity indicator bar
+      const severity = analysis?.severity || 'unknown';
+      const severityColor = severity === 'critical' ? PDF_COLORS.critique 
+        : severity === 'high' ? PDF_COLORS.haute 
+        : severity === 'medium' ? PDF_COLORS.moyenne 
+        : PDF_COLORS.faible;
+      setColor(doc, severityColor, 'fill');
+      doc.rect(marginLeft, y - 2, 4, boxHeight, 'F');
+      
+      // Attachment number and filename
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      setColor(doc, PDF_COLORS.text);
+      doc.text(`[${i + 1}] ${filename}`, marginLeft + 8, y + 4);
+      
+      // Metadata
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'normal');
+      setColor(doc, PDF_COLORS.muted);
+      const sizeKb = Math.round((attachment.size_bytes || 0) / 1024);
+      const metadata = `${attachment.mime_type || 'Type inconnu'} | ${sizeKb} Ko`;
+      doc.text(metadata, marginLeft + contentWidth - 50, y + 4);
+      
+      // Email source info
+      if (attachment.email_sender) {
+        const sender = normalizeTextForPdf(attachment.email_sender, { maxLength: 40 });
+        doc.text(`Source: ${sender}`, marginLeft + 8, y + 10);
+      }
+      if (attachment.email_received_at) {
+        doc.text(`Date: ${formatPDFDate(attachment.email_received_at)}`, marginLeft + 100, y + 10);
+      }
+      
+      let contentY = y + 16;
+      
+      // AI Summary
+      if (analysis?.summary) {
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'italic');
+        setColor(doc, PDF_COLORS.text);
+        const summary = normalizeTextForPdf(analysis.summary, { maxLength: 200 });
+        const summaryLines = doc.splitTextToSize(`Resume: ${summary}`, contentWidth - 15);
+        doc.text(summaryLines.slice(0, 2), marginLeft + 8, contentY);
+        contentY += summaryLines.slice(0, 2).length * 4 + 2;
+      }
+      
+      // Violations detected
+      if (analysis?.violations && analysis.violations.length > 0) {
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+        setColor(doc, PDF_COLORS.critique);
+        const violationsText = (analysis.violations as string[])
+          .slice(0, 3)
+          .map(v => normalizeTextForPdf(v, { maxLength: 40 }))
+          .join(' | ');
+        doc.text(`Violations: ${violationsText}`, marginLeft + 8, contentY);
+        contentY += 6;
+      }
+      
+      // Legal analysis excerpt
+      if (analysis?.legal_analysis) {
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal');
+        setColor(doc, PDF_COLORS.legal);
+        const legalText = normalizeTextForPdf(analysis.legal_analysis, { maxLength: 250 });
+        const legalLines = doc.splitTextToSize(`Analyse juridique: ${legalText}`, contentWidth - 15);
+        doc.text(legalLines.slice(0, 3), marginLeft + 8, contentY);
+        contentY += legalLines.slice(0, 3).length * 3.5 + 2;
+      }
+      
+      // Extracted text excerpt
+      if (analysis?.extracted_text) {
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'normal');
+        setColor(doc, PDF_COLORS.muted);
+        const extractedText = normalizeTextForPdf(analysis.extracted_text.substring(0, 400), { maxLength: 400 });
+        const textLines = doc.splitTextToSize(`Contenu extrait: "${extractedText}..."`, contentWidth - 15);
+        doc.text(textLines.slice(0, 4), marginLeft + 8, contentY);
+      }
+      
+      y += boxHeight + 5;
+    }
+    
+    y += 5;
+  }
+
+  // ============================================
+  // AVERTISSEMENT LEGAL
   // ============================================
   
   y = checkPageBreak(doc, y, 30);
@@ -1148,9 +1311,9 @@ export async function generateIncidentPDF(
   doc.setFont('helvetica', 'italic');
   setColor(doc, PDF_COLORS.muted);
   
-  const disclaimer = 'Ce document est établi conformément aux dispositions de la Loi fédérale sur la protection des données (LPD) ' +
-    'et aux articles 388-456 du Code civil suisse relatifs à la protection de l\'adulte. ' +
-    'Son contenu est strictement confidentiel et destiné exclusivement aux autorités compétentes.';
+  const disclaimer = 'Ce document est etabli conformement aux dispositions de la Loi federale sur la protection des donnees (LPD) ' +
+    'et aux articles 388-456 du Code civil suisse relatifs a la protection de l\'adulte. ' +
+    'Son contenu est strictement confidentiel et destine exclusivement aux autorites competentes.';
   
   const disclaimerLines = doc.splitTextToSize(disclaimer, contentWidth - 10);
   doc.text(disclaimerLines, marginLeft + 5, y + 6);
@@ -1165,6 +1328,7 @@ export async function generateIncidentPDF(
   let filename = `fiche-incident-${incident.numero}`;
   if (includeEmails) filename += '-emails';
   if (includeLegalSearch) filename += '-juridique';
+  if (includeAttachments) filename += '-pj';
   
   doc.save(`${filename}.pdf`);
   
