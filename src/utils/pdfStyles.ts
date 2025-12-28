@@ -564,6 +564,103 @@ export function formatPDFDateTime(dateStr: string): string {
 }
 
 /**
+ * Normalise le texte email pour affichage PDF propre
+ * - Nettoie les artefacts d'encodage UTF-8
+ * - Supprime les signatures répétées
+ * - Limite les espaces multiples
+ * - Supprime les lignes de citation excessives
+ */
+export function normalizeEmailBodyForPdf(body: string): string {
+  if (!body) return '';
+  
+  let normalized = body;
+  
+  // Fix common UTF-8 encoding artifacts
+  const encodingFixes: [RegExp, string][] = [
+    [/Ã©/g, 'é'],
+    [/Ã¨/g, 'è'],
+    [/Ã /g, 'à'],
+    [/Ã¢/g, 'â'],
+    [/Ãª/g, 'ê'],
+    [/Ã®/g, 'î'],
+    [/Ã´/g, 'ô'],
+    [/Ã»/g, 'û'],
+    [/Ã§/g, 'ç'],
+    [/Ã¹/g, 'ù'],
+    [/Â©/g, '©'],
+    [/Â«/g, '«'],
+    [/Â»/g, '»'],
+    [/Â°/g, '°'],
+    [/â€™/g, "'"],
+    [/â€œ/g, '"'],
+    [/â€/g, '"'],
+    [/â€"/g, '–'],
+    [/â€"/g, '—'],
+    [/Â/g, ''],
+    [/\u00A0/g, ' '], // Non-breaking spaces
+  ];
+  
+  for (const [pattern, replacement] of encodingFixes) {
+    normalized = normalized.replace(pattern, replacement);
+  }
+  
+  // Remove excessive citation lines (> character at start)
+  const lines = normalized.split('\n');
+  const cleanedLines: string[] = [];
+  let consecutiveCitations = 0;
+  
+  for (const line of lines) {
+    if (line.trim().startsWith('>')) {
+      consecutiveCitations++;
+      // Keep max 3 citation lines, then skip
+      if (consecutiveCitations <= 3) {
+        cleanedLines.push(line);
+      } else if (consecutiveCitations === 4) {
+        cleanedLines.push('[... citations précédentes omises ...]');
+      }
+    } else {
+      consecutiveCitations = 0;
+      cleanedLines.push(line);
+    }
+  }
+  
+  normalized = cleanedLines.join('\n');
+  
+  // Remove duplicate signatures (common pattern: same block appears twice)
+  const signaturePatterns = [
+    /--\s*\n[\s\S]*?(?=--\s*\n|$)/g, // -- signature blocks
+    /Cordialement[\s\S]*?(?=Cordialement|$)/gi,
+    /Meilleures salutations[\s\S]*?(?=Meilleures salutations|$)/gi,
+  ];
+  
+  for (const pattern of signaturePatterns) {
+    const matches = normalized.match(pattern);
+    if (matches && matches.length > 1) {
+      // Keep only the first occurrence
+      let first = true;
+      normalized = normalized.replace(pattern, (match) => {
+        if (first) {
+          first = false;
+          return match;
+        }
+        return '';
+      });
+    }
+  }
+  
+  // Collapse multiple blank lines to max 2
+  normalized = normalized.replace(/\n{4,}/g, '\n\n\n');
+  
+  // Collapse multiple spaces
+  normalized = normalized.replace(/[ \t]{3,}/g, '  ');
+  
+  // Trim each line
+  normalized = normalized.split('\n').map(l => l.trim()).join('\n');
+  
+  return normalized.trim();
+}
+
+/**
  * Dessine un bloc email complet dans le PDF
  */
 export function drawEmailBlock(
@@ -581,27 +678,45 @@ export function drawEmailBlock(
 ): number {
   const { marginLeft, contentWidth } = PDF_DIMENSIONS;
   
-  // Calculer la hauteur nécessaire
+  // Normalize email body first
+  const normalizedBody = normalizeEmailBodyForPdf(email.body);
+  
+  // Calculate heights precisely
   doc.setFontSize(9);
-  const bodyLines = doc.splitTextToSize(email.body, contentWidth - 20);
+  const bodyLines = doc.splitTextToSize(normalizedBody, contentWidth - 20);
   const subjectLines = doc.splitTextToSize(email.subject, contentWidth - 80);
   
-  const blockHeight = Math.min(25 + bodyLines.length * 4 + subjectLines.length * 4, 120);
+  // Calculate exact displayed lines
+  const maxBodyLines = 15;
+  const displayedBodyLines = bodyLines.slice(0, maxBodyLines);
+  const hasMoreLines = bodyLines.length > maxBodyLines;
   
-  y = checkPageBreak(doc, y, blockHeight);
+  // Precise height calculation
+  const headerHeight = email.citationNumber ? 4 : 0; // Citation number line
+  const senderHeight = 5;
+  const recipientHeight = email.recipient ? 4 : 0;
+  const subjectHeight = subjectLines.length * 4 + 3;
+  const bodyHeight = displayedBodyLines.length * 3.5;
+  const moreLineHeight = hasMoreLines ? 5 : 0;
+  const padding = 10; // Top + bottom padding
   
-  // Fond du bloc
+  const blockHeight = headerHeight + senderHeight + recipientHeight + subjectHeight + bodyHeight + moreLineHeight + padding;
+  
+  // Ensure we have space for this block
+  y = checkPageBreak(doc, y, Math.min(blockHeight, 120));
+  
+  // Draw background
   setColor(doc, PDF_COLORS.background, 'fill');
   doc.roundedRect(marginLeft, y, contentWidth, blockHeight, 2, 2, 'F');
   
-  // Bande latérale colorée (bleu si reçu, vert si envoyé)
+  // Side band color (blue if received, green if sent)
   const bandColor = email.isReceived ? PDF_COLORS.primary : PDF_COLORS.faible;
   setColor(doc, bandColor, 'fill');
   doc.rect(marginLeft, y, 3, blockHeight, 'F');
   
   let currentY = y + 5;
   
-  // Numéro de citation si présent
+  // Citation number if present
   if (email.citationNumber) {
     doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
@@ -610,7 +725,7 @@ export function drawEmailBlock(
     currentY += 4;
   }
   
-  // En-tête : expéditeur et date
+  // Header: sender and date
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   setColor(doc, PDF_COLORS.text);
@@ -621,7 +736,7 @@ export function drawEmailBlock(
   doc.text(email.date, marginLeft + contentWidth - 5, currentY, { align: 'right' });
   currentY += 5;
   
-  // Destinataire si présent
+  // Recipient if present
   if (email.recipient) {
     doc.setFontSize(8);
     setColor(doc, PDF_COLORS.muted);
@@ -629,25 +744,25 @@ export function drawEmailBlock(
     currentY += 4;
   }
   
-  // Sujet
+  // Subject
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   setColor(doc, PDF_COLORS.secondary);
   doc.text(subjectLines, marginLeft + 8, currentY);
   currentY += subjectLines.length * 4 + 3;
   
-  // Corps du message (tronqué si trop long)
+  // Body (truncated if too long)
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   setColor(doc, PDF_COLORS.text);
-  const displayedLines = bodyLines.slice(0, 15);
-  doc.text(displayedLines, marginLeft + 8, currentY);
+  doc.text(displayedBodyLines, marginLeft + 8, currentY);
+  currentY += displayedBodyLines.length * 3.5;
   
-  if (bodyLines.length > 15) {
-    currentY += displayedLines.length * 3.5;
+  // "More lines" indicator
+  if (hasMoreLines) {
     doc.setFont('helvetica', 'italic');
     setColor(doc, PDF_COLORS.muted);
-    doc.text(`[...${bodyLines.length - 15} lignes supplémentaires]`, marginLeft + 8, currentY);
+    doc.text(`[...${bodyLines.length - maxBodyLines} lignes supplémentaires]`, marginLeft + 8, currentY + 2);
   }
   
   return y + blockHeight + 5;
