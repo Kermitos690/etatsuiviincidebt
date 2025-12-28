@@ -158,3 +158,6 @@ verify_jwt = false
 
 [functions.search-incident-legal-context]
 verify_jwt = false
+
+[functions.deep-incident-analysis]
+verify_jwt = false

@@ -65,6 +65,7 @@ export default function IncidentDetail() {
     includeEmails: true,
     includeEmailCitations: true,
     includeLegalSearch: false,
+    includeDeepAnalysis: false,
   });
   
   useEffect(() => {
@@ -341,6 +342,20 @@ export default function IncidentDetail() {
                     </div>
                   </div>
                   <Separator />
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="deep" 
+                      checked={exportOptions.includeDeepAnalysis}
+                      onCheckedChange={(c) => setExportOptions(o => ({...o, includeDeepAnalysis: !!c}))}
+                      disabled={relatedEmails.length === 0}
+                    />
+                    <div>
+                      <Label htmlFor="deep">🧠 Analyse approfondie IA</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Chaîne causale, excuses vs obligations légales, contradictions, délais critiques, responsabilités
+                      </p>
+                    </div>
+                  </div>
                   <div className="flex items-center space-x-2">
                     <Checkbox 
                       id="search" 
