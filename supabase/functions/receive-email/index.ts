@@ -240,6 +240,38 @@ Réponds UNIQUEMENT en JSON valide avec cette structure:
           .update({ incident_id: incident.id })
           .eq('id', email.id);
 
+        // Fetch attachments from source email and add to incident preuves
+        try {
+          const { data: attachments } = await supabase
+            .from('email_attachments')
+            .select('id, filename, mime_type, storage_path, ai_analysis, size_bytes')
+            .eq('email_id', email.id);
+          
+          if (attachments && attachments.length > 0) {
+            console.log(`Found ${attachments.length} attachments to add as preuves`);
+            
+            const preuves = attachments.map((att: any) => ({
+              id: att.id,
+              type: 'document',
+              label: att.filename,
+              url: `storage://email-attachments/${att.storage_path}`,
+              source: 'email_attachment',
+              mime_type: att.mime_type,
+              size_bytes: att.size_bytes,
+              ai_analysis: att.ai_analysis,
+            }));
+            
+            await supabase
+              .from('incidents')
+              .update({ preuves })
+              .eq('id', incident.id);
+            
+            console.log(`Added ${preuves.length} attachments as preuves to incident`);
+          }
+        } catch (attachmentError) {
+          console.error('Failed to add attachments as preuves:', attachmentError);
+        }
+
         // Sync to Google Sheets if configured
         try {
           await fetch(`${SUPABASE_URL}/functions/v1/sheets-sync`, {

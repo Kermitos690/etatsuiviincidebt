@@ -18,7 +18,11 @@ import {
   Volume2,
   MessageSquare,
   Download,
-  Settings2
+  Settings2,
+  Paperclip,
+  RefreshCw,
+  Eye,
+  FileWarning
 } from 'lucide-react';
 import { AppLayout, PageHeader } from '@/components/layout';
 import { PriorityBadge, StatusBadge } from '@/components/common';
@@ -39,6 +43,7 @@ import { generateIncidentPDF } from '@/utils/generateIncidentPDF';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 const proofIcons = {
   email: Mail,
@@ -59,6 +64,10 @@ export default function IncidentDetail() {
   const [speaking, setSpeaking] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [attachments, setAttachments] = useState<any[]>([]);
+  const [loadingAttachments, setLoadingAttachments] = useState(false);
+  const [syncingAttachments, setSyncingAttachments] = useState(false);
+  const [selectedAttachment, setSelectedAttachment] = useState<any>(null);
   const [exportOptions, setExportOptions] = useState({
     includeProofs: true,
     includeLegalExplanations: true,
@@ -76,9 +85,9 @@ export default function IncidentDetail() {
     load();
   }, [loadFromSupabase]);
 
-  // Fetch source email and related emails
+  // Fetch source email, related emails, and attachments
   useEffect(() => {
-    const fetchRelatedEmails = async () => {
+    const fetchRelatedData = async () => {
       if (!id) return;
       
       const { data: incidentData } = await supabase
@@ -105,13 +114,40 @@ export default function IncidentDetail() {
             .order('received_at', { ascending: true });
           
           setRelatedEmails(threadEmails || []);
+          
+          // Fetch attachments for all thread emails
+          if (threadEmails && threadEmails.length > 0) {
+            setLoadingAttachments(true);
+            const emailIds = threadEmails.map(e => e.id);
+            const { data: attachmentsData } = await supabase
+              .from('email_attachments')
+              .select('*, emails!inner(sender, subject, received_at)')
+              .in('email_id', emailIds)
+              .order('created_at', { ascending: false });
+            
+            setAttachments(attachmentsData || []);
+            setLoadingAttachments(false);
+          }
         } else {
           setRelatedEmails(sourceEmail ? [sourceEmail] : []);
+          
+          // Fetch attachments for single email
+          if (sourceEmail) {
+            setLoadingAttachments(true);
+            const { data: attachmentsData } = await supabase
+              .from('email_attachments')
+              .select('*, emails!inner(sender, subject, received_at)')
+              .eq('email_id', sourceEmail.id)
+              .order('created_at', { ascending: false });
+            
+            setAttachments(attachmentsData || []);
+            setLoadingAttachments(false);
+          }
         }
       }
     };
     
-    fetchRelatedEmails();
+    fetchRelatedData();
   }, [id]);
   
   const incident = incidents.find(i => i.id === id);
@@ -169,6 +205,118 @@ export default function IncidentDetail() {
       Dysfonctionnement: ${incident.dysfonctionnement}.
     `;
     speakText(text);
+  };
+
+  // Sync attachments from Gmail
+  const syncAttachments = async () => {
+    if (!sourceEmailId) {
+      toast.error("Pas d'email source lié à cet incident");
+      return;
+    }
+
+    setSyncingAttachments(true);
+    try {
+      // Get email with gmail_message_id
+      const { data: email } = await supabase
+        .from('emails')
+        .select('gmail_message_id, gmail_thread_id')
+        .eq('id', sourceEmailId)
+        .single();
+
+      if (!email?.gmail_message_id) {
+        toast.error("Pas d'identifiant Gmail pour cet email");
+        return;
+      }
+
+      // Download attachments
+      const { data: downloadResult, error: downloadError } = await supabase.functions.invoke('download-attachments', {
+        body: { emailId: sourceEmailId, messageId: email.gmail_message_id }
+      });
+
+      if (downloadError) throw downloadError;
+
+      // Analyze downloaded attachments
+      if (downloadResult?.attachments?.length > 0) {
+        for (const att of downloadResult.attachments) {
+          await supabase.functions.invoke('analyze-attachment', {
+            body: { attachmentId: att.id }
+          });
+        }
+      }
+
+      // Refresh attachments list
+      const emailIds = relatedEmails.map(e => e.id);
+      const { data: refreshedAttachments } = await supabase
+        .from('email_attachments')
+        .select('*, emails!inner(sender, subject, received_at)')
+        .in('email_id', emailIds.length > 0 ? emailIds : [sourceEmailId])
+        .order('created_at', { ascending: false });
+
+      setAttachments(refreshedAttachments || []);
+
+      // Update incident preuves
+      if (refreshedAttachments && refreshedAttachments.length > 0) {
+        const preuves = refreshedAttachments.map(att => ({
+          id: att.id,
+          type: 'document' as const,
+          label: att.filename,
+          url: `storage://email-attachments/${att.storage_path}`,
+          source: 'email_attachment',
+          mime_type: att.mime_type,
+        }));
+
+        await supabase
+          .from('incidents')
+          .update({ preuves })
+          .eq('id', id);
+
+        // Refresh incident in store
+        await loadFromSupabase();
+      }
+
+      toast.success(`${downloadResult?.downloaded || 0} pièces jointes synchronisées et analysées`);
+    } catch (error) {
+      console.error('Sync attachments error:', error);
+      toast.error("Erreur lors de la synchronisation des pièces jointes");
+    } finally {
+      setSyncingAttachments(false);
+    }
+  };
+
+  // Download attachment from storage
+  const downloadAttachment = async (storagePath: string, filename: string) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('email-attachments')
+        .download(storagePath);
+
+      if (error) throw error;
+
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Download error:', error);
+      toast.error("Erreur lors du téléchargement");
+    }
+  };
+
+  // Get severity from AI analysis
+  const getAttachmentSeverity = (aiAnalysis: any): { level: string; color: string } => {
+    if (!aiAnalysis) return { level: 'Non analysé', color: 'secondary' };
+    
+    const severity = aiAnalysis.severity || aiAnalysis.legal_analysis?.severity;
+    if (severity === 'critique' || severity === 'critical') return { level: 'Critique', color: 'destructive' };
+    if (severity === 'grave' || severity === 'high') return { level: 'Grave', color: 'destructive' };
+    if (severity === 'modéré' || severity === 'medium') return { level: 'Modéré', color: 'warning' };
+    if (severity === 'mineur' || severity === 'low') return { level: 'Mineur', color: 'secondary' };
+    if (aiAnalysis.violations_detected?.length > 0) return { level: 'Violations', color: 'destructive' };
+    return { level: 'Analysé', color: 'default' };
   };
 
   const markTransmisJP = () => {
@@ -454,10 +602,14 @@ export default function IncidentDetail() {
 
         {/* Content Tabs */}
         <Tabs defaultValue="resume" className="space-y-4">
-          <TabsList className="w-full md:w-auto">
+          <TabsList className="w-full md:w-auto flex-wrap">
             <TabsTrigger value="resume" className="flex-1 md:flex-none">Résumé</TabsTrigger>
             <TabsTrigger value="preuves" className="flex-1 md:flex-none">
               Preuves ({incident.preuves.length})
+            </TabsTrigger>
+            <TabsTrigger value="attachments" className="flex-1 md:flex-none">
+              <Paperclip className="h-4 w-4 mr-1" />
+              Pièces jointes ({attachments.length})
             </TabsTrigger>
             {relatedEmails.length > 0 && (
               <TabsTrigger value="emails" className="flex-1 md:flex-none">
@@ -531,6 +683,175 @@ export default function IncidentDetail() {
                               </a>
                             </Button>
                           )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Attachments Tab */}
+          <TabsContent value="attachments">
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-medium flex items-center gap-2">
+                    <Paperclip className="h-5 w-5" />
+                    Pièces jointes des emails
+                  </h3>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={syncAttachments}
+                    disabled={syncingAttachments || !sourceEmailId}
+                  >
+                    {syncingAttachments ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                    )}
+                    Synchroniser
+                  </Button>
+                </div>
+
+                {loadingAttachments ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : attachments.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Paperclip className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground">Aucune pièce jointe trouvée</p>
+                    {sourceEmailId && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="mt-4"
+                        onClick={syncAttachments}
+                        disabled={syncingAttachments}
+                      >
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Récupérer les pièces jointes depuis Gmail
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {attachments.map((att) => {
+                      const severity = getAttachmentSeverity(att.ai_analysis);
+                      const isImage = att.mime_type?.startsWith('image/');
+                      const isPdf = att.mime_type === 'application/pdf';
+                      
+                      return (
+                        <div 
+                          key={att.id}
+                          className="flex items-start gap-3 p-3 rounded-lg border bg-muted/50 hover:bg-muted/80 transition-colors"
+                        >
+                          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-background flex items-center justify-center">
+                            {isImage ? (
+                              <Image className="h-5 w-5 text-muted-foreground" />
+                            ) : isPdf ? (
+                              <FileText className="h-5 w-5 text-red-500" />
+                            ) : (
+                              <FileIcon className="h-5 w-5 text-muted-foreground" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium truncate">{att.filename}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {att.emails?.sender && `De: ${att.emails.sender.split('<')[0].trim()}`}
+                              {att.emails?.received_at && ` • ${format(new Date(att.emails.received_at), 'd MMM yyyy', { locale: fr })}`}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Badge 
+                                variant={severity.color === 'destructive' ? 'destructive' : severity.color === 'warning' ? 'secondary' : 'outline'}
+                                className="text-xs"
+                              >
+                                {att.ai_analysis ? severity.level : 'Non analysé'}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">
+                                {(att.size_bytes / 1024).toFixed(1)} Ko
+                              </span>
+                            </div>
+                            {att.ai_analysis?.violations_detected?.length > 0 && (
+                              <div className="mt-2 p-2 rounded bg-destructive/10 border border-destructive/20">
+                                <div className="flex items-center gap-1 text-xs font-medium text-destructive">
+                                  <FileWarning className="h-3 w-3" />
+                                  {att.ai_analysis.violations_detected.length} violation(s) détectée(s)
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex gap-1">
+                            {att.ai_analysis && (
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  <Button variant="ghost" size="icon" onClick={() => setSelectedAttachment(att)}>
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent className="max-w-2xl max-h-[80vh]">
+                                  <DialogHeader>
+                                    <DialogTitle>Analyse IA: {att.filename}</DialogTitle>
+                                  </DialogHeader>
+                                  <ScrollArea className="max-h-[60vh]">
+                                    <div className="space-y-4 p-4">
+                                      {att.ai_analysis?.extracted_text && (
+                                        <div>
+                                          <h4 className="font-medium mb-2">Texte extrait (OCR)</h4>
+                                          <p className="text-sm text-muted-foreground whitespace-pre-wrap bg-muted p-3 rounded-lg max-h-40 overflow-y-auto">
+                                            {att.ai_analysis.extracted_text.substring(0, 2000)}
+                                            {att.ai_analysis.extracted_text.length > 2000 && '...'}
+                                          </p>
+                                        </div>
+                                      )}
+                                      {att.ai_analysis?.legal_analysis && (
+                                        <div>
+                                          <h4 className="font-medium mb-2">Analyse juridique</h4>
+                                          <div className="text-sm space-y-2">
+                                            {att.ai_analysis.legal_analysis.summary && (
+                                              <p>{att.ai_analysis.legal_analysis.summary}</p>
+                                            )}
+                                            {att.ai_analysis.legal_analysis.key_dates?.length > 0 && (
+                                              <div>
+                                                <span className="font-medium">Dates clés: </span>
+                                                {att.ai_analysis.legal_analysis.key_dates.join(', ')}
+                                              </div>
+                                            )}
+                                            {att.ai_analysis.legal_analysis.mentioned_articles?.length > 0 && (
+                                              <div>
+                                                <span className="font-medium">Articles mentionnés: </span>
+                                                {att.ai_analysis.legal_analysis.mentioned_articles.join(', ')}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {att.ai_analysis?.violations_detected?.length > 0 && (
+                                        <div>
+                                          <h4 className="font-medium mb-2 text-destructive">Violations détectées</h4>
+                                          <ul className="list-disc list-inside text-sm space-y-1">
+                                            {att.ai_analysis.violations_detected.map((v: any, i: number) => (
+                                              <li key={i} className="text-destructive">{typeof v === 'string' ? v : v.description || v.type}</li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </ScrollArea>
+                                </DialogContent>
+                              </Dialog>
+                            )}
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              onClick={() => downloadAttachment(att.storage_path, att.filename)}
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
                       );
                     })}
