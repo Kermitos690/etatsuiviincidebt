@@ -1,12 +1,15 @@
 import { useMemo, useEffect } from 'react';
-import { TrendingUp, Sparkles, FileText, Loader2, Mail, AlertTriangle, Brain, Activity } from 'lucide-react';
+import { TrendingUp, Sparkles, FileText, Loader2, Mail, AlertTriangle, Brain, Activity, Filter } from 'lucide-react';
 import { AppLayout } from '@/components/layout';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { useIncidentStore } from '@/stores/incidentStore';
 import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { QuickActions, LoadingState } from '@/components/common';
 import { getTutorialProps } from '@/hooks/useTutorialHighlight';
+import { useRealtimeIncidents } from '@/hooks/useRealtimeIncidents';
+import { getRelevantIncidents, getExcludedCount, normalizeInstitutionName } from '@/utils/dashboardFilters';
 
 import {
   DashboardKPIs,
@@ -38,48 +41,54 @@ const quickActions = [
 ];
 
 export default function Dashboard() {
-  const { incidents, config, loadFromSupabase } = useIncidentStore();
+  const { incidents, config } = useIncidentStore();
+  
+  // Enable realtime updates
+  useRealtimeIncidents();
 
-  useEffect(() => {
-    loadFromSupabase();
-  }, [loadFromSupabase]);
+  // Filter to relevant incidents only
+  const relevantIncidents = useMemo(() => getRelevantIncidents(incidents), [incidents]);
+  const excludedCount = useMemo(() => getExcludedCount(incidents), [incidents]);
 
   const kpis = useMemo(() => {
-    const total = incidents.length;
-    const ouverts = incidents.filter(i => i.statut === 'Ouvert').length;
-    const nonResolus = incidents.filter(i => !['Résolu', 'Classé'].includes(i.statut)).length;
-    const transmisJP = incidents.filter(i => i.transmisJP).length;
+    const total = relevantIncidents.length;
+    const ouverts = relevantIncidents.filter(i => i.statut === 'Ouvert').length;
+    const nonResolus = relevantIncidents.filter(i => !['Résolu', 'Classé'].includes(i.statut)).length;
+    const transmisJP = relevantIncidents.filter(i => i.transmisJP).length;
     const scoreMoyen = total > 0 
-      ? Math.round(incidents.reduce((acc, i) => acc + i.score, 0) / total * 10) / 10
+      ? Math.round(relevantIncidents.reduce((acc, i) => acc + i.score, 0) / total * 10) / 10
       : 0;
 
     return { total, ouverts, nonResolus, transmisJP, scoreMoyen };
-  }, [incidents]);
+  }, [relevantIncidents]);
 
   const chartByStatus = useMemo(() => {
     const counts: Record<string, number> = {};
     config.statuts.forEach(s => counts[s] = 0);
-    incidents.forEach(i => {
+    relevantIncidents.forEach(i => {
       counts[i.statut] = (counts[i.statut] || 0) + 1;
     });
-    return Object.entries(counts).map(([name, value]) => ({ name, value }));
-  }, [incidents, config.statuts]);
+    return Object.entries(counts)
+      .map(([name, value]) => ({ name, value }))
+      .filter(d => d.value > 0); // Only show statuses with incidents
+  }, [relevantIncidents, config.statuts]);
 
   const chartByInstitution = useMemo(() => {
     const counts: Record<string, number> = {};
-    incidents.forEach(i => {
-      counts[i.institution] = (counts[i.institution] || 0) + 1;
+    relevantIncidents.forEach(i => {
+      const normalized = normalizeInstitutionName(i.institution);
+      counts[normalized] = (counts[normalized] || 0) + 1;
     });
     return Object.entries(counts)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 8);
-  }, [incidents]);
+  }, [relevantIncidents]);
 
   const chartByGravite = useMemo(() => {
     const counts: Record<string, number> = {};
     config.gravites.forEach(g => counts[g] = 0);
-    incidents.forEach(i => {
+    relevantIncidents.forEach(i => {
       counts[i.gravite] = (counts[i.gravite] || 0) + 1;
     });
     return Object.entries(counts)
@@ -89,7 +98,7 @@ export default function Dashboard() {
         fill: GRAVITE_COLORS[name] || COLORS[index % COLORS.length]
       }))
       .filter(d => d.value > 0);
-  }, [incidents, config.gravites]);
+  }, [relevantIncidents, config.gravites]);
 
   const chartEvolution = useMemo(() => {
     const now = new Date();
@@ -99,7 +108,7 @@ export default function Dashboard() {
     return months.map(month => {
       const monthStart = startOfMonth(month);
       const monthEnd = endOfMonth(month);
-      const monthIncidents = incidents.filter(i => {
+      const monthIncidents = relevantIncidents.filter(i => {
         const date = parseISO(i.dateIncident);
         return date >= monthStart && date <= monthEnd;
       });
@@ -111,25 +120,25 @@ export default function Dashboard() {
         critiques: monthIncidents.filter(i => i.gravite === 'Critique' || i.gravite === 'Grave').length
       };
     });
-  }, [incidents]);
+  }, [relevantIncidents]);
 
   const topIncidents = useMemo(() => {
-    return [...incidents]
+    return [...relevantIncidents]
       .sort((a, b) => b.score - a.score)
       .slice(0, 5)
       .map(i => ({
-        name: i.titre.length > 25 ? i.titre.substring(0, 22) + '...' : i.titre,
+        name: i.titre,
         score: i.score,
         gravite: i.gravite
       }));
-  }, [incidents]);
+  }, [relevantIncidents]);
 
   const priorityStats = useMemo(() => {
     const stats = {
-      critique: incidents.filter(i => i.priorite === 'critique').length,
-      eleve: incidents.filter(i => i.priorite === 'eleve').length,
-      moyen: incidents.filter(i => i.priorite === 'moyen').length,
-      faible: incidents.filter(i => i.priorite === 'faible').length
+      critique: relevantIncidents.filter(i => i.priorite === 'critique').length,
+      eleve: relevantIncidents.filter(i => i.priorite === 'eleve').length,
+      moyen: relevantIncidents.filter(i => i.priorite === 'moyen').length,
+      faible: relevantIncidents.filter(i => i.priorite === 'faible').length
     };
     return [
       { name: 'Critique', value: stats.critique, fill: 'hsl(0, 84%, 60%)' },
@@ -137,7 +146,7 @@ export default function Dashboard() {
       { name: 'Moyenne', value: stats.moyen, fill: 'hsl(45, 93%, 47%)' },
       { name: 'Faible', value: stats.faible, fill: 'hsl(142, 76%, 36%)' }
     ];
-  }, [incidents]);
+  }, [relevantIncidents]);
 
   const chartData = useMemo(() => ({
     chartByStatus,
@@ -147,7 +156,7 @@ export default function Dashboard() {
     topIncidents
   }), [chartByStatus, chartByGravite, chartByInstitution, chartEvolution, topIncidents]);
 
-  const { exportingPdf, exportDashboardPDF } = useDashboardPDF(kpis, chartData, incidents);
+  const { exportingPdf, exportDashboardPDF } = useDashboardPDF(kpis, chartData, relevantIncidents);
 
   return (
     <AppLayout>
@@ -171,19 +180,27 @@ export default function Dashboard() {
               </p>
             </div>
           </div>
-          <Button 
-            onClick={exportDashboardPDF} 
-            disabled={exportingPdf || incidents.length === 0}
-            className="animate-scale-in"
-            style={{ animationDelay: '200ms' }}
-          >
-            {exportingPdf ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <FileText className="h-4 w-4 mr-2" />
+          <div className="flex items-center gap-3">
+            {excludedCount > 0 && (
+              <Badge variant="secondary" className="flex items-center gap-1.5">
+                <Filter className="h-3 w-3" />
+                {excludedCount} exclus
+              </Badge>
             )}
-            Exporter en PDF
-          </Button>
+            <Button 
+              onClick={exportDashboardPDF} 
+              disabled={exportingPdf || relevantIncidents.length === 0}
+              className="animate-scale-in"
+              style={{ animationDelay: '200ms' }}
+            >
+              {exportingPdf ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <FileText className="h-4 w-4 mr-2" />
+              )}
+              Exporter en PDF
+            </Button>
+          </div>
         </div>
 
         <div {...getTutorialProps('dashboard-kpis')}>
@@ -199,7 +216,7 @@ export default function Dashboard() {
           <QuickActions actions={quickActions} columns={4} />
         </div>
 
-        {incidents.length === 0 ? (
+        {relevantIncidents.length === 0 ? (
           <DashboardEmptyState />
         ) : (
           <div 
