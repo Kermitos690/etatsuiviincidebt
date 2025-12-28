@@ -1,6 +1,6 @@
 /**
  * Generate Incident PDF - Style Fiche Technique/Factuel
- * Export ultra premium pour incidents individuels
+ * Export ultra premium pour incidents individuels avec emails et recherche juridique
  */
 
 import jsPDF from 'jspdf';
@@ -9,12 +9,13 @@ import {
   PDF_DIMENSIONS,
   setColor,
   getSeverityColor,
-  getStatusColor,
   drawPremiumHeader,
   drawSectionTitle,
   drawLegalBox,
   drawInfoTable,
-  drawCitation,
+  drawEmailBlock,
+  drawEmailCitation,
+  drawLegalSearchResult,
   addFootersToAllPages,
   checkPageBreak,
   formatPDFDate,
@@ -26,6 +27,28 @@ import {
   getDefaultLegalBasesForType,
   LegalExplanation,
 } from './pdfLegalExplainer';
+import { supabase } from '@/integrations/supabase/client';
+
+interface EmailData {
+  id: string;
+  sender: string;
+  recipient?: string;
+  subject: string;
+  body: string;
+  received_at: string;
+  is_sent?: boolean;
+}
+
+interface LegalSearchResult {
+  title: string;
+  reference_number: string;
+  summary: string;
+  source_url: string;
+  source_name: string;
+  source_type: 'jurisprudence' | 'legislation';
+  date_decision?: string;
+  relevance_score?: number;
+}
 
 interface IncidentData {
   id: string;
@@ -57,11 +80,125 @@ interface IncidentData {
 interface GenerateIncidentPDFOptions {
   includeProofs?: boolean;
   includeLegalExplanations?: boolean;
+  includeEmails?: boolean;
   includeEmailCitations?: boolean;
+  includeLegalSearch?: boolean;
+  emails?: EmailData[];
+}
+
+interface ExtractedCitation {
+  text: string;
+  emailIndex: number;
+  emailDate: string;
+  emailSender: string;
+  relevance: string;
 }
 
 /**
- * Génère un PDF ultra premium pour un incident
+ * Extrait les citations probantes des emails via AI
+ */
+async function extractEmailCitations(
+  emails: EmailData[],
+  faits: string,
+  dysfonctionnement: string
+): Promise<ExtractedCitation[]> {
+  if (!emails || emails.length === 0) return [];
+
+  try {
+    const { data, error } = await supabase.functions.invoke('analyze-incident', {
+      body: {
+        text: `Contexte de l'incident:
+Faits: ${faits}
+Dysfonctionnement: ${dysfonctionnement}
+
+Emails à analyser:
+${emails.map((e, i) => `[Email ${i + 1}] De: ${e.sender} | Date: ${e.received_at}
+${e.body}`).join('\n\n---\n\n')}
+
+Extrais les citations les plus pertinentes (phrases exactes) qui prouvent les faits et le dysfonctionnement. Maximum 8 citations.`
+      }
+    });
+
+    if (error || !data) return [];
+
+    // Parser la réponse pour extraire les citations
+    const citations: ExtractedCitation[] = [];
+    const content = typeof data === 'string' ? data : JSON.stringify(data);
+    
+    // Extraire manuellement les passages clés
+    for (let i = 0; i < emails.length && citations.length < 8; i++) {
+      const email = emails[i];
+      const sentences = email.body.split(/[.!?]+/).filter(s => s.trim().length > 20);
+      
+      for (const sentence of sentences.slice(0, 2)) {
+        if (citations.length >= 8) break;
+        
+        const lowerSentence = sentence.toLowerCase();
+        const isRelevant = 
+          lowerSentence.includes('délai') ||
+          lowerSentence.includes('attente') ||
+          lowerSentence.includes('réponse') ||
+          lowerSentence.includes('urgent') ||
+          lowerSentence.includes('problème') ||
+          lowerSentence.includes('manque') ||
+          lowerSentence.includes('refus') ||
+          faits.toLowerCase().split(' ').some(word => word.length > 4 && lowerSentence.includes(word));
+        
+        if (isRelevant) {
+          citations.push({
+            text: sentence.trim().substring(0, 200),
+            emailIndex: i + 1,
+            emailDate: formatPDFDate(email.received_at),
+            emailSender: email.sender,
+            relevance: 'Prouve les faits allégués'
+          });
+        }
+      }
+    }
+
+    return citations;
+  } catch (e) {
+    console.error('Error extracting citations:', e);
+    return [];
+  }
+}
+
+/**
+ * Recherche juridique automatique pour l'incident
+ */
+async function searchLegalContext(
+  incidentType: string,
+  faits: string,
+  dysfonctionnement: string,
+  institution: string
+): Promise<{ jurisprudence: LegalSearchResult[]; legislation: LegalSearchResult[] }> {
+  try {
+    const { data, error } = await supabase.functions.invoke('search-incident-legal-context', {
+      body: {
+        incidentType,
+        faits,
+        dysfonctionnement,
+        institution
+      }
+    });
+
+    if (error || !data?.success) {
+      console.error('Legal search error:', error || data?.error);
+      return { jurisprudence: [], legislation: [] };
+    }
+
+    return {
+      jurisprudence: data.results?.jurisprudence || [],
+      legislation: data.results?.legislation || []
+    };
+  } catch (e) {
+    console.error('Error in legal search:', e);
+    return { jurisprudence: [], legislation: [] };
+  }
+}
+
+/**
+ * Génère un PDF ultra premium pour un incident avec tous les enrichissements
  */
 export async function generateIncidentPDF(
   incident: IncidentData,
@@ -70,11 +207,16 @@ export async function generateIncidentPDF(
   const {
     includeProofs = true,
     includeLegalExplanations = true,
-    includeEmailCitations = true,
+    includeEmails = false,
+    includeEmailCitations = false,
+    includeLegalSearch = false,
+    emails = [],
   } = options;
 
   const doc = new jsPDF();
   const { marginLeft, contentWidth } = PDF_DIMENSIONS;
+
+  let sectionNumber = 1;
 
   // ============================================
   // PAGE 1: EN-TÊTE ET IDENTIFICATION
@@ -98,7 +240,7 @@ export async function generateIncidentPDF(
   // SECTION 1: IDENTIFICATION
   // ============================================
   
-  y = drawSectionTitle(doc, 'IDENTIFICATION', y, { numbered: true, number: 1 });
+  y = drawSectionTitle(doc, 'IDENTIFICATION', y, { numbered: true, number: sectionNumber++ });
 
   // Badge de gravité visuel
   const severityColor = getSeverityColor(incident.gravite);
@@ -132,7 +274,7 @@ export async function generateIncidentPDF(
   // ============================================
   
   y = checkPageBreak(doc, y, 60);
-  y = drawSectionTitle(doc, 'EXPOSÉ DES FAITS', y, { numbered: true, number: 2 });
+  y = drawSectionTitle(doc, 'EXPOSÉ DES FAITS', y, { numbered: true, number: sectionNumber++ });
 
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
@@ -141,7 +283,6 @@ export async function generateIncidentPDF(
   const faitsText = incident.faits || 'Aucun fait renseigné.';
   const faitsLines = doc.splitTextToSize(faitsText, contentWidth - 10);
   
-  // Encadré pour les faits
   const faitsHeight = faitsLines.length * 5 + 10;
   y = checkPageBreak(doc, y, faitsHeight);
   
@@ -156,7 +297,7 @@ export async function generateIncidentPDF(
   // ============================================
   
   y = checkPageBreak(doc, y, 60);
-  y = drawSectionTitle(doc, 'DYSFONCTIONNEMENT IDENTIFIÉ', y, { numbered: true, number: 3 });
+  y = drawSectionTitle(doc, 'DYSFONCTIONNEMENT IDENTIFIÉ', y, { numbered: true, number: sectionNumber++ });
 
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
@@ -168,7 +309,6 @@ export async function generateIncidentPDF(
   const dysfHeight = dysfLines.length * 5 + 10;
   y = checkPageBreak(doc, y, dysfHeight);
   
-  // Encadré avec bordure d'alerte
   setColor(doc, PDF_COLORS.background, 'fill');
   doc.roundedRect(marginLeft, y - 3, contentWidth, dysfHeight, 2, 2, 'F');
   setColor(doc, severityColor, 'fill');
@@ -183,18 +323,15 @@ export async function generateIncidentPDF(
   
   if (includeLegalExplanations) {
     y = checkPageBreak(doc, y, 80);
-    y = drawSectionTitle(doc, 'BASES LÉGALES APPLICABLES', y, { numbered: true, number: 4, color: PDF_COLORS.legal });
+    y = drawSectionTitle(doc, 'BASES LÉGALES APPLICABLES', y, { numbered: true, number: sectionNumber++, color: PDF_COLORS.legal });
 
-    // Extraire les références légales du texte
     const allText = `${incident.faits} ${incident.dysfonctionnement}`;
     let legalRefs = extractLegalReferences(allText);
     
-    // Si pas de références trouvées, utiliser les défauts pour le type
     if (legalRefs.length === 0) {
       legalRefs = getDefaultLegalBasesForType(incident.type);
     }
 
-    // Récupérer les explications contextuelles
     let legalExplanations: LegalExplanation[] = [];
     try {
       legalExplanations = await fetchLegalExplanations(
@@ -219,7 +356,6 @@ export async function generateIncidentPDF(
         });
       }
     } else {
-      // Afficher les références sans explication
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
       setColor(doc, PDF_COLORS.text);
@@ -247,14 +383,12 @@ export async function generateIncidentPDF(
   
   if (includeProofs && incident.preuves && incident.preuves.length > 0) {
     y = checkPageBreak(doc, y, 60);
-    y = drawSectionTitle(doc, 'PREUVES RÉFÉRENCÉES', y, { numbered: true, number: 5, color: PDF_COLORS.evidence });
+    y = drawSectionTitle(doc, 'PREUVES RÉFÉRENCÉES', y, { numbered: true, number: sectionNumber++, color: PDF_COLORS.evidence });
 
-    // Tableau des preuves
     doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     setColor(doc, PDF_COLORS.secondary);
     
-    // En-tête du tableau
     const colX = { num: marginLeft, type: marginLeft + 15, label: marginLeft + 40, hash: marginLeft + 120 };
     doc.text('N°', colX.num, y);
     doc.text('Type', colX.type, y);
@@ -278,7 +412,6 @@ export async function generateIncidentPDF(
       const labelLines = doc.splitTextToSize(preuve.label || 'Sans description', 75);
       doc.text(labelLines[0], colX.label, y);
       
-      // Hash cryptographique pour traçabilité
       const hash = preuve.hash || generateProofHash(preuve);
       doc.setFontSize(6);
       setColor(doc, PDF_COLORS.muted);
@@ -290,6 +423,127 @@ export async function generateIncidentPDF(
     });
     
     y += 5;
+  }
+
+  // ============================================
+  // SECTION 6: HISTORIQUE EMAIL COMPLET
+  // ============================================
+  
+  if (includeEmails && emails.length > 0) {
+    y = checkPageBreak(doc, y, 60);
+    y = drawSectionTitle(doc, 'HISTORIQUE EMAIL COMPLET', y, { numbered: true, number: sectionNumber++, color: PDF_COLORS.primary });
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'italic');
+    setColor(doc, PDF_COLORS.muted);
+    doc.text(`${emails.length} email(s) lié(s) à cet incident`, marginLeft, y);
+    y += 8;
+
+    for (let i = 0; i < emails.length; i++) {
+      const email = emails[i];
+      y = drawEmailBlock(doc, y, {
+        sender: email.sender,
+        recipient: email.recipient,
+        date: formatPDFDateTime(email.received_at),
+        subject: email.subject,
+        body: email.body,
+        isReceived: !email.is_sent,
+        citationNumber: i + 1
+      });
+    }
+  }
+
+  // ============================================
+  // SECTION 7: CITATIONS PROBANTES
+  // ============================================
+  
+  if (includeEmailCitations && emails.length > 0) {
+    y = checkPageBreak(doc, y, 60);
+    y = drawSectionTitle(doc, 'CITATIONS PROBANTES', y, { numbered: true, number: sectionNumber++, color: PDF_COLORS.evidence });
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'italic');
+    setColor(doc, PDF_COLORS.muted);
+    doc.text('Passages clés extraits des emails prouvant les faits allégués', marginLeft, y);
+    y += 8;
+
+    const citations = await extractEmailCitations(emails, incident.faits, incident.dysfonctionnement);
+    
+    if (citations.length > 0) {
+      for (let i = 0; i < citations.length; i++) {
+        const citation = citations[i];
+        y = drawEmailCitation(doc, y, {
+          number: i + 1,
+          text: citation.text,
+          emailDate: citation.emailDate,
+          emailSender: citation.emailSender,
+          relevance: citation.relevance
+        });
+      }
+    } else {
+      doc.setFont('helvetica', 'normal');
+      setColor(doc, PDF_COLORS.text);
+      doc.text('Aucune citation probante extraite automatiquement.', marginLeft, y);
+      y += 10;
+    }
+  }
+
+  // ============================================
+  // SECTION 8: RECHERCHE JURIDIQUE EN LIGNE
+  // ============================================
+  
+  if (includeLegalSearch) {
+    y = checkPageBreak(doc, y, 80);
+    y = drawSectionTitle(doc, 'RECHERCHE JURIDIQUE EN LIGNE', y, { numbered: true, number: sectionNumber++, color: PDF_COLORS.legal });
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'italic');
+    setColor(doc, PDF_COLORS.muted);
+    doc.text('Jurisprudence et législation trouvées automatiquement', marginLeft, y);
+    y += 8;
+
+    const legalResults = await searchLegalContext(
+      incident.type,
+      incident.faits,
+      incident.dysfonctionnement,
+      incident.institution
+    );
+
+    // Jurisprudence
+    if (legalResults.jurisprudence.length > 0) {
+      y = checkPageBreak(doc, y, 40);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      setColor(doc, PDF_COLORS.legal);
+      doc.text('Jurisprudence pertinente', marginLeft, y);
+      y += 8;
+
+      for (const result of legalResults.jurisprudence) {
+        y = drawLegalSearchResult(doc, y, result);
+      }
+    }
+
+    // Législation
+    if (legalResults.legislation.length > 0) {
+      y = checkPageBreak(doc, y, 40);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      setColor(doc, PDF_COLORS.evidence);
+      doc.text('Législation applicable', marginLeft, y);
+      y += 8;
+
+      for (const result of legalResults.legislation) {
+        y = drawLegalSearchResult(doc, y, result);
+      }
+    }
+
+    if (legalResults.jurisprudence.length === 0 && legalResults.legislation.length === 0) {
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      setColor(doc, PDF_COLORS.muted);
+      doc.text('Aucun résultat de recherche juridique disponible.', marginLeft, y);
+      y += 10;
+    }
   }
 
   // ============================================
@@ -318,8 +572,12 @@ export async function generateIncidentPDF(
   
   addFootersToAllPages(doc, 'incident', `Incident #${incident.numero}`);
 
-  // Sauvegarde
-  doc.save(`fiche-incident-${incident.numero}.pdf`);
+  // Nom du fichier selon les options
+  let filename = `fiche-incident-${incident.numero}`;
+  if (includeEmails) filename += '-emails';
+  if (includeLegalSearch) filename += '-juridique';
+  
+  doc.save(`${filename}.pdf`);
 }
 
 /**

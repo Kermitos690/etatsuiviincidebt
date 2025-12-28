@@ -562,3 +562,229 @@ export function formatPDFDateTime(dateStr: string): string {
     return dateStr;
   }
 }
+
+/**
+ * Dessine un bloc email complet dans le PDF
+ */
+export function drawEmailBlock(
+  doc: jsPDF,
+  y: number,
+  email: {
+    sender: string;
+    recipient?: string;
+    date: string;
+    subject: string;
+    body: string;
+    isReceived: boolean;
+    citationNumber?: number;
+  }
+): number {
+  const { marginLeft, contentWidth } = PDF_DIMENSIONS;
+  
+  // Calculer la hauteur nécessaire
+  doc.setFontSize(9);
+  const bodyLines = doc.splitTextToSize(email.body, contentWidth - 20);
+  const subjectLines = doc.splitTextToSize(email.subject, contentWidth - 80);
+  
+  const blockHeight = Math.min(25 + bodyLines.length * 4 + subjectLines.length * 4, 120);
+  
+  y = checkPageBreak(doc, y, blockHeight);
+  
+  // Fond du bloc
+  setColor(doc, PDF_COLORS.background, 'fill');
+  doc.roundedRect(marginLeft, y, contentWidth, blockHeight, 2, 2, 'F');
+  
+  // Bande latérale colorée (bleu si reçu, vert si envoyé)
+  const bandColor = email.isReceived ? PDF_COLORS.primary : PDF_COLORS.faible;
+  setColor(doc, bandColor, 'fill');
+  doc.rect(marginLeft, y, 3, blockHeight, 'F');
+  
+  let currentY = y + 5;
+  
+  // Numéro de citation si présent
+  if (email.citationNumber) {
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    setColor(doc, PDF_COLORS.evidence);
+    doc.text(`[Email ${email.citationNumber}]`, marginLeft + 8, currentY);
+    currentY += 4;
+  }
+  
+  // En-tête : expéditeur et date
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  setColor(doc, PDF_COLORS.text);
+  doc.text(`De: ${email.sender}`, marginLeft + 8, currentY);
+  
+  doc.setFont('helvetica', 'normal');
+  setColor(doc, PDF_COLORS.muted);
+  doc.text(email.date, marginLeft + contentWidth - 5, currentY, { align: 'right' });
+  currentY += 5;
+  
+  // Destinataire si présent
+  if (email.recipient) {
+    doc.setFontSize(8);
+    setColor(doc, PDF_COLORS.muted);
+    doc.text(`À: ${email.recipient}`, marginLeft + 8, currentY);
+    currentY += 4;
+  }
+  
+  // Sujet
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  setColor(doc, PDF_COLORS.secondary);
+  doc.text(subjectLines, marginLeft + 8, currentY);
+  currentY += subjectLines.length * 4 + 3;
+  
+  // Corps du message (tronqué si trop long)
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  setColor(doc, PDF_COLORS.text);
+  const displayedLines = bodyLines.slice(0, 15);
+  doc.text(displayedLines, marginLeft + 8, currentY);
+  
+  if (bodyLines.length > 15) {
+    currentY += displayedLines.length * 3.5;
+    doc.setFont('helvetica', 'italic');
+    setColor(doc, PDF_COLORS.muted);
+    doc.text(`[...${bodyLines.length - 15} lignes supplémentaires]`, marginLeft + 8, currentY);
+  }
+  
+  return y + blockHeight + 5;
+}
+
+/**
+ * Dessine un résultat de recherche juridique
+ */
+export function drawLegalSearchResult(
+  doc: jsPDF,
+  y: number,
+  result: {
+    title: string;
+    reference_number: string;
+    summary: string;
+    source_name: string;
+    source_url: string;
+    source_type: 'jurisprudence' | 'legislation';
+    date_decision?: string;
+    relevance_score?: number;
+  }
+): number {
+  const { marginLeft, contentWidth } = PDF_DIMENSIONS;
+  
+  doc.setFontSize(9);
+  const summaryLines = doc.splitTextToSize(result.summary, contentWidth - 20);
+  const titleLines = doc.splitTextToSize(result.title, contentWidth - 50);
+  
+  const blockHeight = 18 + titleLines.length * 4 + Math.min(summaryLines.length, 4) * 4;
+  
+  y = checkPageBreak(doc, y, blockHeight);
+  
+  // Fond
+  setColor(doc, PDF_COLORS.background, 'fill');
+  doc.roundedRect(marginLeft, y, contentWidth, blockHeight, 2, 2, 'F');
+  
+  // Bande colorée selon le type
+  const typeColor = result.source_type === 'jurisprudence' ? PDF_COLORS.legal : PDF_COLORS.evidence;
+  setColor(doc, typeColor, 'fill');
+  doc.rect(marginLeft, y, 3, blockHeight, 'F');
+  
+  let currentY = y + 5;
+  
+  // Référence et type
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  setColor(doc, typeColor);
+  doc.text(result.reference_number || 'Réf. N/A', marginLeft + 8, currentY);
+  
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'normal');
+  setColor(doc, PDF_COLORS.muted);
+  const typeLabel = result.source_type === 'jurisprudence' ? 'JURISPRUDENCE' : 'LÉGISLATION';
+  doc.text(typeLabel, marginLeft + contentWidth - 5, currentY, { align: 'right' });
+  currentY += 5;
+  
+  // Titre
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  setColor(doc, PDF_COLORS.text);
+  doc.text(titleLines.slice(0, 2), marginLeft + 8, currentY);
+  currentY += titleLines.slice(0, 2).length * 4 + 2;
+  
+  // Résumé
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  setColor(doc, PDF_COLORS.secondary);
+  doc.text(summaryLines.slice(0, 4), marginLeft + 8, currentY);
+  currentY += Math.min(summaryLines.length, 4) * 3.5 + 2;
+  
+  // Source et date
+  doc.setFontSize(7);
+  setColor(doc, PDF_COLORS.muted);
+  let sourceInfo = `Source: ${result.source_name}`;
+  if (result.date_decision) {
+    sourceInfo += ` | ${result.date_decision}`;
+  }
+  doc.text(sourceInfo, marginLeft + 8, currentY);
+  
+  // Score de pertinence si disponible
+  if (result.relevance_score !== undefined) {
+    const scorePercent = Math.round(result.relevance_score * 100);
+    doc.text(`Pertinence: ${scorePercent}%`, marginLeft + contentWidth - 5, currentY, { align: 'right' });
+  }
+  
+  return y + blockHeight + 5;
+}
+
+/**
+ * Dessine une citation probante extraite d'un email
+ */
+export function drawEmailCitation(
+  doc: jsPDF,
+  y: number,
+  citation: {
+    number: number;
+    text: string;
+    emailDate: string;
+    emailSender: string;
+    relevance?: string;
+  }
+): number {
+  const { marginLeft, contentWidth } = PDF_DIMENSIONS;
+  
+  doc.setFontSize(9);
+  const textLines = doc.splitTextToSize(`"${citation.text}"`, contentWidth - 25);
+  const blockHeight = 12 + textLines.length * 4;
+  
+  y = checkPageBreak(doc, y, blockHeight);
+  
+  // Numéro de citation
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  setColor(doc, PDF_COLORS.evidence);
+  doc.text(`[${citation.number}]`, marginLeft, y);
+  
+  // Texte de la citation
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'italic');
+  setColor(doc, PDF_COLORS.text);
+  doc.text(textLines, marginLeft + 12, y);
+  
+  let currentY = y + textLines.length * 4 + 2;
+  
+  // Source
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'normal');
+  setColor(doc, PDF_COLORS.muted);
+  doc.text(`— ${citation.emailSender}, ${citation.emailDate}`, marginLeft + 12, currentY);
+  
+  // Pertinence si indiquée
+  if (citation.relevance) {
+    currentY += 4;
+    doc.setFont('helvetica', 'italic');
+    setColor(doc, PDF_COLORS.secondary);
+    doc.text(`Pertinence: ${citation.relevance}`, marginLeft + 12, currentY);
+  }
+  
+  return currentY + 6;
+}
