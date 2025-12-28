@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { verifyAuth } from "../_shared/auth.ts";
 import { checkRateLimit, getClientIdentifier, rateLimitResponse, RATE_LIMITS } from "../_shared/rateLimit.ts";
+import { getGmailTokens, encryptGmailTokens, isEncryptionConfigured } from "../_shared/encryption.ts";
 
 declare const EdgeRuntime: {
   waitUntil: (promise: Promise<any>) => void;
@@ -33,8 +34,8 @@ const ALL_GMAIL_LABELS = [
   'CATEGORY_FORUMS',
 ];
 
-async function refreshAccessToken(supabase: any, config: any): Promise<string | null> {
-  if (!config.refresh_token) {
+async function refreshAccessToken(supabase: any, config: any, refreshToken: string): Promise<string | null> {
+  if (!refreshToken) {
     console.log("No refresh token available");
     return null;
   }
@@ -46,7 +47,7 @@ async function refreshAccessToken(supabase: any, config: any): Promise<string | 
     body: new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID!,
       client_secret: GOOGLE_CLIENT_SECRET!,
-      refresh_token: config.refresh_token,
+      refresh_token: refreshToken,
       grant_type: "refresh_token",
     }),
   });
@@ -58,15 +59,46 @@ async function refreshAccessToken(supabase: any, config: any): Promise<string | 
   }
 
   const tokenExpiry = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
-  await supabase
-    .from("gmail_config")
-    .update({ 
-      access_token: tokenData.access_token,
-      token_expiry: tokenExpiry
-    })
-    .eq("id", config.id);
+  
+  // Store tokens encrypted if encryption is configured
+  if (isEncryptionConfigured()) {
+    try {
+      const encrypted = await encryptGmailTokens(tokenData.access_token, refreshToken);
+      await supabase
+        .from("gmail_config")
+        .update({ 
+          access_token_enc: encrypted.accessTokenEnc,
+          refresh_token_enc: encrypted.refreshTokenEnc,
+          token_nonce: encrypted.nonce,
+          token_key_version: encrypted.keyVersion,
+          access_token: null, // Clear plaintext
+          refresh_token: null, // Clear plaintext
+          token_expiry: tokenExpiry
+        })
+        .eq("id", config.id);
+      console.log("Token refreshed and stored encrypted");
+    } catch (encError) {
+      console.error("Encryption failed, storing plaintext:", encError);
+      await supabase
+        .from("gmail_config")
+        .update({ 
+          access_token: tokenData.access_token,
+          token_expiry: tokenExpiry
+        })
+        .eq("id", config.id);
+    }
+  } else {
+    // Fallback to plaintext storage
+    await supabase
+      .from("gmail_config")
+      .update({ 
+        access_token: tokenData.access_token,
+        token_expiry: tokenExpiry
+      })
+      .eq("id", config.id);
+    console.log("Token refreshed (plaintext - encryption not configured)");
+  }
 
-  console.log("Token refreshed successfully");
   return tokenData.access_token;
 }
 
@@ -695,14 +727,34 @@ serve(async (req) => {
       );
     }
 
+    // Get tokens (decrypted if encrypted, or plaintext for migration compatibility)
+    const tokens = await getGmailTokens(config);
+    let accessToken = tokens.accessToken;
+    const refreshToken = tokens.refreshToken;
+    
+    if (!accessToken) {
+      console.error("No access token available for user", user.id);
+      return new Response(JSON.stringify({ 
+        error: "Gmail non configuré. Connecte ton compte Gmail d'abord." 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    
+    if (tokens.wasEncrypted) {
+      console.log(`Using encrypted tokens (key version ${tokens.keyVersion})`);
+    } else {
+      console.log("Using plaintext tokens (migration pending)");
+    }
+
     // Check if token is expired
-    let accessToken = config.access_token;
     const tokenExpiry = new Date(config.token_expiry);
     const now = new Date();
 
     if (tokenExpiry <= now) {
       console.log("Token expired, refreshing...");
-      accessToken = await refreshAccessToken(supabase, config);
+      accessToken = await refreshAccessToken(supabase, config, refreshToken!);
       if (!accessToken) {
         return new Response(JSON.stringify({ 
           error: "Token expired and refresh failed. Please reconnect Gmail." 
@@ -840,7 +892,7 @@ serve(async (req) => {
       if (!listResponse.ok) {
         console.error("Gmail API error:", listData);
         if (listData.error?.code === 401) {
-          accessToken = await refreshAccessToken(supabase, config);
+          accessToken = await refreshAccessToken(supabase, config, refreshToken!);
           if (!accessToken) {
             return new Response(JSON.stringify({ 
               error: "Gmail authentication failed. Please reconnect." 
