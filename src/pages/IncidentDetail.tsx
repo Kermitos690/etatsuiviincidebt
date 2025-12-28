@@ -17,7 +17,8 @@ import {
   Loader2,
   Volume2,
   MessageSquare,
-  Download
+  Download,
+  Settings2
 } from 'lucide-react';
 import { AppLayout, PageHeader } from '@/components/layout';
 import { PriorityBadge, StatusBadge } from '@/components/common';
@@ -35,6 +36,9 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { generateIncidentPDF } from '@/utils/generateIncidentPDF';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 
 const proofIcons = {
   email: Mail,
@@ -54,6 +58,14 @@ export default function IncidentDetail() {
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [speaking, setSpeaking] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exportOptions, setExportOptions] = useState({
+    includeProofs: true,
+    includeLegalExplanations: true,
+    includeEmails: false,
+    includeEmailCitations: false,
+    includeLegalSearch: false,
+  });
   
   useEffect(() => {
     const load = async () => {
@@ -166,9 +178,18 @@ export default function IncidentDetail() {
     });
   };
 
-  const exportPDF = async () => {
+  const exportPDF = async (withOptions = false) => {
     setExportingPDF(true);
+    setShowExportDialog(false);
     try {
+      const opts = withOptions ? {
+        ...exportOptions,
+        emails: exportOptions.includeEmails || exportOptions.includeEmailCitations ? relatedEmails : [],
+      } : {
+        includeProofs: true,
+        includeLegalExplanations: true,
+      };
+
       await generateIncidentPDF({
         id: incident.id,
         numero: incident.numero,
@@ -191,12 +212,13 @@ export default function IncidentDetail() {
           label: p.label,
           url: p.url,
         })),
-      }, {
-        includeProofs: true,
-        includeLegalExplanations: true,
-      });
+      }, opts);
       
-      toast.success('PDF Premium généré avec bases légales');
+      const features = [];
+      if (opts.includeEmails) features.push('emails');
+      if (opts.includeLegalSearch) features.push('recherche juridique');
+      
+      toast.success(`PDF généré${features.length > 0 ? ` avec ${features.join(', ')}` : ''}`);
     } catch (error) {
       console.error('Erreur export PDF:', error);
       toast.error('Erreur lors de la génération du PDF');
@@ -256,7 +278,7 @@ export default function IncidentDetail() {
             <Button 
               variant="outline" 
               size="sm" 
-              onClick={exportPDF}
+              onClick={() => exportPDF(false)}
               disabled={exportingPDF}
             >
               {exportingPDF ? (
@@ -266,6 +288,72 @@ export default function IncidentDetail() {
               )}
               PDF
             </Button>
+            <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" disabled={exportingPDF}>
+                  <Settings2 className="h-4 w-4 mr-2" />
+                  PDF+
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Options d'export PDF enrichi</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="proofs" 
+                      checked={exportOptions.includeProofs}
+                      onCheckedChange={(c) => setExportOptions(o => ({...o, includeProofs: !!c}))}
+                    />
+                    <Label htmlFor="proofs">Inclure les preuves</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="legal" 
+                      checked={exportOptions.includeLegalExplanations}
+                      onCheckedChange={(c) => setExportOptions(o => ({...o, includeLegalExplanations: !!c}))}
+                    />
+                    <Label htmlFor="legal">Inclure les bases légales</Label>
+                  </div>
+                  <Separator />
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="emails" 
+                      checked={exportOptions.includeEmails}
+                      onCheckedChange={(c) => setExportOptions(o => ({...o, includeEmails: !!c}))}
+                      disabled={relatedEmails.length === 0}
+                    />
+                    <Label htmlFor="emails">Inclure tous les emails ({relatedEmails.length})</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="citations" 
+                      checked={exportOptions.includeEmailCitations}
+                      onCheckedChange={(c) => setExportOptions(o => ({...o, includeEmailCitations: !!c}))}
+                      disabled={relatedEmails.length === 0}
+                    />
+                    <Label htmlFor="citations">Extraire les citations probantes</Label>
+                  </div>
+                  <Separator />
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="search" 
+                      checked={exportOptions.includeLegalSearch}
+                      onCheckedChange={(c) => setExportOptions(o => ({...o, includeLegalSearch: !!c}))}
+                    />
+                    <Label htmlFor="search">Recherche juridique en ligne</Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    La recherche juridique interroge automatiquement bger.ch et Fedlex pour trouver jurisprudence et législation pertinentes.
+                  </p>
+                </div>
+                <Button onClick={() => exportPDF(true)} disabled={exportingPDF} className="w-full">
+                  {exportingPDF ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+                  Générer le PDF enrichi
+                </Button>
+              </DialogContent>
+            </Dialog>
             {!incident.transmisJP && (
               <Button size="sm" onClick={markTransmisJP}>
                 <Send className="h-4 w-4 mr-2" />
