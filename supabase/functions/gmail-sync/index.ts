@@ -563,9 +563,29 @@ async function processEmailsInBackground(
             return { success: false };
           }
 
-          // Download attachments for new emails
+          // Download attachments for new emails OR existing emails without attachments
           let downloadedAttachments = 0;
-          if (isNew && attachments.length > 0 && savedEmail) {
+          let shouldDownloadAttachments = false;
+          
+          if (attachments.length > 0 && savedEmail) {
+            if (isNew) {
+              shouldDownloadAttachments = true;
+            } else {
+              // Check if existing email has attachments already
+              const { data: existingAttachments } = await supabase
+                .from("email_attachments")
+                .select("id")
+                .eq("email_id", savedEmail.id)
+                .limit(1);
+              
+              if (!existingAttachments || existingAttachments.length === 0) {
+                console.log(`[Attachments] Existing email ${msg.id} has no attachments stored, downloading...`);
+                shouldDownloadAttachments = true;
+              }
+            }
+          }
+          
+          if (shouldDownloadAttachments && savedEmail) {
             const downloaded = await downloadAttachments(
               savedEmail.id,
               msg.id,
@@ -575,6 +595,33 @@ async function processEmailsInBackground(
             );
             downloadedAttachments = downloaded.length;
             console.log(`Downloaded ${downloadedAttachments} attachments for email ${msg.id}`);
+            
+            // Auto-analyze downloaded attachments
+            if (downloadedAttachments > 0) {
+              try {
+                const { data: savedAttachments } = await supabase
+                  .from("email_attachments")
+                  .select("id, filename, analyzed_at")
+                  .eq("email_id", savedEmail.id);
+                
+                for (const att of savedAttachments || []) {
+                  if (!att.analyzed_at) {
+                    console.log(`[Attachments] Triggering analysis for ${att.filename}`);
+                    // Fire and forget - don't wait for analysis to complete
+                    fetch(`${SUPABASE_URL}/functions/v1/analyze-attachment`, {
+                      method: 'POST',
+                      headers: {
+                        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({ attachmentId: att.id }),
+                    }).catch(err => console.error(`Failed to trigger analysis for ${att.id}:`, err));
+                  }
+                }
+              } catch (analysisError) {
+                console.error(`Failed to trigger attachment analysis:`, analysisError);
+              }
+            }
           }
 
           return { success: true, email_type, isNew, attachmentsCount: downloadedAttachments, gmail_label };
