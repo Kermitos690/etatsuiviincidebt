@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import {
   Mail, AlertTriangle, Check, Clock, Brain, MessageSquare, ArrowRight,
   Scale, Paperclip, Download, Loader2, FileText, Image, File, X,
-  ChevronLeft, Building2, RefreshCw, Zap, Trash2
+  ChevronLeft, Building2, RefreshCw, Zap, Trash2, Quote
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { Email, EmailAttachment, AdvancedAnalysis } from './types';
-
+import { HighlightedEmailBody, getExtractedCitations } from '@/components/email/HighlightedEmailBody';
 interface EmailDetailProps {
   email: Email;
   attachments: EmailAttachment[];
@@ -166,7 +166,15 @@ function EmailDetailInner({
 
           <TabsContent value="email" className="flex-1 overflow-hidden m-0 p-4">
             <ScrollArea className="h-full rounded-xl bg-secondary/30 p-4">
-              <p className="text-sm whitespace-pre-wrap leading-relaxed">{email.body}</p>
+              <HighlightedEmailBody 
+                body={email.body}
+                aiAnalysis={analysis ? {
+                  summary: analysis.summary,
+                  violations: threadAnalysis?.rule_violations?.violations,
+                  deadlines: threadAnalysis?.deadline_violations?.details,
+                } : undefined}
+                showPassageLabels={true}
+              />
             </ScrollArea>
           </TabsContent>
 

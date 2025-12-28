@@ -104,63 +104,116 @@ async function extractEmailCitations(
 ): Promise<ExtractedCitation[]> {
   if (!emails || emails.length === 0) return [];
 
-  try {
-    const { data, error } = await supabase.functions.invoke('analyze-incident', {
-      body: {
-        text: `Contexte de l'incident:
-Faits: ${faits}
-Dysfonctionnement: ${dysfonctionnement}
+  const citations: ExtractedCitation[] = [];
+  
+  // Patterns for automatic extraction (same as HighlightedEmailBody)
+  const extractionPatterns = {
+    violation: [
+      /\brefus[^\.]*\./gi,
+      /\bimpossible[^\.]*\./gi,
+      /\bn'a pas[^\.]*\./gi,
+      /\bne peut pas[^\.]*\./gi,
+      /\bpas reçu[^\.]*\./gi,
+      /\bsans réponse[^\.]*\./gi,
+    ],
+    deadline: [
+      /\b\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}\b[^\.]*\./gi,
+      /\bdélai[^\.]*\./gi,
+      /\bavant le\s+[^\.]+\./gi,
+      /\bjusqu'au\s+[^\.]+\./gi,
+      /\bau plus tard[^\.]*\./gi,
+      /\bdepuis le\s+[^\.]+\./gi,
+      /\bça fait\s+\d+[^\.]*\./gi,
+    ],
+    commitment: [
+      /\bje m'engage[^\.]*\./gi,
+      /\bnous nous engageons[^\.]*\./gi,
+      /\bje vous confirme[^\.]*\./gi,
+      /\bje vous assure[^\.]*\./gi,
+      /\bje ferai[^\.]*\./gi,
+      /\bnous ferons[^\.]*\./gi,
+      /\bsera fait[^\.]*\./gi,
+    ],
+    threat: [
+      /\bà défaut[^\.]*\./gi,
+      /\bsinon[^\.]*\./gi,
+      /\bsous peine[^\.]*\./gi,
+      /\bfaute de quoi[^\.]*\./gi,
+      /\bje me verrai[^\.]*\./gi,
+      /\bnous nous réservons[^\.]*\./gi,
+      /\bcontraint de[^\.]*\./gi,
+    ],
+    evidence: [
+      /\bcomme vous l'avez[^\.]*\./gi,
+      /\bvous avez dit[^\.]*\./gi,
+      /\bselon votre[^\.]*\./gi,
+      /\bdans votre courrier[^\.]*\./gi,
+      /\bvotre email du[^\.]*\./gi,
+      /\bprécédemment[^\.]*\./gi,
+    ]
+  };
 
-Emails à analyser:
-${emails.map((e, i) => `[Email ${i + 1}] De: ${e.sender} | Date: ${e.received_at}
-${e.body}`).join('\n\n---\n\n')}
+  const relevanceLabels: Record<string, string> = {
+    violation: 'Violation identifiée',
+    deadline: 'Délai mentionné',
+    commitment: 'Engagement pris',
+    threat: 'Avertissement/Menace',
+    evidence: 'Référence probante'
+  };
 
-Extrais les citations les plus pertinentes (phrases exactes) qui prouvent les faits et le dysfonctionnement. Maximum 8 citations.`
-      }
-    });
+  // Extract from each email
+  for (let i = 0; i < emails.length && citations.length < 12; i++) {
+    const email = emails[i];
+    const body = email.body;
 
-    if (error || !data) return [];
-
-    // Parser la réponse pour extraire les citations
-    const citations: ExtractedCitation[] = [];
-    const content = typeof data === 'string' ? data : JSON.stringify(data);
-    
-    // Extraire manuellement les passages clés
-    for (let i = 0; i < emails.length && citations.length < 8; i++) {
-      const email = emails[i];
-      const sentences = email.body.split(/[.!?]+/).filter(s => s.trim().length > 20);
-      
-      for (const sentence of sentences.slice(0, 2)) {
-        if (citations.length >= 8) break;
-        
-        const lowerSentence = sentence.toLowerCase();
-        const isRelevant = 
-          lowerSentence.includes('délai') ||
-          lowerSentence.includes('attente') ||
-          lowerSentence.includes('réponse') ||
-          lowerSentence.includes('urgent') ||
-          lowerSentence.includes('problème') ||
-          lowerSentence.includes('manque') ||
-          lowerSentence.includes('refus') ||
-          faits.toLowerCase().split(' ').some(word => word.length > 4 && lowerSentence.includes(word));
-        
-        if (isRelevant) {
-          citations.push({
-            text: sentence.trim().substring(0, 200),
-            emailIndex: i + 1,
-            emailDate: formatPDFDate(email.received_at),
-            emailSender: email.sender,
-            relevance: 'Prouve les faits allégués'
-          });
+    // Apply patterns
+    for (const [type, patterns] of Object.entries(extractionPatterns)) {
+      for (const pattern of patterns) {
+        let match;
+        // Reset regex
+        pattern.lastIndex = 0;
+        while ((match = pattern.exec(body)) !== null && citations.length < 12) {
+          const text = match[0].trim();
+          // Avoid duplicates
+          if (text.length > 15 && !citations.some(c => c.text === text)) {
+            citations.push({
+              text: text.substring(0, 250),
+              emailIndex: i + 1,
+              emailDate: formatPDFDate(email.received_at),
+              emailSender: email.sender,
+              relevance: relevanceLabels[type] || 'Citation pertinente'
+            });
+          }
         }
       }
     }
 
-    return citations;
-  } catch (e) {
-    console.error('Error extracting citations:', e);
-    return [];
+    // Also extract sentences containing keywords from faits/dysfonctionnement
+    const keywords = [...faits.split(/\s+/), ...dysfonctionnement.split(/\s+/)]
+      .filter(w => w.length > 5)
+      .map(w => w.toLowerCase().replace(/[^\wàâäéèêëïîôùûü]/g, ''));
+
+    const sentences = body.split(/[.!?]+/).filter(s => s.trim().length > 20);
+    
+    for (const sentence of sentences) {
+      if (citations.length >= 12) break;
+      
+      const sentenceLower = sentence.toLowerCase();
+      const matchedKeywords = keywords.filter(kw => sentenceLower.includes(kw));
+      
+      if (matchedKeywords.length >= 2 && !citations.some(c => c.text.includes(sentence.trim().substring(0, 50)))) {
+        citations.push({
+          text: sentence.trim().substring(0, 250),
+          emailIndex: i + 1,
+          emailDate: formatPDFDate(email.received_at),
+          emailSender: email.sender,
+          relevance: 'Contexte factuel'
+        });
+      }
+    }
   }
+
+  return citations;
 }
 
 /**
