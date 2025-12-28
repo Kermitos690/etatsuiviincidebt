@@ -1359,6 +1359,53 @@ export type Database = {
         }
         Relationships: []
       }
+      incident_exports: {
+        Row: {
+          created_at: string | null
+          export_options: Json | null
+          file_name: string
+          file_size_bytes: number | null
+          id: string
+          incident_id: string
+          storage_path: string
+          updated_at: string | null
+          user_id: string
+          version: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          export_options?: Json | null
+          file_name: string
+          file_size_bytes?: number | null
+          id?: string
+          incident_id: string
+          storage_path: string
+          updated_at?: string | null
+          user_id: string
+          version?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          export_options?: Json | null
+          file_name?: string
+          file_size_bytes?: number | null
+          id?: string
+          incident_id?: string
+          storage_path?: string
+          updated_at?: string | null
+          user_id?: string
+          version?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "incident_exports_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "incidents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       incidents: {
         Row: {
           confidence_level: string | null

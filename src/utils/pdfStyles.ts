@@ -564,19 +564,27 @@ export function formatPDFDateTime(dateStr: string): string {
 }
 
 /**
- * Normalise le texte email pour affichage PDF propre
- * - Nettoie les artefacts d'encodage UTF-8
- * - Supprime les signatures répétées
+ * Normalise TOUT texte pour affichage PDF propre
+ * - Nettoie les artefacts d'encodage UTF-8 (double encodage, mojibake)
+ * - Corrige les entités HTML
+ * - Supprime les signatures répétées (optionnel)
  * - Limite les espaces multiples
- * - Supprime les lignes de citation excessives
+ * - Supprime les lignes de citation excessives (optionnel)
  */
-export function normalizeEmailBodyForPdf(body: string): string {
-  if (!body) return '';
+export function normalizeTextForPdf(text: string, options: { 
+  removeQuotes?: boolean; 
+  removeSignatures?: boolean;
+  maxLength?: number;
+} = {}): string {
+  if (!text) return '';
   
-  let normalized = body;
+  const { removeQuotes = false, removeSignatures = false, maxLength } = options;
   
-  // Fix common UTF-8 encoding artifacts
+  let normalized = text;
+  
+  // Fix UTF-8 double encoding (mojibake) - Extended mapping
   const encodingFixes: [RegExp, string][] = [
+    // Common UTF-8 double-encoded characters
     [/Ã©/g, 'é'],
     [/Ã¨/g, 'è'],
     [/Ã /g, 'à'],
@@ -587,17 +595,66 @@ export function normalizeEmailBodyForPdf(body: string): string {
     [/Ã»/g, 'û'],
     [/Ã§/g, 'ç'],
     [/Ã¹/g, 'ù'],
+    [/Ã¼/g, 'ü'],
+    [/Ã¤/g, 'ä'],
+    [/Ã¶/g, 'ö'],
+    [/Ã«/g, 'ë'],
+    [/Ã¯/g, 'ï'],
+    [/Ã¿/g, 'ÿ'],
+    [/Ã€/g, 'À'],
+    [/Ã‰/g, 'É'],
+    [/Ã‹/g, 'Ë'],
+    [/Ãˆ/g, 'È'],
+    [/Ã"/g, 'Ó'],
+    [/Ãœ/g, 'Ü'],
+    [/Å"/g, 'œ'],
+    [/Å'/g, 'Œ'],
     [/Â©/g, '©'],
     [/Â«/g, '«'],
     [/Â»/g, '»'],
     [/Â°/g, '°'],
+    [/Â€/g, '€'],
+    [/â‚¬/g, '€'],
+    
+    // Smart quotes and dashes (Windows-1252 to UTF-8)
     [/â€™/g, "'"],
+    [/â€˜/g, "'"],
     [/â€œ/g, '"'],
     [/â€/g, '"'],
     [/â€"/g, '–'],
     [/â€"/g, '—'],
-    [/Â/g, ''],
-    [/\u00A0/g, ' '], // Non-breaking spaces
+    [/â€¦/g, '…'],
+    [/Â·/g, '·'],
+    [/â€¢/g, '•'],
+    
+    // Corrupted UTF-8 bytes (Â prefix issue)
+    [/Â\s/g, ' '],
+    [/Â(?=[a-zéèêëàâäùûüôöïîç])/gi, ''],
+    
+    // HTML entities
+    [/&amp;/g, '&'],
+    [/&lt;/g, '<'],
+    [/&gt;/g, '>'],
+    [/&quot;/g, '"'],
+    [/&#39;/g, "'"],
+    [/&apos;/g, "'"],
+    [/&nbsp;/g, ' '],
+    [/&#x26;/g, '&'],
+    [/&#x27;/g, "'"],
+    [/&#x22;/g, '"'],
+    [/&#xA0;/g, ' '],
+    [/&#160;/g, ' '],
+    
+    // Non-breaking spaces
+    [/\u00A0/g, ' '],
+    [/\u200B/g, ''], // Zero-width space
+    [/\u200C/g, ''], // Zero-width non-joiner
+    [/\u200D/g, ''], // Zero-width joiner
+    [/\uFEFF/g, ''], // BOM
+    
+    // Fix common Windows line endings issues
+    [/\r\n/g, '\n'],
+    [/\r/g, '\n'],
   ];
   
   for (const [pattern, replacement] of encodingFixes) {
@@ -605,46 +662,50 @@ export function normalizeEmailBodyForPdf(body: string): string {
   }
   
   // Remove excessive citation lines (> character at start)
-  const lines = normalized.split('\n');
-  const cleanedLines: string[] = [];
-  let consecutiveCitations = 0;
-  
-  for (const line of lines) {
-    if (line.trim().startsWith('>')) {
-      consecutiveCitations++;
-      // Keep max 3 citation lines, then skip
-      if (consecutiveCitations <= 3) {
+  if (removeQuotes) {
+    const lines = normalized.split('\n');
+    const cleanedLines: string[] = [];
+    let consecutiveCitations = 0;
+    
+    for (const line of lines) {
+      if (line.trim().startsWith('>')) {
+        consecutiveCitations++;
+        // Keep max 3 citation lines, then skip
+        if (consecutiveCitations <= 3) {
+          cleanedLines.push(line);
+        } else if (consecutiveCitations === 4) {
+          cleanedLines.push('[... citations précédentes omises ...]');
+        }
+      } else {
+        consecutiveCitations = 0;
         cleanedLines.push(line);
-      } else if (consecutiveCitations === 4) {
-        cleanedLines.push('[... citations précédentes omises ...]');
       }
-    } else {
-      consecutiveCitations = 0;
-      cleanedLines.push(line);
     }
+    
+    normalized = cleanedLines.join('\n');
   }
   
-  normalized = cleanedLines.join('\n');
-  
   // Remove duplicate signatures (common pattern: same block appears twice)
-  const signaturePatterns = [
-    /--\s*\n[\s\S]*?(?=--\s*\n|$)/g, // -- signature blocks
-    /Cordialement[\s\S]*?(?=Cordialement|$)/gi,
-    /Meilleures salutations[\s\S]*?(?=Meilleures salutations|$)/gi,
-  ];
-  
-  for (const pattern of signaturePatterns) {
-    const matches = normalized.match(pattern);
-    if (matches && matches.length > 1) {
-      // Keep only the first occurrence
-      let first = true;
-      normalized = normalized.replace(pattern, (match) => {
-        if (first) {
-          first = false;
-          return match;
-        }
-        return '';
-      });
+  if (removeSignatures) {
+    const signaturePatterns = [
+      /--\s*\n[\s\S]*?(?=--\s*\n|$)/g, // -- signature blocks
+      /Cordialement[\s\S]*?(?=Cordialement|$)/gi,
+      /Meilleures salutations[\s\S]*?(?=Meilleures salutations|$)/gi,
+    ];
+    
+    for (const pattern of signaturePatterns) {
+      const matches = normalized.match(pattern);
+      if (matches && matches.length > 1) {
+        // Keep only the first occurrence
+        let first = true;
+        normalized = normalized.replace(pattern, (match) => {
+          if (first) {
+            first = false;
+            return match;
+          }
+          return '';
+        });
+      }
     }
   }
   
@@ -657,7 +718,19 @@ export function normalizeEmailBodyForPdf(body: string): string {
   // Trim each line
   normalized = normalized.split('\n').map(l => l.trim()).join('\n');
   
+  // Apply max length if specified
+  if (maxLength && normalized.length > maxLength) {
+    normalized = normalized.substring(0, maxLength) + '...';
+  }
+  
   return normalized.trim();
+}
+
+/**
+ * Alias for backward compatibility - normalizes email body
+ */
+export function normalizeEmailBodyForPdf(body: string): string {
+  return normalizeTextForPdf(body, { removeQuotes: true, removeSignatures: true });
 }
 
 /**
