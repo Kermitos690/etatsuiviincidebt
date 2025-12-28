@@ -6,6 +6,7 @@ import { useIncidentStore } from '@/stores/incidentStore';
 import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { QuickActions, LoadingState } from '@/components/common';
+import { getTutorialProps } from '@/hooks/useTutorialHighlight';
 
 import {
   DashboardKPIs,
@@ -185,10 +186,12 @@ export default function Dashboard() {
           </Button>
         </div>
 
-        <DashboardKPIs kpis={kpis} />
+        <div {...getTutorialProps('dashboard-kpis')}>
+          <DashboardKPIs kpis={kpis} />
+        </div>
 
         {/* Quick Actions - Always visible */}
-        <div className="mb-8">
+        <div className="mb-8" {...getTutorialProps('quick-actions')}>
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
             Actions Rapides
@@ -199,7 +202,10 @@ export default function Dashboard() {
         {incidents.length === 0 ? (
           <DashboardEmptyState />
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
+          <div 
+            className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8"
+            {...getTutorialProps('dashboard-charts')}
+          >
             <ChartEvolution data={chartEvolution} />
             <ChartByStatus data={chartByStatus} />
             <ChartByGravite data={chartByGravite} />

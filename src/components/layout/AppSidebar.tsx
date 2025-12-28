@@ -45,6 +45,7 @@ import {
 } from '@/components/ui/collapsible';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { TutorialStartButton } from '@/components/tutorial/GuidedTutorial';
 
 // ============= Types =============
 interface NavItem {
@@ -527,7 +528,10 @@ export function DesktopSidebar() {
       <NavContent />
 
       {/* Footer */}
-      <div className="relative p-4 border-t border-glass">
+      <div className="relative p-4 border-t border-glass space-y-3">
+        {/* Tutorial Button */}
+        <TutorialStartButton />
+        
         <div className="glass-card p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
