@@ -390,8 +390,8 @@ function drawDeepAnalysisSection(
       const bottomY = y + 10 + (displayedCitationLines.length * 4);
       doc.setFontSize(7);
       setColor(doc, PDF_COLORS.muted);
-      doc.text(`→ ${consequence}`, marginLeft + 3, bottomY);
-      doc.text(`⚠ Impact: ${impact}`, marginLeft + contentWidth/2, bottomY);
+       doc.text(`=> ${consequence}`, marginLeft + 3, bottomY);
+       doc.text(`Impact: ${impact}`, marginLeft + contentWidth/2, bottomY);
       
       y += dynamicHeight + 4;
     }
@@ -445,8 +445,8 @@ function drawDeepAnalysisSection(
       
       doc.setFont('helvetica', 'bold');
       setColor(doc, statusColor);
-      const verdict = isValid ? '✓ VALABLE' : '✗ NON VALABLE';
-      doc.text(verdict, marginLeft + 8, y + 26);
+       const verdict = isValid ? 'VALABLE' : 'NON VALABLE';
+       doc.text(verdict, marginLeft + 8, y + 26);
       
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
