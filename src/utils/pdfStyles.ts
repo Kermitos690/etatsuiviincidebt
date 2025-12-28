@@ -318,12 +318,17 @@ export function drawLegalBox(
   const { marginLeft, contentWidth } = PDF_DIMENSIONS;
   
   // Calcul de la hauteur nécessaire
+  const articleText = normalizeTextForPdf(legalRef.text, { maxLength: 2000 });
+  const contextExplanation = legalRef.contextExplanation
+    ? normalizeTextForPdf(legalRef.contextExplanation, { maxLength: 1200 })
+    : '';
+
   doc.setFontSize(9);
-  const textLines = doc.splitTextToSize(legalRef.text, contentWidth - 15);
-  const explanationLines = legalRef.contextExplanation 
-    ? doc.splitTextToSize(legalRef.contextExplanation, contentWidth - 15)
+  const textLines = doc.splitTextToSize(articleText, contentWidth - 15);
+  const explanationLines = contextExplanation
+    ? doc.splitTextToSize(contextExplanation, contentWidth - 15)
     : [];
-  
+
   const boxHeight = 20 + (textLines.length * 4) + (explanationLines.length > 0 ? 15 + (explanationLines.length * 4) : 0);
   
   // Vérifier si on a besoin d'une nouvelle page
@@ -345,7 +350,8 @@ export function drawLegalBox(
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   setColor(doc, PDF_COLORS.legal);
-  const headerText = `${legalRef.code} art. ${legalRef.article}${legalRef.title ? ` - ${legalRef.title}` : ''}`;
+  const headerTextRaw = `${legalRef.code} art. ${legalRef.article}${legalRef.title ? ` - ${legalRef.title}` : ''}`;
+  const headerText = normalizeTextForPdf(headerTextRaw, { maxLength: 180 });
   doc.text(headerText, marginLeft + 8, currentY);
   
   // Texte de l'article
@@ -357,7 +363,7 @@ export function drawLegalBox(
   currentY += textLines.length * 4 + 2;
   
   // Explication contextuelle
-  if (legalRef.contextExplanation && explanationLines.length > 0) {
+  if (contextExplanation && explanationLines.length > 0) {
     currentY += 3;
     doc.setFont('helvetica', 'bolditalic');
     setColor(doc, PDF_COLORS.secondary);
@@ -709,20 +715,39 @@ export function normalizeTextForPdf(text: string, options: {
     }
   }
   
+  // Replace glyphs that jsPDF default fonts can't render reliably
+  const glyphSafeReplacements: [RegExp, string][] = [
+    [/✓|✔/g, 'OK'],
+    [/✗|✘/g, 'X'],
+    [/⚠️|⚠/g, '!'],
+    [/→/g, '->'],
+    [/–|—/g, '-'],
+    [/…/g, '...'],
+    [/€/g, 'EUR'],
+  ];
+
+  for (const [pattern, replacement] of glyphSafeReplacements) {
+    normalized = normalized.replace(pattern, replacement);
+  }
+
+  // Remove any remaining non-Latin1 chars (jsPDF default font limitation)
+  normalized = normalized.replace(/[^	
+0- A0- FF]/g, '');
+
   // Collapse multiple blank lines to max 2
   normalized = normalized.replace(/\n{4,}/g, '\n\n\n');
-  
+
   // Collapse multiple spaces
   normalized = normalized.replace(/[ \t]{3,}/g, '  ');
-  
+
   // Trim each line
   normalized = normalized.split('\n').map(l => l.trim()).join('\n');
-  
+
   // Apply max length if specified
   if (maxLength && normalized.length > maxLength) {
     normalized = normalized.substring(0, maxLength) + '...';
   }
-  
+
   return normalized.trim();
 }
 
@@ -751,13 +776,18 @@ export function drawEmailBlock(
 ): number {
   const { marginLeft, contentWidth } = PDF_DIMENSIONS;
   
+  // Normalize critical fields (jsPDF default font has limitations)
+  const sender = normalizeTextForPdf(email.sender, { maxLength: 120 });
+  const recipient = email.recipient ? normalizeTextForPdf(email.recipient, { maxLength: 120 }) : undefined;
+  const subject = normalizeTextForPdf(email.subject, { maxLength: 200 });
+
   // Normalize email body first
   const normalizedBody = normalizeEmailBodyForPdf(email.body);
   
   // Calculate heights precisely
   doc.setFontSize(9);
   const bodyLines = doc.splitTextToSize(normalizedBody, contentWidth - 20);
-  const subjectLines = doc.splitTextToSize(email.subject, contentWidth - 80);
+  const subjectLines = doc.splitTextToSize(subject, contentWidth - 80);
   
   // Calculate exact displayed lines
   const maxBodyLines = 15;
@@ -767,7 +797,7 @@ export function drawEmailBlock(
   // Precise height calculation
   const headerHeight = email.citationNumber ? 4 : 0; // Citation number line
   const senderHeight = 5;
-  const recipientHeight = email.recipient ? 4 : 0;
+  const recipientHeight = recipient ? 4 : 0;
   const subjectHeight = subjectLines.length * 4 + 3;
   const bodyHeight = displayedBodyLines.length * 3.5;
   const moreLineHeight = hasMoreLines ? 5 : 0;
@@ -802,7 +832,7 @@ export function drawEmailBlock(
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   setColor(doc, PDF_COLORS.text);
-  doc.text(`De: ${email.sender}`, marginLeft + 8, currentY);
+  doc.text(`De: ${sender}`, marginLeft + 8, currentY);
   
   doc.setFont('helvetica', 'normal');
   setColor(doc, PDF_COLORS.muted);
@@ -810,10 +840,10 @@ export function drawEmailBlock(
   currentY += 5;
   
   // Recipient if present
-  if (email.recipient) {
+  if (recipient) {
     doc.setFontSize(8);
     setColor(doc, PDF_COLORS.muted);
-    doc.text(`À: ${email.recipient}`, marginLeft + 8, currentY);
+    doc.text(`À: ${recipient}`, marginLeft + 8, currentY);
     currentY += 4;
   }
   
@@ -861,8 +891,15 @@ export function drawLegalSearchResult(
   const { marginLeft, contentWidth } = PDF_DIMENSIONS;
   
   doc.setFontSize(9);
-  const summaryLines = doc.splitTextToSize(result.summary, contentWidth - 20);
-  const titleLines = doc.splitTextToSize(result.title, contentWidth - 50);
+
+  const reference = normalizeTextForPdf(result.reference_number || 'Réf. N/A', { maxLength: 60 });
+  const title = normalizeTextForPdf(result.title, { maxLength: 180 });
+  const summary = normalizeTextForPdf(result.summary, { maxLength: 800 });
+  const sourceName = normalizeTextForPdf(result.source_name, { maxLength: 60 });
+  const dateDecision = result.date_decision ? normalizeTextForPdf(result.date_decision, { maxLength: 30 }) : undefined;
+
+  const summaryLines = doc.splitTextToSize(summary, contentWidth - 20);
+  const titleLines = doc.splitTextToSize(title, contentWidth - 50);
   
   const blockHeight = 18 + titleLines.length * 4 + Math.min(summaryLines.length, 4) * 4;
   
@@ -883,7 +920,7 @@ export function drawLegalSearchResult(
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   setColor(doc, typeColor);
-  doc.text(result.reference_number || 'Réf. N/A', marginLeft + 8, currentY);
+  doc.text(reference, marginLeft + 8, currentY);
   
   doc.setFontSize(7);
   doc.setFont('helvetica', 'normal');
@@ -909,9 +946,9 @@ export function drawLegalSearchResult(
   // Source et date
   doc.setFontSize(7);
   setColor(doc, PDF_COLORS.muted);
-  let sourceInfo = `Source: ${result.source_name}`;
-  if (result.date_decision) {
-    sourceInfo += ` | ${result.date_decision}`;
+  let sourceInfo = `Source: ${sourceName}`;
+  if (dateDecision) {
+    sourceInfo += ` | ${dateDecision}`;
   }
   doc.text(sourceInfo, marginLeft + 8, currentY);
   
