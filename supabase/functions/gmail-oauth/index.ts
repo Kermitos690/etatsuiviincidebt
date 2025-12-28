@@ -100,31 +100,24 @@ serve(async (req) => {
       };
 
       if (isEncryptionConfigured()) {
-        try {
-          const encrypted = await encryptGmailTokens(
-            tokenData.access_token,
-            tokenData.refresh_token || null
-          );
-          upsertData = {
-            ...upsertData,
-            access_token_enc: encrypted.accessTokenEnc,
-            refresh_token_enc: encrypted.refreshTokenEnc,
-            token_nonce: encrypted.nonce,
-            token_key_version: encrypted.keyVersion,
-            access_token: null, // Clear plaintext
-            refresh_token: null, // Clear plaintext
-          };
-          console.log("Tokens will be stored encrypted (key version", encrypted.keyVersion, ")");
-        } catch (encError) {
-          console.error("Encryption failed, falling back to plaintext:", encError);
-          upsertData = {
-            ...upsertData,
-            access_token: tokenData.access_token,
-            refresh_token: tokenData.refresh_token || null,
-          };
-        }
+        // SECURITY: do not fall back to plaintext if encryption is configured.
+        // If encryption fails, we fail the request to avoid storing secrets in cleartext.
+        const encrypted = await encryptGmailTokens(
+          tokenData.access_token,
+          tokenData.refresh_token || null
+        );
+        upsertData = {
+          ...upsertData,
+          access_token_enc: encrypted.accessTokenEnc,
+          refresh_token_enc: encrypted.refreshTokenEnc,
+          token_nonce: encrypted.nonce,
+          token_key_version: encrypted.keyVersion,
+          access_token: null, // Clear plaintext
+          refresh_token: null, // Clear plaintext
+        };
+        console.log("Tokens will be stored encrypted (key version", encrypted.keyVersion, ")");
       } else {
-        // Fallback to plaintext storage
+        // Fallback to plaintext storage (only when encryption is NOT configured)
         upsertData = {
           ...upsertData,
           access_token: tokenData.access_token,
@@ -236,10 +229,14 @@ serve(async (req) => {
     }
 
     if (action === "get-config") {
-      // Get the stored configuration FOR THIS USER ONLY
-      const { data: configData, error: configError } = await supabase
+      // SECURITY: Never return OAuth tokens (plaintext or encrypted) to the client.
+      // We only return non-sensitive configuration fields + a boolean connected flag.
+
+      const { data: configDataRaw, error: configError } = await supabase
         .from("gmail_config")
-        .select("*")
+        .select(
+          "id,user_email,last_sync,sync_enabled,domains,keywords,token_expiry,access_token,refresh_token,access_token_enc,refresh_token_enc,token_nonce,token_key_version"
+        )
         .eq("user_id", user.id)
         .maybeSingle();
 
@@ -248,12 +245,75 @@ serve(async (req) => {
         throw new Error("Failed to fetch config");
       }
 
-      return new Response(JSON.stringify({ 
-        config: configData,
-        connected: !!configData?.access_token
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      // If encryption is configured and we still have legacy plaintext tokens, migrate them.
+      // Note: We require an access token to encrypt (refresh-only legacy rows should be reconnected).
+      if (
+        configDataRaw &&
+        isEncryptionConfigured() &&
+        !!configDataRaw.access_token &&
+        (!configDataRaw.access_token_enc || !configDataRaw.token_nonce)
+      ) {
+        try {
+          const encrypted = await encryptGmailTokens(
+            configDataRaw.access_token!,
+            configDataRaw.refresh_token || null
+          );
+
+          const { error: migError } = await supabase
+            .from("gmail_config")
+            .update({
+              access_token_enc: encrypted.accessTokenEnc,
+              refresh_token_enc: encrypted.refreshTokenEnc,
+              token_nonce: encrypted.nonce,
+              token_key_version: encrypted.keyVersion,
+              access_token: null,
+              refresh_token: null,
+            })
+            .eq("id", configDataRaw.id)
+            .eq("user_id", user.id);
+
+          if (migError) throw migError;
+
+          // Reflect migration in local object (still not returned to client)
+          configDataRaw.access_token_enc = encrypted.accessTokenEnc;
+          configDataRaw.refresh_token_enc = encrypted.refreshTokenEnc;
+          configDataRaw.token_nonce = encrypted.nonce;
+          configDataRaw.token_key_version = encrypted.keyVersion;
+          configDataRaw.access_token = null;
+          configDataRaw.refresh_token = null;
+
+          console.log("Migrated legacy plaintext Gmail tokens for user:", user.id);
+        } catch (e) {
+          console.error("Token migration failed for user:", user.id, e);
+          // Do not fail the whole request; user can reconnect if needed.
+        }
+      }
+
+      const connected =
+        !!(configDataRaw?.access_token_enc && configDataRaw?.token_nonce) ||
+        !!configDataRaw?.access_token;
+
+      const safeConfig = configDataRaw
+        ? {
+            id: configDataRaw.id,
+            user_email: configDataRaw.user_email,
+            last_sync: configDataRaw.last_sync,
+            sync_enabled: configDataRaw.sync_enabled,
+            domains: configDataRaw.domains,
+            keywords: configDataRaw.keywords,
+            token_expiry: configDataRaw.token_expiry,
+          }
+        : null;
+
+      return new Response(
+        JSON.stringify({
+          config: safeConfig,
+          connected,
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
     if (action === "update-config") {
@@ -332,51 +392,48 @@ serve(async (req) => {
       const tokenExpiry = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
 
       if (isEncryptionConfigured()) {
-        try {
-          const encrypted = await encryptGmailTokens(tokenData.access_token, tokens.refreshToken);
-          await supabase
-            .from("gmail_config")
-            .update({ 
-              access_token_enc: encrypted.accessTokenEnc,
-              refresh_token_enc: encrypted.refreshTokenEnc,
-              token_nonce: encrypted.nonce,
-              token_key_version: encrypted.keyVersion,
-              access_token: null,
-              refresh_token: null,
-              token_expiry: tokenExpiry
-            })
-            .eq("id", config.id)
-            .eq("user_id", user.id);
-          console.log("Token refreshed and stored encrypted");
-        } catch (encError) {
-          console.error("Encryption failed, storing plaintext:", encError);
-          await supabase
-            .from("gmail_config")
-            .update({ 
-              access_token: tokenData.access_token,
-              token_expiry: tokenExpiry
-            })
-            .eq("id", config.id)
-            .eq("user_id", user.id);
-        }
-      } else {
-        await supabase
+        // SECURITY: If encryption is configured, never fall back to plaintext storage.
+        const encrypted = await encryptGmailTokens(tokenData.access_token, tokens.refreshToken);
+
+        const { error: updateError } = await supabase
           .from("gmail_config")
-          .update({ 
-            access_token: tokenData.access_token,
-            token_expiry: tokenExpiry
+          .update({
+            access_token_enc: encrypted.accessTokenEnc,
+            refresh_token_enc: encrypted.refreshTokenEnc,
+            token_nonce: encrypted.nonce,
+            token_key_version: encrypted.keyVersion,
+            access_token: null,
+            refresh_token: null,
+            token_expiry: tokenExpiry,
           })
           .eq("id", config.id)
           .eq("user_id", user.id);
+
+        if (updateError) throw updateError;
+
+        console.log("Token refreshed and stored encrypted");
+      } else {
+        const { error: updateError } = await supabase
+          .from("gmail_config")
+          .update({
+            access_token: tokenData.access_token,
+            token_expiry: tokenExpiry,
+          })
+          .eq("id", config.id)
+          .eq("user_id", user.id);
+
+        if (updateError) throw updateError;
       }
 
       console.log("Token refreshed for user:", user.id);
-      return new Response(JSON.stringify({ 
-        success: true,
-        access_token: tokenData.access_token 
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          success: true,
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
     return new Response(JSON.stringify({ error: "Invalid action" }), {
