@@ -62,8 +62,8 @@ export default function IncidentDetail() {
   const [exportOptions, setExportOptions] = useState({
     includeProofs: true,
     includeLegalExplanations: true,
-    includeEmails: false,
-    includeEmailCitations: false,
+    includeEmails: true,
+    includeEmailCitations: true,
     includeLegalSearch: false,
   });
   
@@ -333,7 +333,12 @@ export default function IncidentDetail() {
                       onCheckedChange={(c) => setExportOptions(o => ({...o, includeEmailCitations: !!c}))}
                       disabled={relatedEmails.length === 0}
                     />
-                    <Label htmlFor="citations">Extraire les citations probantes</Label>
+                    <div>
+                      <Label htmlFor="citations">Extraire les citations probantes</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Passages surlignés automatiquement: violations, délais, engagements, menaces
+                      </p>
+                    </div>
                   </div>
                   <Separator />
                   <div className="flex items-center space-x-2">
