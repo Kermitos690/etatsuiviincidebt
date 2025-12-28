@@ -52,8 +52,9 @@ const handler = async (req: Request): Promise<Response> => {
     // 3. SANITIZE HTML CONTENT
     const sanitizedHtml = sanitizeHtml(html);
 
-    // 4. AUDIT LOG
-    console.log(`Email send request by user ${user.email || user.id} to ${to}`);
+    // 4. AUDIT LOG - Mask email addresses for privacy
+    const maskEmail = (email: string) => email.replace(/(.{2}).*(@.*)/, '$1***$2');
+    console.log(`Email send request by user ${user.id} to ${maskEmail(to)}`);
 
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
