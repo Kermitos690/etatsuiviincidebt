@@ -801,6 +801,63 @@ export type Database = {
           },
         ]
       }
+      detection_patterns: {
+        Row: {
+          accuracy_score: number | null
+          category: string
+          counter_arguments: string[] | null
+          created_at: string | null
+          description: string | null
+          detection_count: number | null
+          example_citations: string[] | null
+          id: string
+          is_active: boolean | null
+          keywords: string[] | null
+          legal_articles: string[] | null
+          pattern_name: string
+          regex_patterns: string[] | null
+          severity: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          accuracy_score?: number | null
+          category: string
+          counter_arguments?: string[] | null
+          created_at?: string | null
+          description?: string | null
+          detection_count?: number | null
+          example_citations?: string[] | null
+          id?: string
+          is_active?: boolean | null
+          keywords?: string[] | null
+          legal_articles?: string[] | null
+          pattern_name: string
+          regex_patterns?: string[] | null
+          severity?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          accuracy_score?: number | null
+          category?: string
+          counter_arguments?: string[] | null
+          created_at?: string | null
+          description?: string | null
+          detection_count?: number | null
+          example_citations?: string[] | null
+          id?: string
+          is_active?: boolean | null
+          keywords?: string[] | null
+          legal_articles?: string[] | null
+          pattern_name?: string
+          regex_patterns?: string[] | null
+          severity?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       email_attachments: {
         Row: {
           ai_analysis: Json | null
@@ -1029,6 +1086,42 @@ export type Database = {
           occurrence_count?: number | null
           sender_pattern?: string | null
           subject_pattern?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      email_thread_links: {
+        Row: {
+          ai_suggested: boolean | null
+          created_at: string | null
+          id: string
+          link_reason: string | null
+          link_type: string | null
+          linked_email_ids: string[] | null
+          primary_thread_id: string
+          user_confirmed: boolean | null
+          user_id: string
+        }
+        Insert: {
+          ai_suggested?: boolean | null
+          created_at?: string | null
+          id?: string
+          link_reason?: string | null
+          link_type?: string | null
+          linked_email_ids?: string[] | null
+          primary_thread_id: string
+          user_confirmed?: boolean | null
+          user_id: string
+        }
+        Update: {
+          ai_suggested?: boolean | null
+          created_at?: string | null
+          id?: string
+          link_reason?: string | null
+          link_type?: string | null
+          linked_email_ids?: string[] | null
+          primary_thread_id?: string
+          user_confirmed?: boolean | null
           user_id?: string
         }
         Relationships: []
@@ -2587,6 +2680,69 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      thread_break_detections: {
+        Row: {
+          break_type: string
+          continuation_suggested_id: string | null
+          created_at: string | null
+          days_gap: number | null
+          detected_at: string | null
+          email_id: string | null
+          id: string
+          is_confirmed: boolean | null
+          is_resolved: boolean | null
+          notes: string | null
+          questions_unanswered: string[] | null
+          thread_id: string
+          user_id: string
+        }
+        Insert: {
+          break_type: string
+          continuation_suggested_id?: string | null
+          created_at?: string | null
+          days_gap?: number | null
+          detected_at?: string | null
+          email_id?: string | null
+          id?: string
+          is_confirmed?: boolean | null
+          is_resolved?: boolean | null
+          notes?: string | null
+          questions_unanswered?: string[] | null
+          thread_id: string
+          user_id: string
+        }
+        Update: {
+          break_type?: string
+          continuation_suggested_id?: string | null
+          created_at?: string | null
+          days_gap?: number | null
+          detected_at?: string | null
+          email_id?: string | null
+          id?: string
+          is_confirmed?: boolean | null
+          is_resolved?: boolean | null
+          notes?: string | null
+          questions_unanswered?: string[] | null
+          thread_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "thread_break_detections_continuation_suggested_id_fkey"
+            columns: ["continuation_suggested_id"]
+            isOneToOne: false
+            referencedRelation: "emails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "thread_break_detections_email_id_fkey"
+            columns: ["email_id"]
+            isOneToOne: false
+            referencedRelation: "emails"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {

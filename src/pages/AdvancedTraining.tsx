@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { SituationCard } from '@/components/training/SituationCard';
 import { TrainingDashboard } from '@/components/training/TrainingDashboard';
 import { LegalReferenceManager } from '@/components/training/LegalReferenceManager';
+import { PatternManager } from '@/components/training/PatternManager';
+import { ThreadLinker } from '@/components/training/ThreadLinker';
 import { useActivelearning } from '@/hooks/useActiveLearning';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { 
@@ -12,8 +14,9 @@ import {
   RefreshCw, 
   Sparkles, 
   Scale, 
-  BarChart3,
-  Loader2
+  Loader2,
+  Tag,
+  Link2
 } from 'lucide-react';
 
 export default function AdvancedTraining() {
@@ -32,56 +35,47 @@ export default function AdvancedTraining() {
     <div className="container mx-auto p-4 space-y-6 h-full min-h-0 flex flex-col">
       <PageHeader
         title="Entraînement IA Avancé"
-        description="Validez les détections et enrichissez la base de connaissances juridiques"
+        description="Validez les détections, gérez les patterns et liez les conversations"
         icon={<Brain className="h-7 w-7 text-white" />}
       />
 
-      {/* Stats Dashboard */}
       <TrainingDashboard stats={stats} />
 
-      {/* Main Content */}
-      <Tabs defaultValue="situations" className="space-y-4">
-        <TabsList>
+      <Tabs defaultValue="situations" className="space-y-4 flex-1">
+        <TabsList className="flex-wrap h-auto gap-1">
           <TabsTrigger value="situations" className="gap-2">
             <Sparkles className="h-4 w-4" />
-            Situations à valider
+            Situations
+          </TabsTrigger>
+          <TabsTrigger value="patterns" className="gap-2">
+            <Tag className="h-4 w-4" />
+            Patterns
+          </TabsTrigger>
+          <TabsTrigger value="threads" className="gap-2">
+            <Link2 className="h-4 w-4" />
+            Threads
           </TabsTrigger>
           <TabsTrigger value="legal" className="gap-2">
             <Scale className="h-4 w-4" />
-            Références légales
+            Références
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="situations" className="space-y-4">
-          {/* Actions */}
           <div className="flex items-center gap-4">
-            <Button 
-              onClick={generateSituations} 
-              disabled={isGenerating}
-              className="gap-2"
-            >
-              {isGenerating ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Sparkles className="h-4 w-4" />
-              )}
-              Générer des situations
+            <Button onClick={generateSituations} disabled={isGenerating} className="gap-2">
+              {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              Générer
             </Button>
-            <Button 
-              variant="outline" 
-              onClick={fetchPendingSituations}
-              disabled={isLoading}
-              className="gap-2"
-            >
+            <Button variant="outline" onClick={fetchPendingSituations} disabled={isLoading} className="gap-2">
               <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
               Actualiser
             </Button>
             <div className="text-sm text-muted-foreground ml-auto">
-              {situations.length} situation(s) en attente
+              {situations.length} en attente
             </div>
           </div>
 
-          {/* Situations List */}
           <div className={isMobile ? "space-y-4 pb-4" : "flex-1 min-h-0 overflow-y-auto space-y-4 pr-2"}>
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
@@ -91,20 +85,22 @@ export default function AdvancedTraining() {
               <div className="text-center py-12 text-muted-foreground">
                 <Brain className="h-16 w-16 mx-auto mb-4 opacity-20" />
                 <p className="text-lg font-medium">Aucune situation en attente</p>
-                <p className="text-sm mt-2">
-                  Cliquez sur "Générer des situations" pour analyser vos emails
-                </p>
+                <p className="text-sm mt-2">Cliquez sur "Générer" pour analyser vos emails</p>
               </div>
             ) : (
               situations.map(situation => (
-                <SituationCard
-                  key={situation.id}
-                  situation={situation}
-                  onValidate={validateSituation}
-                />
+                <SituationCard key={situation.id} situation={situation} onValidate={validateSituation} />
               ))
             )}
           </div>
+        </TabsContent>
+
+        <TabsContent value="patterns">
+          <PatternManager />
+        </TabsContent>
+
+        <TabsContent value="threads">
+          <ThreadLinker />
         </TabsContent>
 
         <TabsContent value="legal">
