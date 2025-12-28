@@ -214,9 +214,9 @@ export default function IncidentDetail() {
         })),
       }, opts);
       
-      const features = [];
-      if (opts.includeEmails) features.push('emails');
-      if (opts.includeLegalSearch) features.push('recherche juridique');
+      const features: string[] = [];
+      if (withOptions && exportOptions.includeEmails) features.push('emails');
+      if (withOptions && exportOptions.includeLegalSearch) features.push('recherche juridique');
       
       toast.success(`PDF généré${features.length > 0 ? ` avec ${features.join(', ')}` : ''}`);
     } catch (error) {
