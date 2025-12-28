@@ -1182,7 +1182,7 @@ export async function generateAndStoreIncidentPDF(
 ): Promise<{ storagePath: string; fileName: string; fileSize: number } | null> {
   try {
     // Generate PDF blob (doesn't save automatically)
-    const blob = await generateIncidentPDFBlob(incident, options);
+    const blob = await generateIncidentPDF(incident, options);
     
     // Create filename
     let filename = `fiche-incident-${incident.numero}`;
