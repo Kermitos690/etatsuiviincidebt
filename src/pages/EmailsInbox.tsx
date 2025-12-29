@@ -33,7 +33,6 @@ export default function EmailsInbox() {
   const { data: gmailFilters } = useGmailFilters();
   const isMobile = useIsMobile();
   const navigate = useNavigate();
-  const { trackEmailDeleted } = useAITrainingTracker();
 
   const [showAllEmails, setShowAllEmails] = useState(false);
   const [emails, setEmails] = useState<Email[]>([]);
@@ -259,12 +258,9 @@ export default function EmailsInbox() {
   const deleteEmail = async (email: Email) => {
     if (!confirm(`Supprimer l'email "${email.subject}" ?`)) return;
     try {
-      // Track deletion for AI training BEFORE deleting
-      await trackEmailDeleted(email.id, email);
-      
       const { error } = await supabase.from('emails').delete().eq('id', email.id);
       if (error) throw error;
-      toast.success('Email supprimé (entraînement IA mis à jour)');
+      toast.success('Email supprimé');
       setEmails(prev => prev.filter(e => e.id !== email.id));
       if (selectedEmail?.id === email.id) {
         setSelectedEmail(null);
@@ -279,15 +275,10 @@ export default function EmailsInbox() {
   const deleteThread = async (thread: EmailThread) => {
     if (!confirm(`Supprimer ${thread.emails.length} email(s) de ce thread ?`)) return;
     try {
-      // Track all deletions for AI training
-      for (const email of thread.emails) {
-        await trackEmailDeleted(email.id, email);
-      }
-      
       const ids = thread.emails.map(e => e.id);
       const { error } = await supabase.from('emails').delete().in('id', ids);
       if (error) throw error;
-      toast.success(`${ids.length} email(s) supprimé(s) (entraînement IA mis à jour)`);
+      toast.success(`${ids.length} email(s) supprimé(s)`);
       setEmails(prev => prev.filter(e => !ids.includes(e.id)));
       if (selectedThread?.threadId === thread.threadId) {
         setSelectedEmail(null);
