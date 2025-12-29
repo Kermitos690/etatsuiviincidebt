@@ -1,4 +1,4 @@
-import { AppSidebar, MobileHeader, DesktopSidebar } from './AppSidebar';
+import { AppSidebar, MobileHeader } from './AppSidebar';
 import { MobileBottomNav } from './MobileBottomNav';
 import { GlobalSearch } from '@/components/search';
 import { NotificationCenter } from '@/components/notifications';
@@ -37,7 +37,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       
       <div className="flex flex-1 min-h-0 w-full relative z-10">
         {/* Desktop sidebar */}
-        <DesktopSidebar />
+        <AppSidebar />
         
         {/* Main content - scrollable area */}
         <main className="flex-1 min-h-0 overflow-y-auto pb-20 lg:pb-0 lg:pt-16 overscroll-contain touch-pan-y">

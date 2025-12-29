@@ -10,7 +10,7 @@ import { ErrorBoundary } from "@/components/common";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TutorialProvider, WelcomeTutorialModal } from "@/components/tutorial/GuidedTutorial";
 
-// Lazy loaded pages for better performance
+// Lazy loaded pages - simplified to essential pages only
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Journal = lazy(() => import("./pages/Journal"));
 const Incidents = lazy(() => import("./pages/Incidents"));
@@ -19,33 +19,16 @@ const EditIncident = lazy(() => import("./pages/EditIncident"));
 const NewIncident = lazy(() => import("./pages/NewIncident"));
 const IAAuditeur = lazy(() => import("./pages/IAAuditeur"));
 const EmailsInbox = lazy(() => import("./pages/EmailsInbox"));
-const Exports = lazy(() => import("./pages/Exports"));
 const Admin = lazy(() => import("./pages/Admin"));
 const GmailConfig = lazy(() => import("./pages/GmailConfig"));
-const SheetsConfig = lazy(() => import("./pages/SheetsConfig"));
-const AuditDashboard = lazy(() => import("./pages/AuditDashboard"));
 const EmailsAnalyzed = lazy(() => import("./pages/EmailsAnalyzed"));
-const ViolationsDashboard = lazy(() => import("./pages/ViolationsDashboard"));
 const Attachments = lazy(() => import("./pages/Attachments"));
 const AnalysisPipeline = lazy(() => import("./pages/AnalysisPipeline"));
 const IncidentsTimeline = lazy(() => import("./pages/IncidentsTimeline"));
-const IATraining = lazy(() => import("./pages/IATraining"));
-const SwipeTraining = lazy(() => import("./pages/SwipeTraining"));
 const Tutorial = lazy(() => import("./pages/Tutorial"));
 const ControlCenter = lazy(() => import("./pages/ControlCenter"));
-const SystemAdmin = lazy(() => import("./pages/SystemAdmin"));
 const Profile = lazy(() => import("./pages/Profile"));
-const SixMonthPlan = lazy(() => import("./pages/SixMonthPlan"));
-const WeeklyDashboard = lazy(() => import("./pages/WeeklyDashboard"));
 const EmailCleanup = lazy(() => import("./pages/EmailCleanup"));
-const AdvancedTraining = lazy(() => import("./pages/AdvancedTraining"));
-const RelationshipGraph = lazy(() => import("./pages/RelationshipGraph"));
-const AnomalyDetection = lazy(() => import("./pages/AnomalyDetection"));
-const RICalculator = lazy(() => import("./pages/RICalculator"));
-const LegalRepository = lazy(() => import("./pages/LegalRepository"));
-const ComplianceDashboard = lazy(() => import("./pages/ComplianceDashboard"));
-const PDFDocuments = lazy(() => import("./pages/PDFDocuments"));
-const TrainingDashboardPage = lazy(() => import("./pages/TrainingDashboardPage"));
 const FactualDossier = lazy(() => import("./pages/FactualDossier"));
 const Auth = lazy(() => import("./pages/Auth"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -53,14 +36,13 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60 * 1000, // 5 minutes
-      gcTime: 10 * 60 * 1000, // 10 minutes (previously cacheTime)
+      staleTime: 5 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
       refetchOnWindowFocus: false,
     },
   },
 });
 
-// Page loading skeleton
 const PageLoader = () => (
   <div className="flex items-center justify-center min-h-screen bg-background">
     <div className="space-y-4 w-full max-w-md px-4">
@@ -89,43 +71,35 @@ const App = () => (
                   {/* Public route */}
                   <Route path="/auth" element={<Auth />} />
                   
-                  {/* Protected routes */}
+                  {/* Protected routes - Simplified */}
                   <Route path="/" element={<AuthGuard><Dashboard /></AuthGuard>} />
                   <Route path="/control-center" element={<AuthGuard><ControlCenter /></AuthGuard>} />
+                  
+                  {/* Emails */}
+                  <Route path="/emails" element={<AuthGuard><EmailsInbox /></AuthGuard>} />
+                  <Route path="/emails-analyzed" element={<AuthGuard><EmailsAnalyzed /></AuthGuard>} />
+                  <Route path="/email-cleanup" element={<AuthGuard><EmailCleanup /></AuthGuard>} />
+                  <Route path="/attachments" element={<AuthGuard><Attachments /></AuthGuard>} />
+                  <Route path="/analysis-pipeline" element={<AuthGuard><AnalysisPipeline /></AuthGuard>} />
+                  
+                  {/* Incidents */}
                   <Route path="/journal" element={<AuthGuard><Journal /></AuthGuard>} />
                   <Route path="/incidents" element={<AuthGuard><Incidents /></AuthGuard>} />
                   <Route path="/incidents/:id" element={<AuthGuard><IncidentDetail /></AuthGuard>} />
-                  <Route path="/incidents-timeline" element={<AuthGuard><IncidentsTimeline /></AuthGuard>} />
                   <Route path="/incidents/:id/edit" element={<AuthGuard><EditIncident /></AuthGuard>} />
+                  <Route path="/incidents-timeline" element={<AuthGuard><IncidentsTimeline /></AuthGuard>} />
                   <Route path="/nouveau" element={<AuthGuard><NewIncident /></AuthGuard>} />
-                  <Route path="/ia-auditeur" element={<AuthGuard><IAAuditeur /></AuthGuard>} />
-                  <Route path="/emails" element={<AuthGuard><EmailsInbox /></AuthGuard>} />
-                  <Route path="/email-cleanup" element={<AuthGuard><EmailCleanup /></AuthGuard>} />
-                  <Route path="/exports" element={<AuthGuard><Exports /></AuthGuard>} />
-                  <Route path="/admin" element={<AuthGuard><Admin /></AuthGuard>} />
-                  <Route path="/gmail-config" element={<AuthGuard><GmailConfig /></AuthGuard>} />
-                  <Route path="/sheets-config" element={<AuthGuard><SheetsConfig /></AuthGuard>} />
-                  <Route path="/emails-analyzed" element={<AuthGuard><EmailsAnalyzed /></AuthGuard>} />
-                  <Route path="/violations" element={<AuthGuard><ViolationsDashboard /></AuthGuard>} />
-                  <Route path="/attachments" element={<AuthGuard><Attachments /></AuthGuard>} />
-                  <Route path="/analysis-pipeline" element={<AuthGuard><AnalysisPipeline /></AuthGuard>} />
-                  <Route path="/audit" element={<AuthGuard><AuditDashboard /></AuthGuard>} />
-                  <Route path="/ia-training" element={<AuthGuard><IATraining /></AuthGuard>} />
-                  <Route path="/swipe-training" element={<AuthGuard><SwipeTraining /></AuthGuard>} />
-                  <Route path="/tutorial" element={<AuthGuard><Tutorial /></AuthGuard>} />
-                  <Route path="/system-admin" element={<AuthGuard><SystemAdmin /></AuthGuard>} />
-                  <Route path="/profile" element={<AuthGuard><Profile /></AuthGuard>} />
-                  <Route path="/plan-6-mois" element={<AuthGuard><SixMonthPlan /></AuthGuard>} />
-                  <Route path="/weekly-dashboard" element={<AuthGuard><WeeklyDashboard /></AuthGuard>} />
-                  <Route path="/advanced-training" element={<AuthGuard><AdvancedTraining /></AuthGuard>} />
-                  <Route path="/relationship-graph" element={<AuthGuard><RelationshipGraph /></AuthGuard>} />
-                  <Route path="/anomaly-detection" element={<AuthGuard><AnomalyDetection /></AuthGuard>} />
-                  <Route path="/ri-calculator" element={<AuthGuard><RICalculator /></AuthGuard>} />
-                  <Route path="/legal-repository" element={<AuthGuard><LegalRepository /></AuthGuard>} />
-                  <Route path="/compliance" element={<AuthGuard><ComplianceDashboard /></AuthGuard>} />
-                  <Route path="/pdf-documents" element={<AuthGuard><PDFDocuments /></AuthGuard>} />
-                  <Route path="/training-dashboard" element={<AuthGuard><TrainingDashboardPage /></AuthGuard>} />
+                  
+                  {/* Dossier Factuel */}
                   <Route path="/factual-dossier" element={<AuthGuard><FactualDossier /></AuthGuard>} />
+                  <Route path="/ia-auditeur" element={<AuthGuard><IAAuditeur /></AuthGuard>} />
+                  
+                  {/* Settings */}
+                  <Route path="/gmail-config" element={<AuthGuard><GmailConfig /></AuthGuard>} />
+                  <Route path="/admin" element={<AuthGuard><Admin /></AuthGuard>} />
+                  <Route path="/profile" element={<AuthGuard><Profile /></AuthGuard>} />
+                  <Route path="/tutorial" element={<AuthGuard><Tutorial /></AuthGuard>} />
+                  
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </Suspense>

@@ -15,7 +15,6 @@ import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useGmailFilters } from '@/hooks/useGmailFilters';
-import { useAITrainingTracker } from '@/hooks/useAITrainingTracker';
 import { isEmailRelevant } from '@/utils/emailFilters';
 import { useIsMobile } from '@/hooks/use-mobile';
 import {
