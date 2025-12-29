@@ -426,13 +426,34 @@ export default function EmailCleanup() {
             <div className="flex flex-col items-center gap-6">
               {currentGroup ? (
                 <>
-                  <DomainSwipeCard
-                    group={currentGroup}
-                    onSwipe={handleSwipe}
-                    disabled={deleting}
-                    totalGroups={groups.length}
-                    currentIndex={currentIndex}
-                  />
+                  {/* Simple domain/sender card instead of deleted DomainSwipeCard */}
+                  <Card className="w-full max-w-xl p-6">
+                    <div className="text-center mb-4">
+                      <Badge variant="outline" className="mb-2">
+                        {currentIndex + 1} / {groups.length}
+                      </Badge>
+                      <h3 className="text-lg font-semibold">
+                        {currentGroup.senderEmail || currentGroup.domain}
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        {currentGroup.emailCount} email(s)
+                      </p>
+                      <Badge variant={currentGroup.isRelevant ? "default" : "destructive"} className="mt-2">
+                        {currentGroup.isRelevant ? "Pertinent" : "Hors périmètre"}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-center gap-2 mt-4">
+                      <Button variant="destructive" size="sm" onClick={() => handleSwipe('left')} disabled={deleting}>
+                        <Trash2 className="h-4 w-4 mr-1" /> Supprimer
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleSwipe('up')} disabled={deleting}>
+                        Ignorer
+                      </Button>
+                      <Button variant="default" size="sm" onClick={() => handleSwipe('right')} disabled={deleting}>
+                        <CheckCircle2 className="h-4 w-4 mr-1" /> Garder
+                      </Button>
+                    </div>
+                  </Card>
                   
                   {deleting && (
                     <div className="flex items-center gap-2 text-muted-foreground">
