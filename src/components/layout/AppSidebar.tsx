@@ -11,26 +11,18 @@ import {
   Menu,
   Sparkles,
   Mail,
-  Table,
   LogOut,
   BarChart3,
-  Scale,
-  Shield,
   Paperclip,
-  GraduationCap,
   HelpCircle,
   Layers,
-  Server,
   ChevronDown,
   Inbox,
   Activity,
   Cog,
   User,
-  Target,
-  Network,
-  Zap,
   LucideIcon,
-  FileStack
+  FolderOpen
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -43,11 +35,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { TutorialStartButton } from '@/components/tutorial/GuidedTutorial';
 
-// ============= Types =============
 interface NavItem {
   to: string;
   icon: LucideIcon;
@@ -61,196 +49,60 @@ interface NavCategory {
   items: NavItem[];
 }
 
-// ============= Data Source Mode Context =============
-type DataSourceMode = 'gmail' | 'pdf';
-
-const useDataSourceMode = () => {
-  const [mode, setMode] = useState<DataSourceMode>(() => {
-    const saved = localStorage.getItem('aqua-data-source-mode');
-    return (saved === 'pdf' ? 'pdf' : 'gmail') as DataSourceMode;
-  });
-
-  useEffect(() => {
-    localStorage.setItem('aqua-data-source-mode', mode);
-  }, [mode]);
-
-  return { mode, setMode };
-};
-
-// ============= Navigation Structure based on mode =============
-const getNavCategories = (mode: DataSourceMode): NavCategory[] => {
-  const gmailCategories: NavCategory[] = [
-    {
-      id: 'dashboard',
-      label: 'Tableau de Bord',
-      icon: LayoutDashboard,
-      items: [
-        { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-        { to: '/control-center', icon: Activity, label: 'Centre de Contrôle' },
-        { to: '/compliance', icon: Shield, label: 'Conformité' },
-        { to: '/violations', icon: Scale, label: 'Violations' },
-      ]
-    },
-    {
-      id: 'emails',
-      label: 'Messagerie',
-      icon: Mail,
-      items: [
-        { to: '/emails', icon: Inbox, label: 'Boîte de réception' },
-        { to: '/emails-analyzed', icon: BarChart3, label: 'Emails Analysés' },
-        { to: '/email-cleanup', icon: Layers, label: 'Nettoyage' },
-        { to: '/attachments', icon: Paperclip, label: 'Pièces Jointes' },
-        { to: '/analysis-pipeline', icon: Brain, label: 'Analyse IA' },
-      ]
-    },
-    {
-      id: 'incidents',
-      label: 'Incidents',
-      icon: AlertTriangle,
-      items: [
-        { to: '/journal', icon: BookOpen, label: 'Journal' },
-        { to: '/incidents', icon: AlertTriangle, label: 'Liste' },
-        { to: '/incidents-timeline', icon: Activity, label: 'Timeline' },
-        { to: '/nouveau', icon: Plus, label: 'Nouveau' },
-      ]
-    },
-    {
-      id: 'ai-training',
-      label: 'IA & Entraînement',
-      icon: Brain,
-      items: [
-        { to: '/ia-auditeur', icon: Brain, label: 'IA Auditeur' },
-        { to: '/ia-training', icon: GraduationCap, label: 'Entraînement Base' },
-        { to: '/advanced-training', icon: Zap, label: 'Entraînement Avancé' },
-        { to: '/training-dashboard', icon: Target, label: 'Dashboard Entraînement' },
-        { to: '/relationship-graph', icon: Network, label: 'Graphe Relations' },
-        { to: '/anomaly-detection', icon: AlertTriangle, label: 'Détection Anomalies' },
-      ]
-    },
-    {
-      id: 'tools',
-      label: 'Outils Juridiques',
-      icon: Scale,
-      items: [
-        { to: '/legal-repository', icon: BookOpen, label: 'Référentiel Légal' },
-        { to: '/ri-calculator', icon: Scale, label: 'Calculateur Budget' },
-      ]
-    },
-    {
-      id: 'settings',
-      label: 'Paramètres',
-      icon: Cog,
-      items: [
-        { to: '/plan-6-mois', icon: Target, label: 'Plan 6 Mois' },
-        { to: '/gmail-config', icon: Mail, label: 'Intégrations' },
-        { to: '/exports', icon: FileText, label: 'Exports' },
-        { to: '/admin', icon: Settings, label: 'Admin' },
-        { to: '/tutorial', icon: HelpCircle, label: 'Aide' },
-      ]
-    },
-  ];
-
-  const pdfCategories: NavCategory[] = [
-    {
-      id: 'dashboard',
-      label: 'Tableau de Bord',
-      icon: LayoutDashboard,
-      items: [
-        { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-        { to: '/control-center', icon: Activity, label: 'Centre de Contrôle' },
-        { to: '/compliance', icon: Shield, label: 'Conformité' },
-        { to: '/violations', icon: Scale, label: 'Violations' },
-      ]
-    },
-    {
-      id: 'pdf-docs',
-      label: 'Documents PDF',
-      icon: FileStack,
-      items: [
-        { to: '/pdf-documents', icon: FileStack, label: 'Tous les Documents' },
-        { to: '/attachments', icon: Paperclip, label: 'Pièces Jointes' },
-        { to: '/analysis-pipeline', icon: Brain, label: 'Analyse IA' },
-      ]
-    },
-    {
-      id: 'incidents',
-      label: 'Incidents',
-      icon: AlertTriangle,
-      items: [
-        { to: '/journal', icon: BookOpen, label: 'Journal' },
-        { to: '/incidents', icon: AlertTriangle, label: 'Liste' },
-        { to: '/incidents-timeline', icon: Activity, label: 'Timeline' },
-        { to: '/nouveau', icon: Plus, label: 'Nouveau' },
-      ]
-    },
-    {
-      id: 'ai-training',
-      label: 'IA & Entraînement',
-      icon: Brain,
-      items: [
-        { to: '/ia-auditeur', icon: Brain, label: 'IA Auditeur' },
-        { to: '/ia-training', icon: GraduationCap, label: 'Entraînement Base' },
-        { to: '/advanced-training', icon: Zap, label: 'Entraînement Avancé' },
-        { to: '/relationship-graph', icon: Network, label: 'Graphe Relations' },
-        { to: '/anomaly-detection', icon: AlertTriangle, label: 'Détection Anomalies' },
-      ]
-    },
-    {
-      id: 'tools',
-      label: 'Outils Juridiques',
-      icon: Scale,
-      items: [
-        { to: '/legal-repository', icon: BookOpen, label: 'Référentiel Légal' },
-        { to: '/ri-calculator', icon: Scale, label: 'Calculateur Budget' },
-      ]
-    },
-    {
-      id: 'settings',
-      label: 'Paramètres',
-      icon: Cog,
-      items: [
-        { to: '/plan-6-mois', icon: Target, label: 'Plan 6 Mois' },
-        { to: '/exports', icon: FileText, label: 'Exports' },
-        { to: '/admin', icon: Settings, label: 'Admin' },
-        { to: '/tutorial', icon: HelpCircle, label: 'Aide' },
-      ]
-    },
-  ];
-
-  return mode === 'gmail' ? gmailCategories : pdfCategories;
-};
-
-// ============= Components =============
-// ============= Mode Switch Component =============
-function DataSourceSwitch({ mode, setMode }: { mode: DataSourceMode; setMode: (mode: DataSourceMode) => void }) {
-  return (
-    <div className="glass-card p-3 mb-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          {mode === 'gmail' ? (
-            <Mail className="h-4 w-4 text-primary" />
-          ) : (
-            <FileStack className="h-4 w-4 text-primary" />
-          )}
-          <Label htmlFor="data-source-mode" className="text-xs font-medium cursor-pointer">
-            {mode === 'gmail' ? 'Mode Gmail' : 'Mode PDF'}
-          </Label>
-        </div>
-        <Switch
-          id="data-source-mode"
-          checked={mode === 'pdf'}
-          onCheckedChange={(checked) => setMode(checked ? 'pdf' : 'gmail')}
-          className="data-[state=checked]:bg-primary"
-        />
-      </div>
-      <p className="text-[10px] text-muted-foreground mt-2">
-        {mode === 'gmail' 
-          ? 'Analyse des emails Gmail en temps réel' 
-          : 'Analyse de documents PDF importés'}
-      </p>
-    </div>
-  );
-}
+// Simplified navigation structure - 5 categories only
+const navCategories: NavCategory[] = [
+  {
+    id: 'dashboard',
+    label: 'Tableau de Bord',
+    icon: LayoutDashboard,
+    items: [
+      { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/control-center', icon: Activity, label: 'Centre de Contrôle' },
+    ]
+  },
+  {
+    id: 'emails',
+    label: 'Emails',
+    icon: Mail,
+    items: [
+      { to: '/emails', icon: Inbox, label: 'Boîte de réception' },
+      { to: '/emails-analyzed', icon: BarChart3, label: 'Analysés' },
+      { to: '/email-cleanup', icon: Layers, label: 'Nettoyage' },
+      { to: '/attachments', icon: Paperclip, label: 'Pièces Jointes' },
+    ]
+  },
+  {
+    id: 'incidents',
+    label: 'Incidents',
+    icon: AlertTriangle,
+    items: [
+      { to: '/journal', icon: BookOpen, label: 'Journal' },
+      { to: '/incidents', icon: AlertTriangle, label: 'Liste' },
+      { to: '/incidents-timeline', icon: Activity, label: 'Timeline' },
+      { to: '/nouveau', icon: Plus, label: 'Nouveau' },
+    ]
+  },
+  {
+    id: 'factual',
+    label: 'Dossier Factuel',
+    icon: FolderOpen,
+    items: [
+      { to: '/factual-dossier', icon: FileText, label: 'Chronologie' },
+      { to: '/ia-auditeur', icon: Brain, label: 'Analyse IA' },
+      { to: '/analysis-pipeline', icon: Brain, label: 'Pipeline' },
+    ]
+  },
+  {
+    id: 'settings',
+    label: 'Paramètres',
+    icon: Cog,
+    items: [
+      { to: '/gmail-config', icon: Mail, label: 'Gmail' },
+      { to: '/admin', icon: Settings, label: 'Admin' },
+      { to: '/tutorial', icon: HelpCircle, label: 'Aide' },
+    ]
+  },
+];
 
 function NavCategorySection({ 
   category, 
@@ -325,14 +177,9 @@ function NavContent({ onItemClick }: { onItemClick?: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { signOut, user, profile, roles } = useAuth();
-  const { mode, setMode } = useDataSourceMode();
   
-  const navCategories = useMemo(() => getNavCategories(mode), [mode]);
-  
-  // State for open categories - each category is independently controlled
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({});
 
-  // Initialize open state based on current route when location changes
   useEffect(() => {
     const newOpenState: Record<string, boolean> = {};
     navCategories.forEach(cat => {
@@ -340,17 +187,14 @@ function NavContent({ onItemClick }: { onItemClick?: () => void }) {
         location.pathname === item.to || 
         (item.to !== '/' && location.pathname.startsWith(item.to))
       );
-      // Keep existing open state OR set open if has active item
       newOpenState[cat.id] = openCategories[cat.id] ?? hasActiveItem;
     });
-    // Always open dashboard if nothing else is open
     if (!Object.values(newOpenState).some(v => v)) {
       newOpenState['dashboard'] = true;
     }
     setOpenCategories(newOpenState);
-  // Only run on mount and when mode changes (not on every location change)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  }, []);
 
   const toggleCategory = useCallback((id: string) => {
     setOpenCategories(prev => ({ ...prev, [id]: !prev[id] }));
@@ -369,9 +213,6 @@ function NavContent({ onItemClick }: { onItemClick?: () => void }) {
 
   return (
     <nav className="flex-1 p-3 space-y-2 flex flex-col overflow-y-auto">
-      {/* Mode Switch */}
-      <DataSourceSwitch mode={mode} setMode={setMode} />
-      
       <div className="flex-1 space-y-1">
         {navCategories.map((category) => (
           <NavCategorySection
@@ -385,8 +226,7 @@ function NavContent({ onItemClick }: { onItemClick?: () => void }) {
       </div>
       
       {/* User info and actions */}
-      <div className="pt-2 border-t border-glass/50 space-y-1">
-        {/* Profile link */}
+      <div className="pt-2 border-t border-border/50 space-y-1">
         <NavLink
           to="/profile"
           onClick={onItemClick}
@@ -394,10 +234,10 @@ function NavContent({ onItemClick }: { onItemClick?: () => void }) {
             "group flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200",
             location.pathname === '/profile'
               ? "bg-primary/10 text-primary"
-              : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground"
           )}
         >
-          <div className="p-1.5 rounded-lg bg-sidebar-accent/50 group-hover:bg-primary/10 transition-all duration-300">
+          <div className="p-1.5 rounded-lg bg-muted group-hover:bg-primary/10 transition-all duration-300">
             <User className="h-4 w-4 flex-shrink-0" />
           </div>
           <div className="flex-1 min-w-0">
@@ -405,17 +245,16 @@ function NavContent({ onItemClick }: { onItemClick?: () => void }) {
               {profile?.display_name || user?.email?.split('@')[0] || 'Profil'}
             </p>
             <p className="text-xs text-muted-foreground truncate">
-              {roles.length > 0 ? roles.map(r => r === 'admin' ? 'Admin' : r === 'auditor' ? 'Auditeur' : 'Utilisateur').join(', ') : 'Utilisateur'}
+              {roles.length > 0 ? roles.map(r => r === 'admin' ? 'Admin' : 'Utilisateur').join(', ') : 'Utilisateur'}
             </p>
           </div>
         </NavLink>
 
-        {/* Logout button */}
         <button
           onClick={handleSignOut}
           className="w-full group flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-300 hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
         >
-          <div className="p-1.5 rounded-lg bg-sidebar-accent/50 group-hover:bg-destructive/20 transition-all duration-300">
+          <div className="p-1.5 rounded-lg bg-muted group-hover:bg-destructive/20 transition-all duration-300">
             <LogOut className="h-4 w-4 flex-shrink-0" />
           </div>
           <span className="font-medium text-sm">Déconnexion</span>
@@ -425,19 +264,17 @@ function NavContent({ onItemClick }: { onItemClick?: () => void }) {
   );
 }
 
-// Mobile header with hamburger menu
 export function MobileHeader() {
   const [open, setOpen] = useState(false);
 
   return (
-    <header className="lg:hidden sticky top-0 z-50 flex items-center justify-between h-16 px-4 border-b border-glass bg-background/95 backdrop-blur-xl">
-      {/* Menu button on LEFT side */}
+    <header className="lg:hidden sticky top-0 z-50 flex items-center justify-between h-16 px-4 border-b border-border bg-background/95 backdrop-blur-xl">
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
           <Button 
             variant="ghost" 
             size="icon"
-            className="relative overflow-hidden rounded-xl hover:bg-primary/10 hover:shadow-glow-sm transition-all duration-300"
+            className="relative overflow-hidden rounded-xl hover:bg-primary/10 transition-all duration-300"
           >
             <Menu className="h-5 w-5" />
             <span className="sr-only">Menu</span>
@@ -448,118 +285,67 @@ export function MobileHeader() {
           className="w-80 p-0 bg-background/95 backdrop-blur-xl border-r border-border overflow-y-auto"
         >
           <div className="flex flex-col min-h-full">
-            {/* Header */}
             <div className="p-5 border-b border-border bg-muted/30">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-glow animate-float">
-                  <Sparkles className="h-6 w-6 text-white" />
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shadow-lg">
+                  <Sparkles className="h-6 w-6 text-primary-foreground" />
                 </div>
                 <div>
-                  <h1 className="text-xl font-semibold gradient-text">
-                    Registre
-                  </h1>
+                  <h1 className="text-xl font-semibold text-foreground">Registre</h1>
                   <p className="text-xs text-muted-foreground">Incidents & Audit</p>
                 </div>
               </div>
             </div>
             
-            {/* Navigation */}
             <NavContent onItemClick={() => setOpen(false)} />
             
-            {/* Footer */}
             <div className="p-4 border-t border-border bg-muted/30">
               <div className="bg-muted/50 rounded-xl p-3 text-center">
-                <p className="text-xs text-muted-foreground">
-                  Apple Liquid Glass 2026
-                </p>
-                <p className="text-[10px] text-muted-foreground/60 mt-1">
-                  Premium Edition v1.0
-                </p>
+                <p className="text-xs text-muted-foreground">Version simplifiée</p>
               </div>
             </div>
           </div>
         </SheetContent>
       </Sheet>
       
-      {/* Logo in center */}
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow-sm animate-float">
-          <Sparkles className="h-5 w-5 text-white" />
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shadow-md">
+          <Sparkles className="h-5 w-5 text-primary-foreground" />
         </div>
         <div>
-          <h1 className="text-lg font-semibold gradient-text">Registre</h1>
-          <p className="text-[10px] text-muted-foreground">Liquid Glass 2026</p>
+          <h1 className="text-lg font-semibold text-foreground">Registre</h1>
+          <p className="text-[10px] text-muted-foreground">Factuel</p>
         </div>
       </div>
       
-      {/* Theme toggle on right */}
       <ThemeToggle />
     </header>
   );
 }
 
-// Desktop sidebar
-export function DesktopSidebar() {
+export function AppSidebar() {
   return (
-    <aside className="hidden lg:flex h-screen w-72 sidebar-glass flex-col sticky top-0 overflow-hidden">
-      {/* Decorative orbs */}
-      <div className="absolute -top-20 -left-20 w-40 h-40 rounded-full bg-gradient-to-br from-primary/20 to-accent/10 blur-3xl animate-orb-float" />
-      <div className="absolute -bottom-20 -right-20 w-40 h-40 rounded-full bg-gradient-to-br from-accent/20 to-primary/10 blur-3xl animate-orb-float" style={{ animationDelay: '-10s' }} />
-      
-      {/* Header */}
-      <div className="relative p-6 border-b border-glass">
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-glow animate-float">
-              <Sparkles className="h-7 w-7 text-white" />
-            </div>
-            <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-green-500 border-2 border-background animate-pulse-glow" />
+    <aside className="hidden lg:flex flex-col w-72 border-r border-border bg-background/50 backdrop-blur-xl">
+      <div className="p-5 border-b border-border">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shadow-lg">
+            <Sparkles className="h-6 w-6 text-primary-foreground" />
           </div>
           <div>
-            <h1 className="text-2xl font-semibold gradient-text">
-              Registre
-            </h1>
+            <h1 className="text-xl font-semibold text-foreground">Registre</h1>
             <p className="text-xs text-muted-foreground">Incidents & Audit</p>
           </div>
         </div>
       </div>
-
-      {/* Navigation */}
+      
       <NavContent />
-
-      {/* Footer */}
-      <div className="relative p-4 border-t border-glass space-y-3">
-        {/* Tutorial Button */}
-        <TutorialStartButton />
-        
-        <div className="glass-card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-gradient-secondary flex items-center justify-center">
-                <Sparkles className="h-4 w-4 text-white" />
-              </div>
-              <div>
-                <p className="text-xs font-medium">Liquid Glass</p>
-                <p className="text-[10px] text-muted-foreground">2026 Edition</p>
-              </div>
-            </div>
-            <ThemeToggle />
-          </div>
-          <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-            <div className="h-full w-3/4 rounded-full bg-gradient-primary animate-shimmer" 
-                 style={{ backgroundSize: '200% 100%' }} />
-          </div>
+      
+      <div className="p-4 border-t border-border">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">Thème</span>
+          <ThemeToggle />
         </div>
       </div>
     </aside>
-  );
-}
-
-export function AppSidebar() {
-  return (
-    <>
-      <MobileHeader />
-      <DesktopSidebar />
-    </>
   );
 }

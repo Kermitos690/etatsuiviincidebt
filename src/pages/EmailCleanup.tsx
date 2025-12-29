@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { DomainSwipeCard, DomainGroup } from '@/components/cleanup/DomainSwipeCard';
 import { CleanupStats } from '@/components/cleanup/CleanupStats';
 import { FilterCleanupPanel } from '@/components/cleanup/FilterCleanupPanel';
 import { Button } from '@/components/ui/button';
@@ -12,7 +11,6 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { SwipeDirection } from '@/hooks/useSwipeGesture';
 import { 
   Trash2, 
   Globe, 
@@ -26,6 +24,22 @@ import {
   Filter,
   Zap
 } from 'lucide-react';
+
+type SwipeDirection = 'left' | 'right' | 'up' | 'down' | null;
+
+interface DomainGroup {
+  domain: string;
+  senderEmail?: string;
+  emailCount: number;
+  examples: Array<{
+    id: string;
+    subject: string;
+    sender: string;
+    received_at: string;
+  }>;
+  isRelevant: boolean;
+  matchedKeywords: string[];
+}
 
 // Generic email domains that should be grouped by sender
 const GENERIC_DOMAINS = [

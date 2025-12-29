@@ -1,169 +1,49 @@
 project_id = "csysnvkvnoghhyqaxdkz"
 
-[functions.analyze-incident]
-verify_jwt = false
-
-[functions.receive-email]
-verify_jwt = false
-
-[functions.send-email]
-verify_jwt = false
-
-[functions.notify-critical]
-verify_jwt = false
-
 [functions.gmail-oauth]
 verify_jwt = false
 
 [functions.gmail-sync]
 verify_jwt = false
 
-[functions.sheets-sync]
-verify_jwt = false
-
-[functions.analyze-thread]
-verify_jwt = false
-
-[functions.auto-process-email]
-verify_jwt = false
-
-[functions.analyze-email-advanced]
-verify_jwt = false
-
-[functions.daily-audit-analysis]
-verify_jwt = false
-
-[functions.generate-monthly-report]
-verify_jwt = false
-
-[functions.sync-status]
-verify_jwt = false
-
-[functions.batch-analyze-emails]
-verify_jwt = false
-
-[functions.download-attachments]
-verify_jwt = false
-
-[functions.analyze-attachment]
-verify_jwt = false
-
-[functions.deep-analyze-emails]
-verify_jwt = false
-
-[functions.resync-email-bodies]
-verify_jwt = false
-
-[functions.download-all-attachments]
+[functions.cleanup-emails]
 verify_jwt = false
 
 [functions.extract-email-facts]
 verify_jwt = false
 
+[functions.analyze-thread]
+verify_jwt = false
+
 [functions.analyze-thread-complete]
 verify_jwt = false
 
-[functions.cross-reference-analysis]
-verify_jwt = false
-
-[functions.legal-reference-system]
-verify_jwt = false
-
-[functions.backup-data]
-verify_jwt = false
-
-[functions.monitoring-logs]
-verify_jwt = false
-
-[functions.internal-backup]
-verify_jwt = false
-
-[functions.internal-monitoring]
-verify_jwt = false
-
-[functions.ai-enrich-context]
-verify_jwt = false
-
-[functions.generate-training-pairs]
-verify_jwt = false
-
-[functions.update-training-stats]
-verify_jwt = false
-
-[functions.full-reanalyze]
-verify_jwt = false
-
-[functions.migrate-gmail-tokens]
-verify_jwt = false
-
-[functions.rotate-gmail-tokens]
-verify_jwt = false
-
-[functions.generate-active-learning]
+[functions.analyze-incident]
 verify_jwt = false
 
 [functions.detect-anomalies]
 verify_jwt = false
 
-[functions.scrape-csias-norms]
+[functions.download-attachments]
 verify_jwt = false
 
-[functions.seal-evidence]
+[functions.download-all-attachments]
 verify_jwt = false
 
-[functions.match-facts-to-law]
+[functions.analyze-attachment]
 verify_jwt = false
 
-[functions.validate-ai-output]
+[functions.full-reanalyze]
 verify_jwt = false
 
-[functions.cleanup-emails]
+[functions.batch-analyze-emails]
 verify_jwt = false
 
-[functions.analyze-pdf]
+[functions.backup-data]
 verify_jwt = false
 
-[functions.extract-pdf-text]
+[functions.notify-critical]
 verify_jwt = false
 
-[functions.compare-pdfs]
-verify_jwt = false
-
-[functions.explain-legal-context]
-verify_jwt = false
-
-[functions.check-curatelle-contact]
-verify_jwt = false
-
-[functions.scrape-legal-sources]
-verify_jwt = false
-
-[functions.extract-legal-content]
-verify_jwt = false
-
-[functions.analyze-situation]
-verify_jwt = false
-
-[functions.scheduled-analysis]
-verify_jwt = false
-
-[functions.detect-email-templates]
-verify_jwt = false
-
-[functions.detect-contradictions]
-verify_jwt = false
-
-[functions.compare-situations]
-verify_jwt = false
-
-[functions.search-incident-legal-context]
-verify_jwt = false
-
-[functions.deep-incident-analysis]
-verify_jwt = false
-
-[functions.link-threads]
-verify_jwt = false
-
-[functions.detect-thread-breaks]
+[functions.sync-status]
 verify_jwt = false
