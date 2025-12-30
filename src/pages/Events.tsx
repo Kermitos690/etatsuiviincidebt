@@ -348,7 +348,7 @@ const Events = () => {
     <AppLayout>
       <PageHeader 
         title="Événements" 
-        subtitle="Documentez manuellement les faits pour votre dossier"
+        description="Documentez manuellement les faits pour votre dossier"
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
