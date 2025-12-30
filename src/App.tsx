@@ -30,6 +30,7 @@ const ControlCenter = lazy(() => import("./pages/ControlCenter"));
 const Profile = lazy(() => import("./pages/Profile"));
 const EmailCleanup = lazy(() => import("./pages/EmailCleanup"));
 const FactualDossier = lazy(() => import("./pages/FactualDossier"));
+const Events = lazy(() => import("./pages/Events"));
 const Auth = lazy(() => import("./pages/Auth"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -92,6 +93,7 @@ const App = () => (
                   
                   {/* Dossier Factuel */}
                   <Route path="/factual-dossier" element={<AuthGuard><FactualDossier /></AuthGuard>} />
+                  <Route path="/events" element={<AuthGuard><Events /></AuthGuard>} />
                   <Route path="/ia-auditeur" element={<AuthGuard><IAAuditeur /></AuthGuard>} />
                   
                   {/* Settings */}
