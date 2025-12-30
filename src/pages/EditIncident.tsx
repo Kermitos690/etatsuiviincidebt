@@ -1,14 +1,16 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Save, Loader2, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, AlertTriangle, Lock, Info } from 'lucide-react';
 import { AppLayout } from '@/components/layout';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useIncidentStore } from '@/stores/incidentStore';
+import { canModifyIncident } from '@/mappers/incidents';
 import { toast } from 'sonner';
 
 export default function EditIncident() {
@@ -17,6 +19,7 @@ export default function EditIncident() {
   const { incidents, updateIncident, loadFromSupabase, isLoading, config } = useIncidentStore();
   const [hasLoaded, setHasLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [modificationReason, setModificationReason] = useState('');
   
   const [formData, setFormData] = useState({
     titre: '',
@@ -27,7 +30,8 @@ export default function EditIncident() {
     statut: '',
     priorite: 'moyen' as 'critique' | 'eleve' | 'moyen' | 'faible',
     faits: '',
-    dysfonctionnement: ''
+    dysfonctionnement: '',
+    analysisNotes: ''
   });
 
   useEffect(() => {
@@ -51,10 +55,14 @@ export default function EditIncident() {
         statut: incident.statut,
         priorite: incident.priorite as 'critique' | 'eleve' | 'moyen' | 'faible',
         faits: incident.faits,
-        dysfonctionnement: incident.dysfonctionnement
+        dysfonctionnement: incident.dysfonctionnement,
+        analysisNotes: incident.analysisNotes || ''
       });
     }
   }, [incident]);
+
+  // Check if incident can be modified
+  const modifyCheck = incident ? canModifyIncident(incident) : { canModify: true };
 
   if (isLoading || !hasLoaded) {
     return (
@@ -87,11 +95,21 @@ export default function EditIncident() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!modifyCheck.canModify) {
+      toast.error(modifyCheck.reason);
+      return;
+    }
+
     setSaving(true);
     try {
-      await updateIncident(incident.id, formData);
-      toast.success('Incident modifié avec succès');
-      navigate(`/incidents/${incident.id}`);
+      const result = await updateIncident(incident.id, formData, modificationReason || undefined);
+      if (result.success) {
+        toast.success('Incident modifié avec succès');
+        navigate(`/incidents/${incident.id}`);
+      } else {
+        toast.error(result.error || 'Erreur lors de la modification');
+      }
     } catch (error) {
       toast.error('Erreur lors de la modification');
     } finally {
@@ -109,7 +127,16 @@ export default function EditIncident() {
           </Button>
         </div>
 
-        <h1 className="text-2xl font-bold mb-6">Modifier Incident #{incident.numero}</h1>
+        <h1 className="text-2xl font-bold mb-4">Modifier Incident #{incident.numero}</h1>
+
+        {/* Lock warning */}
+        {!modifyCheck.canModify && (
+          <Alert variant="destructive" className="mb-6">
+            <Lock className="h-4 w-4" />
+            <AlertTitle>Incident verrouillé</AlertTitle>
+            <AlertDescription>{modifyCheck.reason}</AlertDescription>
+          </Alert>
+        )}
 
         <form onSubmit={handleSubmit}>
           <Card className="mb-6">
@@ -234,42 +261,102 @@ export default function EditIncident() {
 
           <Card className="mb-6">
             <CardHeader>
-              <CardTitle>Description</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Info className="h-4 w-4 text-blue-500" />
+                FAITS CONSTATÉS
+              </CardTitle>
+              <CardDescription>
+                Éléments factuels et objectifs uniquement (dates, actions, documents). 
+                Ces faits constituent la base probatoire du dossier.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="faits">Faits constatés</Label>
+                <Label htmlFor="faits">Description factuelle</Label>
                 <Textarea
                   id="faits"
                   value={formData.faits}
                   onChange={(e) => setFormData(prev => ({ ...prev, faits: e.target.value }))}
                   rows={4}
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="dysfonctionnement">Dysfonctionnement</Label>
-                <Textarea
-                  id="dysfonctionnement"
-                  value={formData.dysfonctionnement}
-                  onChange={(e) => setFormData(prev => ({ ...prev, dysfonctionnement: e.target.value }))}
-                  rows={4}
+                  disabled={!modifyCheck.canModify}
+                  placeholder="Décrire les faits de manière objective: dates, actions, documents reçus/envoyés..."
                 />
               </div>
             </CardContent>
           </Card>
 
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                ANALYSE ET QUALIFICATION
+              </CardTitle>
+              <CardDescription>
+                Interprétation juridique et qualification du dysfonctionnement.
+                Cette section contient l'analyse, distincte des faits bruts.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="dysfonctionnement">Dysfonctionnement identifié</Label>
+                <Textarea
+                  id="dysfonctionnement"
+                  value={formData.dysfonctionnement}
+                  onChange={(e) => setFormData(prev => ({ ...prev, dysfonctionnement: e.target.value }))}
+                  rows={4}
+                  disabled={!modifyCheck.canModify}
+                  placeholder="Qualification juridique du dysfonctionnement..."
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="analysisNotes">Notes d'analyse IA (optionnel)</Label>
+                <Textarea
+                  id="analysisNotes"
+                  value={formData.analysisNotes}
+                  onChange={(e) => setFormData(prev => ({ ...prev, analysisNotes: e.target.value }))}
+                  rows={3}
+                  disabled={!modifyCheck.canModify}
+                  placeholder="Notes d'analyse générées par l'IA..."
+                  className="text-muted-foreground"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Modification reason for audit trail */}
+          {modifyCheck.canModify && (
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle>Motif de modification (optionnel)</CardTitle>
+                <CardDescription>
+                  Ce motif sera enregistré dans l'historique des modifications pour traçabilité.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  value={modificationReason}
+                  onChange={(e) => setModificationReason(e.target.value)}
+                  rows={2}
+                  placeholder="Ex: Correction suite à nouvelle information, rectification d'erreur de saisie..."
+                />
+              </CardContent>
+            </Card>
+          )}
+
           <div className="flex gap-3 justify-end">
             <Button type="button" variant="outline" onClick={() => navigate(-1)}>
               Annuler
             </Button>
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" disabled={saving || !modifyCheck.canModify}>
               {saving ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : !modifyCheck.canModify ? (
+                <Lock className="h-4 w-4 mr-2" />
               ) : (
                 <Save className="h-4 w-4 mr-2" />
               )}
-              Enregistrer
+              {modifyCheck.canModify ? 'Enregistrer' : 'Verrouillé'}
             </Button>
           </div>
         </form>

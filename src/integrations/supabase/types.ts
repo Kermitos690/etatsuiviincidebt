@@ -1442,6 +1442,53 @@ export type Database = {
         }
         Relationships: []
       }
+      incident_events: {
+        Row: {
+          changes: Json | null
+          created_at: string
+          event_description: string
+          event_type: string
+          id: string
+          incident_id: string
+          ip_address: string | null
+          modification_reason: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          changes?: Json | null
+          created_at?: string
+          event_description: string
+          event_type: string
+          id?: string
+          incident_id: string
+          ip_address?: string | null
+          modification_reason?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          changes?: Json | null
+          created_at?: string
+          event_description?: string
+          event_type?: string
+          id?: string
+          incident_id?: string
+          ip_address?: string | null
+          modification_reason?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "incident_events_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "incidents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       incident_exports: {
         Row: {
           created_at: string | null
@@ -1491,6 +1538,7 @@ export type Database = {
       }
       incidents: {
         Row: {
+          analysis_notes: string | null
           confidence_level: string | null
           created_at: string
           date_creation: string
@@ -1504,6 +1552,8 @@ export type Database = {
           gravite: string
           id: string
           institution: string
+          is_locked: boolean | null
+          modification_reason: string | null
           numero: number
           preuves: Json | null
           priorite: string
@@ -1519,6 +1569,7 @@ export type Database = {
           validated_by: string | null
         }
         Insert: {
+          analysis_notes?: string | null
           confidence_level?: string | null
           created_at?: string
           date_creation?: string
@@ -1532,6 +1583,8 @@ export type Database = {
           gravite: string
           id?: string
           institution: string
+          is_locked?: boolean | null
+          modification_reason?: string | null
           numero?: number
           preuves?: Json | null
           priorite?: string
@@ -1547,6 +1600,7 @@ export type Database = {
           validated_by?: string | null
         }
         Update: {
+          analysis_notes?: string | null
           confidence_level?: string | null
           created_at?: string
           date_creation?: string
@@ -1560,6 +1614,8 @@ export type Database = {
           gravite?: string
           id?: string
           institution?: string
+          is_locked?: boolean | null
+          modification_reason?: string | null
           numero?: number
           preuves?: Json | null
           priorite?: string
