@@ -1,6 +1,6 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Save, Loader2, AlertTriangle, Lock, Info } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, AlertTriangle, Lock, FileText, Scale } from 'lucide-react';
 import { AppLayout } from '@/components/layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -8,10 +8,65 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useIncidentStore } from '@/stores/incidentStore';
 import { canModifyIncident } from '@/mappers/incidents';
 import { toast } from 'sonner';
+
+// Reusable locked field wrapper with tooltip
+function LockedFieldWrapper({ 
+  children, 
+  isLocked, 
+  label 
+}: { 
+  children: React.ReactNode; 
+  isLocked: boolean; 
+  label: string;
+}) {
+  if (!isLocked) return <>{children}</>;
+  
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="relative">
+            {children}
+            <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60 pointer-events-none" />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-xs text-center">
+          <p className="text-xs">Champ verrouillé – contenu figé à des fins probatoires</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+// Locked textarea with integrated lock icon
+function LockedTextarea({ 
+  isLocked, 
+  ...props 
+}: { 
+  isLocked: boolean; 
+} & React.ComponentProps<typeof Textarea>) {
+  if (!isLocked) return <Textarea {...props} />;
+  
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="relative">
+            <Textarea {...props} disabled className="pr-10" />
+            <Lock className="absolute right-3 top-3 h-4 w-4 text-muted-foreground/60 pointer-events-none" />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-xs text-center">
+          <p className="text-xs">Champ verrouillé – contenu figé à des fins probatoires</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 
 export default function EditIncident() {
   const { id } = useParams();
@@ -63,6 +118,7 @@ export default function EditIncident() {
 
   // Check if incident can be modified
   const modifyCheck = incident ? canModifyIncident(incident) : { canModify: true };
+  const isLocked = !modifyCheck.canModify;
 
   if (isLoading || !hasLoaded) {
     return (
@@ -129,13 +185,23 @@ export default function EditIncident() {
 
         <h1 className="text-2xl font-bold mb-4">Modifier Incident #{incident.numero}</h1>
 
-        {/* Lock warning */}
-        {!modifyCheck.canModify && (
-          <Alert variant="destructive" className="mb-6">
-            <Lock className="h-4 w-4" />
-            <AlertTitle>Incident verrouillé</AlertTitle>
-            <AlertDescription>{modifyCheck.reason}</AlertDescription>
-          </Alert>
+        {/* Institutional lock banner - discrete, professional tone */}
+        {isLocked && (
+          <div className="mb-6 rounded-lg border border-border/60 bg-muted/30 p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 mt-0.5">
+                <Lock className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground/90">
+                  Incident juridiquement verrouillé
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+                  Cet incident a été transmis à une autorité. Son contenu est figé afin de préserver l'intégrité probatoire.
+                </p>
+              </div>
+            </div>
+          </div>
         )}
 
         <form onSubmit={handleSubmit}>
@@ -146,24 +212,32 @@ export default function EditIncident() {
             <CardContent className="space-y-4">
               <div>
                 <Label htmlFor="titre">Titre</Label>
-                <Input
-                  id="titre"
-                  value={formData.titre}
-                  onChange={(e) => setFormData(prev => ({ ...prev, titre: e.target.value }))}
-                  required
-                />
+                <LockedFieldWrapper isLocked={isLocked} label="Titre">
+                  <Input
+                    id="titre"
+                    value={formData.titre}
+                    onChange={(e) => setFormData(prev => ({ ...prev, titre: e.target.value }))}
+                    required
+                    disabled={isLocked}
+                    className={isLocked ? 'pr-10' : ''}
+                  />
+                </LockedFieldWrapper>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="dateIncident">Date de l'incident</Label>
-                  <Input
-                    id="dateIncident"
-                    type="date"
-                    value={formData.dateIncident}
-                    onChange={(e) => setFormData(prev => ({ ...prev, dateIncident: e.target.value }))}
-                    required
-                  />
+                  <LockedFieldWrapper isLocked={isLocked} label="Date">
+                    <Input
+                      id="dateIncident"
+                      type="date"
+                      value={formData.dateIncident}
+                      onChange={(e) => setFormData(prev => ({ ...prev, dateIncident: e.target.value }))}
+                      required
+                      disabled={isLocked}
+                      className={isLocked ? 'pr-10' : ''}
+                    />
+                  </LockedFieldWrapper>
                 </div>
 
                 <div>
@@ -171,9 +245,11 @@ export default function EditIncident() {
                   <Select
                     value={formData.institution}
                     onValueChange={(value) => setFormData(prev => ({ ...prev, institution: value }))}
+                    disabled={isLocked}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className={isLocked ? 'opacity-60' : ''}>
                       <SelectValue placeholder="Sélectionner" />
+                      {isLocked && <Lock className="h-4 w-4 text-muted-foreground/60 ml-auto" />}
                     </SelectTrigger>
                     <SelectContent>
                       {config.institutions.map((inst) => (
@@ -190,9 +266,11 @@ export default function EditIncident() {
                   <Select
                     value={formData.type}
                     onValueChange={(value) => setFormData(prev => ({ ...prev, type: value }))}
+                    disabled={isLocked}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className={isLocked ? 'opacity-60' : ''}>
                       <SelectValue placeholder="Sélectionner" />
+                      {isLocked && <Lock className="h-4 w-4 text-muted-foreground/60 ml-auto" />}
                     </SelectTrigger>
                     <SelectContent>
                       {config.types.map((t) => (
@@ -207,9 +285,11 @@ export default function EditIncident() {
                   <Select
                     value={formData.gravite}
                     onValueChange={(value) => setFormData(prev => ({ ...prev, gravite: value }))}
+                    disabled={isLocked}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className={isLocked ? 'opacity-60' : ''}>
                       <SelectValue placeholder="Sélectionner" />
+                      {isLocked && <Lock className="h-4 w-4 text-muted-foreground/60 ml-auto" />}
                     </SelectTrigger>
                     <SelectContent>
                       {config.gravites.map((g) => (
@@ -226,9 +306,11 @@ export default function EditIncident() {
                   <Select
                     value={formData.statut}
                     onValueChange={(value) => setFormData(prev => ({ ...prev, statut: value }))}
+                    disabled={isLocked}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className={isLocked ? 'opacity-60' : ''}>
                       <SelectValue placeholder="Sélectionner" />
+                      {isLocked && <Lock className="h-4 w-4 text-muted-foreground/60 ml-auto" />}
                     </SelectTrigger>
                     <SelectContent>
                       {config.statuts.map((s) => (
@@ -243,9 +325,11 @@ export default function EditIncident() {
                   <Select
                     value={formData.priorite}
                     onValueChange={(value) => setFormData(prev => ({ ...prev, priorite: value as 'critique' | 'eleve' | 'moyen' | 'faible' }))}
+                    disabled={isLocked}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className={isLocked ? 'opacity-60' : ''}>
                       <SelectValue placeholder="Sélectionner" />
+                      {isLocked && <Lock className="h-4 w-4 text-muted-foreground/60 ml-auto" />}
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="critique">Critique</SelectItem>
@@ -259,73 +343,82 @@ export default function EditIncident() {
             </CardContent>
           </Card>
 
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Info className="h-4 w-4 text-blue-500" />
-                FAITS CONSTATÉS
+          {/* FACTS Section - Neutral, documentary styling */}
+          <Card className="mb-6 border-slate-200 dark:border-slate-700/60">
+            <CardHeader className="bg-slate-50/50 dark:bg-slate-800/30 border-b border-slate-200 dark:border-slate-700/40">
+              <CardTitle className="flex items-center gap-2 text-slate-700 dark:text-slate-200">
+                <FileText className="h-5 w-5 text-slate-500 dark:text-slate-400" />
+                FAITS CONSTATÉS (éléments probatoires)
               </CardTitle>
-              <CardDescription>
-                Éléments factuels et objectifs uniquement (dates, actions, documents). 
-                Ces faits constituent la base probatoire du dossier.
+              <CardDescription className="text-slate-500 dark:text-slate-400">
+                Éléments factuels, objectifs et vérifiables : dates, actions, documents.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="pt-4 space-y-4">
               <div>
-                <Label htmlFor="faits">Description factuelle</Label>
-                <Textarea
+                <Label htmlFor="faits" className="text-slate-600 dark:text-slate-300">Description factuelle</Label>
+                <LockedTextarea
                   id="faits"
                   value={formData.faits}
                   onChange={(e) => setFormData(prev => ({ ...prev, faits: e.target.value }))}
                   rows={4}
-                  disabled={!modifyCheck.canModify}
+                  isLocked={isLocked}
                   placeholder="Décrire les faits de manière objective: dates, actions, documents reçus/envoyés..."
+                  className="border-slate-200 dark:border-slate-700"
                 />
               </div>
             </CardContent>
           </Card>
 
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-amber-500" />
-                ANALYSE ET QUALIFICATION
+          {/* ANALYSIS Section - Distinct styling with subtle accent */}
+          <Card className="mb-6 border-violet-200/60 dark:border-violet-800/40">
+            <CardHeader className="bg-violet-50/40 dark:bg-violet-900/20 border-b border-violet-200/60 dark:border-violet-800/40">
+              <CardTitle className="flex items-center gap-2 text-violet-700 dark:text-violet-300">
+                <Scale className="h-5 w-5 text-violet-500 dark:text-violet-400" />
+                ANALYSE & QUALIFICATION JURIDIQUE
               </CardTitle>
-              <CardDescription>
-                Interprétation juridique et qualification du dysfonctionnement.
-                Cette section contient l'analyse, distincte des faits bruts.
+              <CardDescription className="text-violet-600/70 dark:text-violet-400/70">
+                Interprétation juridique distincte des faits bruts.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="pt-4 space-y-4">
               <div>
-                <Label htmlFor="dysfonctionnement">Dysfonctionnement identifié</Label>
-                <Textarea
+                <Label htmlFor="dysfonctionnement" className="text-violet-700 dark:text-violet-300">
+                  Qualification du dysfonctionnement (analyse juridique)
+                </Label>
+                <LockedTextarea
                   id="dysfonctionnement"
                   value={formData.dysfonctionnement}
                   onChange={(e) => setFormData(prev => ({ ...prev, dysfonctionnement: e.target.value }))}
                   rows={4}
-                  disabled={!modifyCheck.canModify}
+                  isLocked={isLocked}
                   placeholder="Qualification juridique du dysfonctionnement..."
+                  className="border-violet-200/60 dark:border-violet-800/40"
                 />
               </div>
 
               <div>
-                <Label htmlFor="analysisNotes">Notes d'analyse IA (optionnel)</Label>
-                <Textarea
+                <Label htmlFor="analysisNotes" className="text-violet-600/80 dark:text-violet-400/80">
+                  Notes d'analyse (assistance – non probatoire)
+                </Label>
+                <LockedTextarea
                   id="analysisNotes"
                   value={formData.analysisNotes}
                   onChange={(e) => setFormData(prev => ({ ...prev, analysisNotes: e.target.value }))}
                   rows={3}
-                  disabled={!modifyCheck.canModify}
+                  isLocked={isLocked}
                   placeholder="Notes d'analyse générées par l'IA..."
-                  className="text-muted-foreground"
+                  className="text-muted-foreground border-violet-200/40 dark:border-violet-800/30 bg-violet-50/20 dark:bg-violet-900/10"
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Ces notes constituent une assistance analytique et ne font pas partie du dossier probatoire.
+                </p>
               </div>
             </CardContent>
           </Card>
 
           {/* Modification reason for audit trail */}
-          {modifyCheck.canModify && (
+          {!isLocked && (
             <Card className="mb-6">
               <CardHeader>
                 <CardTitle>Motif de modification (optionnel)</CardTitle>
@@ -348,16 +441,25 @@ export default function EditIncident() {
             <Button type="button" variant="outline" onClick={() => navigate(-1)}>
               Annuler
             </Button>
-            <Button type="submit" disabled={saving || !modifyCheck.canModify}>
-              {saving ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : !modifyCheck.canModify ? (
+            {isLocked ? (
+              <Button 
+                type="button" 
+                disabled 
+                className="bg-muted text-muted-foreground cursor-not-allowed hover:bg-muted"
+              >
                 <Lock className="h-4 w-4 mr-2" />
-              ) : (
-                <Save className="h-4 w-4 mr-2" />
-              )}
-              {modifyCheck.canModify ? 'Enregistrer' : 'Verrouillé'}
-            </Button>
+                Verrouillé juridiquement
+              </Button>
+            ) : (
+              <Button type="submit" disabled={saving}>
+                {saving ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                Enregistrer
+              </Button>
+            )}
           </div>
         </form>
       </div>
