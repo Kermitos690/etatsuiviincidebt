@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.sync-status]
 verify_jwt = false
+
+[functions.analyze-event]
+verify_jwt = false
