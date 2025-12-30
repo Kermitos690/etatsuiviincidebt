@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { useIncidentStore } from '@/stores/incidentStore';
 import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { QuickActions, LoadingState } from '@/components/common';
+import { QuickActions, LoadingState, SafeDataBoundary, SupabaseStatusBanner, useSupabaseStatus } from '@/components/common';
 import { getTutorialProps } from '@/hooks/useTutorialHighlight';
 import { useRealtimeIncidents } from '@/hooks/useRealtimeIncidents';
 import { getRelevantIncidents, getExcludedCount, normalizeInstitutionName } from '@/utils/dashboardFilters';
@@ -41,7 +41,8 @@ const quickActions = [
 ];
 
 export default function Dashboard() {
-  const { incidents, config } = useIncidentStore();
+  const { incidents, config, isLoading } = useIncidentStore();
+  const { isConfigured } = useSupabaseStatus();
   
   // Enable realtime updates
   useRealtimeIncidents();
@@ -161,6 +162,9 @@ export default function Dashboard() {
   return (
     <AppLayout>
       <div className="p-4 md:p-8">
+        {/* Supabase status banner */}
+        <SupabaseStatusBanner isConfigured={isConfigured} className="mb-4" />
+        
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
           <div className="flex items-center gap-4">
             <div className="relative">
