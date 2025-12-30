@@ -2,17 +2,16 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Incident, FilterState, AppConfig, Proof } from '@/types/incident';
 import { supabase } from '@/integrations/supabase/client';
-import {
-  DEFAULT_INSTITUTIONS,
-  DEFAULT_TYPES,
-  DEFAULT_STATUTS,
+import { 
+  DEFAULT_INSTITUTIONS, 
+  DEFAULT_TYPES, 
+  DEFAULT_STATUTS, 
   DEFAULT_GRAVITES,
   POIDS_GRAVITE,
   POIDS_TYPE,
   calculateScore,
-  getPriorityFromScore,
+  getPriorityFromScore
 } from '@/config/appConfig';
-import { mapDbToIncident, mapIncidentToDb } from '@/mappers/incidents';
 
 // ============= Types =============
 interface IncidentStore {
@@ -20,25 +19,19 @@ interface IncidentStore {
   filters: FilterState;
   config: AppConfig;
   isLoading: boolean;
-
+  
   // Actions
   setIncidents: (incidents: Incident[]) => void;
-  addIncident: (incident: Omit<Incident, 'id' | 'numero' | 'priorite' | 'score' | 'dateCreation'>) => Promise<Incident | null>;
-  updateIncident: (id: string, updates: Partial<Incident>) => Promise<boolean>;
-  deleteIncident: (id: string) => Promise<boolean>;
-
-  // Filters
+  addIncident: (incident: Omit<Incident, 'id' | 'numero' | 'score' | 'priorite' | 'dateCreation'>) => Promise<Incident | null>;
+  updateIncident: (id: string, updates: Partial<Incident>) => Promise<void>;
+  deleteIncident: (id: string) => Promise<void>;
   setFilters: (filters: Partial<FilterState>) => void;
-  resetFilters: () => void;
-
-  // Config
-  updateConfig: (updates: Partial<AppConfig>) => void;
-
-  // Load
+  clearFilters: () => void;
+  updateConfig: (config: Partial<AppConfig>) => void;
   loadFromSupabase: () => Promise<void>;
-
-  // Utils
-  refreshScores: () => void;
+  
+  // Computed
+  getFilteredIncidents: () => Incident[];
   getNextNumero: () => number;
   getIncidentById: (id: string) => Incident | undefined;
   getIncidentsByStatus: (status: string) => Incident[];
@@ -46,31 +39,57 @@ interface IncidentStore {
 }
 
 // ============= Helpers =============
+const mapDbToIncident = (inc: any): Incident => ({
+  id: inc.id,
+  numero: inc.numero,
+  dateIncident: inc.date_incident,
+  dateCreation: inc.date_creation,
+  institution: inc.institution,
+  titre: inc.titre,
+  faits: inc.faits,
+  dysfonctionnement: inc.dysfonctionnement,
+  type: inc.type,
+  gravite: inc.gravite,
+  statut: inc.statut,
+  priorite: (inc.priorite as 'faible' | 'moyen' | 'eleve' | 'critique') || 'faible',
+  score: inc.score,
+  transmisJP: inc.transmis_jp,
+  dateTransmissionJP: inc.date_transmission_jp || undefined,
+  preuves: (inc.preuves as unknown as Proof[]) || [],
+});
+
+const mapIncidentToDb = (inc: Partial<Incident>) => ({
+  ...(inc.dateIncident && { date_incident: inc.dateIncident }),
+  ...(inc.institution && { institution: inc.institution }),
+  ...(inc.type && { type: inc.type }),
+  ...(inc.gravite && { gravite: inc.gravite }),
+  ...(inc.statut && { statut: inc.statut }),
+  ...(inc.titre && { titre: inc.titre }),
+  ...(inc.faits && { faits: inc.faits }),
+  ...(inc.dysfonctionnement && { dysfonctionnement: inc.dysfonctionnement }),
+  ...(inc.transmisJP !== undefined && { transmis_jp: inc.transmisJP }),
+  ...(inc.dateTransmissionJP !== undefined && { date_transmission_jp: inc.dateTransmissionJP || null }),
+  ...(inc.preuves && { preuves: inc.preuves as unknown as any }),
+  ...(inc.score !== undefined && { score: inc.score }),
+  ...(inc.priorite && { priorite: inc.priorite }),
+});
 
 // ============= Store =============
 export const useIncidentStore = create<IncidentStore>()(
   persist(
     (set, get) => ({
       incidents: [],
-      filters: {
-        institution: 'all',
-        type: 'all',
-        gravite: 'all',
-        statut: 'all',
-        priorite: 'all',
-        search: '',
-        dateRange: null,
-        transmisJP: 'all',
-      },
+      filters: {},
+      isLoading: false,
       config: {
+        googleSheetId: '',
         institutions: DEFAULT_INSTITUTIONS,
         types: DEFAULT_TYPES,
         statuts: DEFAULT_STATUTS,
         gravites: DEFAULT_GRAVITES,
         poidsGravite: POIDS_GRAVITE,
-        poidsType: POIDS_TYPE,
+        poidsType: POIDS_TYPE
       },
-      isLoading: false,
 
       setIncidents: (incidents) => set({ incidents }),
 
@@ -82,182 +101,164 @@ export const useIncidentStore = create<IncidentStore>()(
             .select('*')
             .order('numero', { ascending: false });
 
-          if (error) throw error;
+          if (error) {
+            console.error('Error loading incidents:', error);
+            return;
+          }
 
-          const incidents = (data || []).map(mapDbToIncident);
-          set({ incidents });
-        } catch (err) {
-          console.error('Erreur chargement incidents:', err);
+          if (data) {
+            set({ incidents: data.map(mapDbToIncident) });
+          }
+        } catch (error) {
+          console.error('Error loading incidents:', error);
         } finally {
           set({ isLoading: false });
         }
       },
 
-      addIncident: async (incident) => {
-        try {
-          const numero = get().getNextNumero();
-          const dateCreation = new Date().toISOString();
+      addIncident: async (incidentData) => {
+        const state = get();
+        const score = calculateScore(
+          incidentData.gravite,
+          incidentData.type,
+          incidentData.transmisJP,
+          state.config.poidsGravite,
+          state.config.poidsType
+        );
+        const priorite = getPriorityFromScore(score);
 
-          // Score & priorité
-          const score = calculateScore(
-            incident.gravite,
-            incident.type,
-            get().config.poidsGravite,
-            get().config.poidsType
-          );
-          const priorite = getPriorityFromScore(score);
-
-          const insertData = {
-            numero,
-            date_creation: dateCreation,
-            date_incident: incident.dateIncident,
-            institution: incident.institution,
-            titre: incident.titre,
-            faits: incident.faits,
-            dysfonctionnement: incident.dysfonctionnement,
-            type: incident.type,
-            gravite: incident.gravite,
-            statut: incident.statut,
-            priorite,
+        const { data, error } = await supabase
+          .from('incidents')
+          .insert({
+            date_incident: incidentData.dateIncident,
+            institution: incidentData.institution,
+            type: incidentData.type,
+            gravite: incidentData.gravite,
+            statut: incidentData.statut,
+            titre: incidentData.titre,
+            faits: incidentData.faits,
+            dysfonctionnement: incidentData.dysfonctionnement,
+            transmis_jp: incidentData.transmisJP,
+            date_transmission_jp: incidentData.dateTransmissionJP || null,
+            preuves: incidentData.preuves as unknown as any,
             score,
-            transmis_jp: incident.transmisJP,
-            date_transmission_jp: incident.dateTransmissionJP || null,
-            preuves: (incident.preuves as unknown as any) || ([] as Proof[]),
-          };
+            priorite
+          })
+          .select()
+          .single();
 
-          const { data, error } = await supabase
-            .from('incidents')
-            .insert(insertData)
-            .select()
-            .single();
-
-          if (error) throw error;
-
-          const created = mapDbToIncident(data);
-          set({ incidents: [created, ...get().incidents] });
-
-          return created;
-        } catch (err) {
-          console.error('Erreur ajout incident:', err);
+        if (error) {
+          console.error('Error adding incident:', error);
           return null;
         }
+
+        const newIncident = mapDbToIncident(data);
+        set({ incidents: [...state.incidents, newIncident] });
+        return newIncident;
       },
 
       updateIncident: async (id, updates) => {
-        try {
-          // Recalcule score/priorité si gravité/type changent
-          let computed = { ...updates };
+        const state = get();
+        
+        // Recalculate score if needed
+        const existingIncident = state.incidents.find(inc => inc.id === id);
+        if (!existingIncident) return;
 
-          if (updates.gravite || updates.type) {
-            const current = get().incidents.find((i) => i.id === id);
-            const gravite = updates.gravite ?? current?.gravite;
-            const type = updates.type ?? current?.type;
-
-            if (gravite && type) {
-              const score = calculateScore(
-                gravite,
-                type,
-                get().config.poidsGravite,
-                get().config.poidsType
-              );
-              const priorite = getPriorityFromScore(score);
-              computed = { ...computed, score, priorite };
-            }
-          }
-
-          const dbPatch = mapIncidentToDb(computed);
-
-          const { error } = await supabase
-            .from('incidents')
-            .update(dbPatch)
-            .eq('id', id);
-
-          if (error) throw error;
-
-          set({
-            incidents: get().incidents.map((inc) =>
-              inc.id === id ? { ...inc, ...computed } : inc
-            ),
-          });
-
-          return true;
-        } catch (err) {
-          console.error('Erreur update incident:', err);
-          return false;
+        let finalUpdates = { ...updates };
+        if (updates.gravite || updates.type || updates.transmisJP !== undefined) {
+          const newScore = calculateScore(
+            updates.gravite || existingIncident.gravite,
+            updates.type || existingIncident.type,
+            updates.transmisJP ?? existingIncident.transmisJP,
+            state.config.poidsGravite,
+            state.config.poidsType
+          );
+          finalUpdates.score = newScore;
+          finalUpdates.priorite = getPriorityFromScore(newScore);
         }
+
+        const { error } = await supabase
+          .from('incidents')
+          .update(mapIncidentToDb(finalUpdates))
+          .eq('id', id);
+
+        if (error) {
+          console.error('Error updating incident:', error);
+          return;
+        }
+
+        set({
+          incidents: state.incidents.map((inc) => 
+            inc.id === id ? { ...inc, ...finalUpdates } : inc
+          )
+        });
       },
 
       deleteIncident: async (id) => {
-        try {
-          const { error } = await supabase.from('incidents').delete().eq('id', id);
-          if (error) throw error;
+        const { error } = await supabase
+          .from('incidents')
+          .delete()
+          .eq('id', id);
 
-          set({ incidents: get().incidents.filter((i) => i.id !== id) });
-          return true;
-        } catch (err) {
-          console.error('Erreur delete incident:', err);
-          return false;
+        if (error) {
+          console.error('Error deleting incident:', error);
+          return;
         }
+
+        set({ incidents: get().incidents.filter((inc) => inc.id !== id) });
       },
 
-      setFilters: (filters) =>
-        set({
-          filters: { ...get().filters, ...filters },
-        }),
+      setFilters: (newFilters) => {
+        set({ filters: { ...get().filters, ...newFilters } });
+      },
 
-      resetFilters: () =>
-        set({
-          filters: {
-            institution: 'all',
-            type: 'all',
-            gravite: 'all',
-            statut: 'all',
-            priorite: 'all',
-            search: '',
-            dateRange: null,
-            transmisJP: 'all',
-          },
-        }),
+      clearFilters: () => set({ filters: {} }),
 
-      updateConfig: (updates) =>
-        set({
-          config: { ...get().config, ...updates },
-        }),
+      updateConfig: (newConfig) => {
+        set({ config: { ...get().config, ...newConfig } });
+      },
 
-      refreshScores: () => {
-        const updated = get().incidents.map((inc) => {
-          const score = calculateScore(
-            inc.gravite,
-            inc.type,
-            get().config.poidsGravite,
-            get().config.poidsType
-          );
-          const priorite = getPriorityFromScore(score);
-          return { ...inc, score, priorite };
+      getFilteredIncidents: () => {
+        const { incidents, filters } = get();
+        
+        return incidents.filter((inc) => {
+          if (filters.dateDebut && inc.dateIncident < filters.dateDebut) return false;
+          if (filters.dateFin && inc.dateIncident > filters.dateFin) return false;
+          if (filters.institution && inc.institution !== filters.institution) return false;
+          if (filters.type && inc.type !== filters.type) return false;
+          if (filters.gravite && inc.gravite !== filters.gravite) return false;
+          if (filters.statut && inc.statut !== filters.statut) return false;
+          if (filters.recherche) {
+            const search = filters.recherche.toLowerCase();
+            const matchTitre = inc.titre.toLowerCase().includes(search);
+            const matchFaits = inc.faits.toLowerCase().includes(search);
+            const matchDysf = inc.dysfonctionnement.toLowerCase().includes(search);
+            if (!matchTitre && !matchFaits && !matchDysf) return false;
+          }
+          return true;
         });
-        set({ incidents: updated });
       },
 
       getNextNumero: () => {
-        const max = get().incidents.reduce((acc, inc) => Math.max(acc, inc.numero), 0);
-        return max + 1;
+        const { incidents } = get();
+        if (incidents.length === 0) return 1;
+        return Math.max(...incidents.map((i) => i.numero)) + 1;
       },
 
-      getIncidentById: (id) => get().incidents.find((i) => i.id === id),
+      getIncidentById: (id) => {
+        return get().incidents.find((inc) => inc.id === id);
+      },
 
-      getIncidentsByStatus: (status) =>
-        get().incidents.filter((i) => i.statut === status),
+      getIncidentsByStatus: (status) => {
+        return get().incidents.filter((inc) => inc.statut === status);
+      },
 
-      getIncidentsByPriority: (priority) =>
-        get().incidents.filter((i) => i.priorite === priority),
+      getIncidentsByPriority: (priority) => {
+        return get().incidents.filter((inc) => inc.priorite === priority);
+      }
     }),
     {
-      name: 'incident-store',
-      partialize: (state) => ({
-        incidents: state.incidents,
-        filters: state.filters,
-        config: state.config,
-      }),
+      name: 'incident-store'
     }
   )
 );
