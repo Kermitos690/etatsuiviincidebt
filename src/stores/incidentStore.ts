@@ -12,7 +12,14 @@ import {
   calculateScore,
   getPriorityFromScore
 } from '@/config/appConfig';
-import { mapDbToIncident, mapIncidentToDb, validateIncident, calculateIncidentMetrics } from '@/mappers/incidents';
+import { 
+  mapDbToIncident, 
+  mapIncidentToDb, 
+  validateIncident, 
+  calculateIncidentMetrics,
+  canModifyIncident 
+} from '@/mappers/incidents';
+import { logIncidentCreation, logIncidentUpdate, logIncidentTransmission, logIncidentLock } from '@/hooks/useIncidentEvents';
 
 // ============= Types =============
 interface IncidentStore {
@@ -24,8 +31,10 @@ interface IncidentStore {
   // Actions
   setIncidents: (incidents: Incident[]) => void;
   addIncident: (incident: Omit<Incident, 'id' | 'numero' | 'score' | 'priorite' | 'dateCreation'>) => Promise<Incident | null>;
-  updateIncident: (id: string, updates: Partial<Incident>) => Promise<void>;
+  updateIncident: (id: string, updates: Partial<Incident>, modificationReason?: string) => Promise<{ success: boolean; error?: string }>;
   deleteIncident: (id: string) => Promise<void>;
+  markTransmisJP: (id: string) => Promise<{ success: boolean; error?: string }>;
+  lockIncident: (id: string, lock: boolean, reason?: string) => Promise<{ success: boolean; error?: string }>;
   setFilters: (filters: Partial<FilterState>) => void;
   clearFilters: () => void;
   updateConfig: (config: Partial<AppConfig>) => void;
@@ -125,14 +134,28 @@ export const useIncidentStore = create<IncidentStore>()(
         return newIncident;
       },
 
-      updateIncident: async (id, updates) => {
+      updateIncident: async (id, updates, modificationReason) => {
         const state = get();
         
-        // Recalculate score if needed
         const existingIncident = state.incidents.find(inc => inc.id === id);
-        if (!existingIncident) return;
+        if (!existingIncident) {
+          return { success: false, error: 'Incident non trouvé' };
+        }
+
+        // Check if incident can be modified
+        const { canModify, reason } = canModifyIncident(existingIncident);
+        if (!canModify) {
+          return { success: false, error: reason };
+        }
 
         let finalUpdates = { ...updates };
+        
+        // Add modification reason if provided
+        if (modificationReason) {
+          finalUpdates.modificationReason = modificationReason;
+        }
+
+        // Recalculate score if needed
         if (updates.gravite || updates.type || updates.transmisJP !== undefined) {
           const newScore = calculateScore(
             updates.gravite || existingIncident.gravite,
@@ -152,14 +175,84 @@ export const useIncidentStore = create<IncidentStore>()(
 
         if (error) {
           console.error('Error updating incident:', error);
-          return;
+          return { success: false, error: 'Erreur lors de la mise à jour' };
         }
+
+        // Log the update event
+        await logIncidentUpdate(id, existingIncident.numero, existingIncident, finalUpdates, modificationReason);
 
         set({
           incidents: state.incidents.map((inc) => 
             inc.id === id ? { ...inc, ...finalUpdates } : inc
           )
         });
+
+        return { success: true };
+      },
+
+      markTransmisJP: async (id) => {
+        const state = get();
+        const existingIncident = state.incidents.find(inc => inc.id === id);
+        if (!existingIncident) {
+          return { success: false, error: 'Incident non trouvé' };
+        }
+
+        const updates = {
+          transmisJP: true,
+          dateTransmissionJP: new Date().toISOString(),
+          statut: 'Transmis',
+          isLocked: true, // Auto-lock when transmitted
+        };
+
+        const { error } = await supabase
+          .from('incidents')
+          .update(mapIncidentToDb(updates as any))
+          .eq('id', id);
+
+        if (error) {
+          console.error('Error marking transmis JP:', error);
+          return { success: false, error: 'Erreur lors de la transmission' };
+        }
+
+        // Log transmission event
+        await logIncidentTransmission(id, existingIncident.numero);
+
+        set({
+          incidents: state.incidents.map((inc) => 
+            inc.id === id ? { ...inc, ...updates } : inc
+          )
+        });
+
+        return { success: true };
+      },
+
+      lockIncident: async (id, lock, reason) => {
+        const state = get();
+        const existingIncident = state.incidents.find(inc => inc.id === id);
+        if (!existingIncident) {
+          return { success: false, error: 'Incident non trouvé' };
+        }
+
+        const { error } = await supabase
+          .from('incidents')
+          .update({ is_locked: lock })
+          .eq('id', id);
+
+        if (error) {
+          console.error('Error locking incident:', error);
+          return { success: false, error: 'Erreur lors du verrouillage' };
+        }
+
+        // Log lock/unlock event
+        await logIncidentLock(id, existingIncident.numero, lock, reason);
+
+        set({
+          incidents: state.incidents.map((inc) => 
+            inc.id === id ? { ...inc, isLocked: lock } : inc
+          )
+        });
+
+        return { success: true };
       },
 
       deleteIncident: async (id) => {

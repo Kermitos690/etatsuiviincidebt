@@ -10,18 +10,39 @@ export interface Incident {
   numero: number;
   dateIncident: string;
   dateCreation: string;
+  updatedAt?: string;
   institution: string;
   type: string;
   gravite: string;
   statut: string;
   titre: string;
+  // FAITS: Éléments factuels et objectifs (dates, actions, documents)
   faits: string;
+  // ANALYSE: Interprétation et qualification juridique
   dysfonctionnement: string;
+  analysisNotes?: string;
   transmisJP: boolean;
   dateTransmissionJP?: string;
   preuves: Proof[];
   score: number;
   priorite: 'faible' | 'moyen' | 'eleve' | 'critique';
+  // Audit fields
+  modificationReason?: string;
+  isLocked?: boolean;
+}
+
+// Event types for incident audit trail
+export type IncidentEventType = 'creation' | 'update' | 'transmission_jp' | 'lock' | 'unlock' | 'status_change';
+
+export interface IncidentEvent {
+  id: string;
+  incidentId: string;
+  userId?: string;
+  eventType: IncidentEventType;
+  eventDescription: string;
+  changes?: Record<string, { old: any; new: any }>;
+  modificationReason?: string;
+  createdAt: string;
 }
 
 export interface IncidentFormData {
