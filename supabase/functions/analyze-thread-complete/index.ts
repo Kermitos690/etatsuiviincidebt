@@ -367,11 +367,28 @@ RAPPELS CRITIQUES:
 5. Identifie les questions restées sans réponse
 6. Recherche les violations des bases légales suisses (CC, PA, Cst., LPD, LVPAE, etc.)
 
+=== FOCUS SPÉCIAL: CONTRADICTIONS & PROMESSES NON TENUES ===
+
+DÉTECTION DES CONTRADICTIONS:
+- Compare CHAQUE affirmation d'un acteur avec ses affirmations précédentes
+- Cherche les DATES qui changent (ex: "je vous enverrai lundi" puis "ce sera fait jeudi")
+- Cherche les ENGAGEMENTS modifiés (ex: "je m'engage à..." puis "finalement nous ne pouvons pas...")
+- Cherche les VERSIONS différentes d'un même événement
+- Cherche les CHIFFRES/MONTANTS qui diffèrent
+- Cherche les RESPONSABILITÉS qui changent (ex: "c'était ma responsabilité" puis "ce n'est pas de mon ressort")
+
+SUIVI DES PROMESSES:
+- Une promesse = tout engagement verbal ou écrit (ex: "je vous rappelle", "nous allons", "je m'engage", "ce sera fait")
+- Vérifie dans les emails SUIVANTS si la promesse a été tenue
+- Si pas de trace de réalisation = "en_attente" ou "brisée" selon le délai dépassé
+- Note les excuses ou justifications données pour les promesses non tenues
+
 THREAD À ANALYSER (${sortedEmails.length} emails):
 ${threadContent}
 
 Réponds UNIQUEMENT en JSON valide selon le format spécifié.
-CHAQUE problème identifié DOIT avoir au moins une citation exacte.`;
+CHAQUE problème identifié DOIT avoir au moins une citation exacte.
+PRIORISE la détection des contradictions et promesses non tenues.`;
 
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {

@@ -1237,6 +1237,89 @@ export type Database = {
         }
         Relationships: []
       }
+      events: {
+        Row: {
+          ai_analysis: Json | null
+          analysis_date: string | null
+          content: string | null
+          created_at: string
+          description: string | null
+          event_date: string
+          event_type: string
+          extracted_text: string | null
+          file_mime_type: string | null
+          file_name: string | null
+          file_path: string | null
+          file_size_bytes: number | null
+          id: string
+          incident_id: string | null
+          is_analyzed: boolean | null
+          metadata: Json | null
+          related_thread_id: string | null
+          source_type: string | null
+          tags: string[] | null
+          title: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          ai_analysis?: Json | null
+          analysis_date?: string | null
+          content?: string | null
+          created_at?: string
+          description?: string | null
+          event_date?: string
+          event_type?: string
+          extracted_text?: string | null
+          file_mime_type?: string | null
+          file_name?: string | null
+          file_path?: string | null
+          file_size_bytes?: number | null
+          id?: string
+          incident_id?: string | null
+          is_analyzed?: boolean | null
+          metadata?: Json | null
+          related_thread_id?: string | null
+          source_type?: string | null
+          tags?: string[] | null
+          title: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          ai_analysis?: Json | null
+          analysis_date?: string | null
+          content?: string | null
+          created_at?: string
+          description?: string | null
+          event_date?: string
+          event_type?: string
+          extracted_text?: string | null
+          file_mime_type?: string | null
+          file_name?: string | null
+          file_path?: string | null
+          file_size_bytes?: number | null
+          id?: string
+          incident_id?: string | null
+          is_analyzed?: boolean | null
+          metadata?: Json | null
+          related_thread_id?: string | null
+          source_type?: string | null
+          tags?: string[] | null
+          title?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "events_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "incidents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fact_law_mappings: {
         Row: {
           ai_confidence: number | null

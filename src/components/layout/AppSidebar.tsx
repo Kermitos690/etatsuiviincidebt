@@ -22,7 +22,8 @@ import {
   Cog,
   User,
   LucideIcon,
-  FolderOpen
+  FolderOpen,
+  CalendarPlus
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -88,6 +89,7 @@ const navCategories: NavCategory[] = [
     icon: FolderOpen,
     items: [
       { to: '/factual-dossier', icon: FileText, label: 'Chronologie' },
+      { to: '/events', icon: CalendarPlus, label: 'Événements' },
       { to: '/ia-auditeur', icon: Brain, label: 'Analyse IA' },
       { to: '/analysis-pipeline', icon: Brain, label: 'Pipeline' },
     ]
