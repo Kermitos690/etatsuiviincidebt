@@ -238,19 +238,54 @@ const Events = () => {
       if (error) throw error;
       return data;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
       toast.success('Événement créé');
+      const savedContent = newEvent.content;
+      const savedTitle = newEvent.title;
+      const savedDate = newEvent.eventDate;
+      const savedSourceType = newEvent.sourceType;
       setNewEvent({ title: '', content: '', eventDate: new Date().toISOString().split('T')[0], sourceType: 'paste' });
       setActiveTab('list');
       
-      // Lancer l'analyse automatiquement
-      analyzeEvent(data.id);
+      // Lancer l'analyse automatiquement avec le contenu directement
+      if (savedContent && savedContent.trim().length >= 10) {
+        analyzeEventWithContent(data.id, savedContent, savedTitle, savedDate, savedSourceType);
+      }
     },
     onError: (error) => {
       toast.error('Erreur: ' + (error as Error).message);
     },
   });
+
+  const analyzeEventWithContent = useCallback(async (
+    eventId: string, 
+    content: string, 
+    title: string, 
+    eventDate: string, 
+    sourceType: string
+  ) => {
+    setAnalyzingId(eventId);
+    try {
+      const { data, error } = await supabase.functions.invoke('analyze-event', {
+        body: { eventId, content, title, eventDate, sourceType },
+      });
+
+      if (error) throw error;
+
+      if (data.createdIncident) {
+        toast.success(`Incident #${data.createdIncident.numero} créé automatiquement`);
+      } else {
+        toast.success('Analyse terminée');
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    } catch (error) {
+      toast.error('Erreur d\'analyse: ' + (error as Error).message);
+    } finally {
+      setAnalyzingId(null);
+    }
+  }, [queryClient]);
 
   const analyzeEvent = useCallback(async (eventId: string) => {
     setAnalyzingId(eventId);
