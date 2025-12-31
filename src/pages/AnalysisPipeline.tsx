@@ -31,7 +31,8 @@ import {
   ThumbsDown,
   Users,
   ExternalLink,
-  Filter
+  Filter,
+  Trash2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -113,6 +114,8 @@ export default function AnalysisPipeline() {
     { name: 'Pass 3: Corroboration croisée', status: 'pending', progress: 0 },
   ]);
   const [isRunning, setIsRunning] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [selectedThread, setSelectedThread] = useState<ThreadAnalysis | null>(null);
   const [selectedCorroboration, setSelectedCorroboration] = useState<Corroboration | null>(null);
   const [useFilters, setUseFilters] = useState(true);
@@ -354,7 +357,7 @@ export default function AnalysisPipeline() {
     }
   };
 
-  // Reset pipeline
+  // Reset pipeline UI
   const resetPipeline = () => {
     setAnalysisSteps(prev => prev.map(step => ({ 
       ...step, 
@@ -363,6 +366,35 @@ export default function AnalysisPipeline() {
       details: undefined,
       count: undefined
     })));
+  };
+
+  // Hard data reset - deletes all analyzed data, preserves Gmail OAuth
+  const performHardReset = async () => {
+    setIsResetting(true);
+    setShowResetConfirm(false);
+    
+    try {
+      toast.info('Suppression des données en cours...');
+      
+      const { data, error } = await supabase.functions.invoke('hard-data-reset');
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+      
+      toast.success(`Reset terminé: ${data.totalRowsDeleted} enregistrements supprimés`);
+      
+      // Refresh all stats
+      queryClient.invalidateQueries();
+      refetchStats();
+      resetPipeline();
+      
+    } catch (error) {
+      console.error('Hard reset error:', error);
+      toast.error(error instanceof Error ? error.message : 'Erreur lors du reset');
+    } finally {
+      setIsResetting(false);
+    }
   };
 
   // Verify corroboration
@@ -460,15 +492,27 @@ export default function AnalysisPipeline() {
             <Button
               variant="outline"
               onClick={resetPipeline}
-              disabled={isRunning}
+              disabled={isRunning || isResetting}
               className="glass-card"
             >
               <RotateCcw className="h-4 w-4 mr-2" />
-              Réinitialiser
+              Réinitialiser UI
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => setShowResetConfirm(true)}
+              disabled={isRunning || isResetting}
+            >
+              {isResetting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              {isResetting ? 'Reset...' : 'Reset données'}
             </Button>
             <Button
               onClick={runFullAnalysis}
-              disabled={isRunning}
+              disabled={isRunning || isResetting}
               className="bg-gradient-primary text-white"
             >
               {isRunning ? (
@@ -480,6 +524,54 @@ export default function AnalysisPipeline() {
             </Button>
           </div>
         </div>
+
+        {/* Reset Confirmation Dialog */}
+        <Dialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-destructive">
+                <Trash2 className="h-5 w-5" />
+                Reset complet des données
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="p-4 bg-destructive/10 rounded-lg border border-destructive/30">
+                <p className="text-sm font-medium text-destructive mb-2">
+                  Cette action va supprimer définitivement :
+                </p>
+                <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                  <li>Tous les emails synchronisés</li>
+                  <li>Tous les incidents générés</li>
+                  <li>Toutes les analyses IA (threads, faits, corroborations)</li>
+                  <li>Les pièces jointes et documents</li>
+                  <li>Les scores et historiques</li>
+                </ul>
+              </div>
+              <div className="p-4 bg-green-500/10 rounded-lg border border-green-500/30">
+                <p className="text-sm font-medium text-green-600 mb-2">
+                  Ce qui sera conservé :
+                </p>
+                <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                  <li>Connexion OAuth Gmail (tokens)</li>
+                  <li>Configuration des filtres (domaines, mots-clés)</li>
+                  <li>Votre compte utilisateur</li>
+                </ul>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Après le reset, vous pourrez relancer une synchronisation complète avec les nouvelles règles d'analyse.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowResetConfirm(false)}>
+                Annuler
+              </Button>
+              <Button variant="destructive" onClick={performHardReset}>
+                <Trash2 className="h-4 w-4 mr-2" />
+                Confirmer le reset
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
