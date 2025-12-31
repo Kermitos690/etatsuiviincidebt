@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.analyze-event]
 verify_jwt = false
+
+[functions.send-incident-pdf]
+verify_jwt = false

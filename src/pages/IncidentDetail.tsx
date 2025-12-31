@@ -55,7 +55,7 @@ const proofIcons = {
 export default function IncidentDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { incidents, updateIncident, loadFromSupabase, isLoading } = useIncidentStore();
+  const { incidents, updateIncident, markTransmisJP: storeMarkTransmisJP, resendPdf, loadFromSupabase, isLoading } = useIncidentStore();
   const [hasLoaded, setHasLoaded] = useState(false);
   const [sourceEmailId, setSourceEmailId] = useState<string | null>(null);
   const [relatedEmails, setRelatedEmails] = useState<any[]>([]);
@@ -319,12 +319,49 @@ export default function IncidentDetail() {
     return { level: 'Analysé', color: 'default' };
   };
 
-  const markTransmisJP = () => {
-    updateIncident(incident.id, { 
-      transmisJP: true, 
-      dateTransmissionJP: new Date().toISOString(),
-      statut: 'Transmis'
-    });
+  const markTransmisJP = async () => {
+    toast.loading('Transmission en cours...', { id: 'transmis-jp' });
+    
+    const result = await storeMarkTransmisJP(incident.id);
+    
+    if (result.success) {
+      if (result.emailError) {
+        toast.warning('Transmis au JP avec succès, mais l\'envoi email a échoué', {
+          id: 'transmis-jp',
+          description: result.emailError,
+          action: {
+            label: 'Renvoyer PDF',
+            onClick: () => handleResendPdf()
+          },
+          duration: 10000
+        });
+      } else {
+        toast.success('Incident transmis au Juge de Paix', {
+          id: 'transmis-jp',
+          description: 'Le PDF a été envoyé par email'
+        });
+      }
+    } else {
+      toast.error('Échec de la transmission', {
+        id: 'transmis-jp',
+        description: result.error
+      });
+    }
+  };
+
+  const handleResendPdf = async () => {
+    toast.loading('Envoi du PDF en cours...', { id: 'resend-pdf' });
+    
+    const result = await resendPdf(incident.id);
+    
+    if (result.success) {
+      toast.success('PDF envoyé avec succès', { id: 'resend-pdf' });
+    } else {
+      toast.error('Échec de l\'envoi', {
+        id: 'resend-pdf',
+        description: result.error
+      });
+    }
   };
 
   const exportPDF = async (withOptions = false) => {

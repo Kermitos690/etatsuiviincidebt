@@ -72,7 +72,7 @@ type SortField = 'numero' | 'dateIncident' | 'titre' | 'institution' | 'type' | 
 type SortDirection = 'asc' | 'desc';
 
 export default function Incidents() {
-  const { incidents, config, updateIncident, filters, setFilters, clearFilters, getFilteredIncidents, loadFromSupabase, isLoading } = useIncidentStore();
+  const { incidents, config, updateIncident, markTransmisJP: storeMarkTransmisJP, filters, setFilters, clearFilters, getFilteredIncidents, loadFromSupabase, isLoading } = useIncidentStore();
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -388,12 +388,30 @@ export default function Incidents() {
     return filteredIncidents.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   }, [filteredIncidents, currentPage]);
 
-  const markTransmisJP = (id: string) => {
-    updateIncident(id, { 
-      transmisJP: true, 
-      dateTransmissionJP: new Date().toISOString(),
-      statut: 'Transmis'
-    });
+  const markTransmisJP = async (id: string) => {
+    toast.loading('Transmission en cours...', { id: `transmis-${id}` });
+    
+    const result = await storeMarkTransmisJP(id);
+    
+    if (result.success) {
+      if (result.emailError) {
+        toast.warning('Transmis au JP, mais envoi email échoué', {
+          id: `transmis-${id}`,
+          description: result.emailError,
+          duration: 8000
+        });
+      } else {
+        toast.success('Incident transmis au Juge de Paix', {
+          id: `transmis-${id}`,
+          description: 'Le PDF a été envoyé par email'
+        });
+      }
+    } else {
+      toast.error('Échec de la transmission', {
+        id: `transmis-${id}`,
+        description: result.error
+      });
+    }
   };
 
   // Supprimer un incident avec feedback IA
