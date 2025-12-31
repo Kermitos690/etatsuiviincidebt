@@ -293,7 +293,7 @@ async function saveToCache(
 // Paginated fetch utility for Supabase (batch 500, max 2000)
 type SupabaseClientAny = any;
 
-async function paginatedFetch<T = any>(
+export async function paginatedFetch<T = any>(
   supabase: SupabaseClientAny,
   table: string,
   selectCols: string,
