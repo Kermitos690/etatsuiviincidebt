@@ -12,6 +12,7 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { 
   RefreshCw, 
   Mail, 
@@ -21,7 +22,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   Loader2,
-  XCircle
+  XCircle,
+  Infinity
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -38,6 +40,12 @@ interface ReanalyzeProgress {
     factsExtracted: number;
     threadsAnalyzed: number;
     incidentsCreated: number;
+  };
+  pagination?: {
+    totalFetched: number;
+    pages: number;
+    stoppedBecause: string;
+    syncLimit: number | string;
   };
 }
 
@@ -63,6 +71,8 @@ export function FullReanalyzeDialog({
   const [isRunning, setIsRunning] = useState(false);
   const [syncGmail, setSyncGmail] = useState(true);
   const [forceReanalyze, setForceReanalyze] = useState(true);
+  const [syncLimit, setSyncLimit] = useState<number | null>(null); // null = unlimited
+  const [syncLimitEnabled, setSyncLimitEnabled] = useState(false);
   const [syncId, setSyncId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ReanalyzeProgress | null>(null);
   const [isComplete, setIsComplete] = useState(false);
@@ -113,8 +123,10 @@ export function FullReanalyzeDialog({
         return;
       }
 
+      const effectiveSyncLimit = syncLimitEnabled && syncLimit ? syncLimit : null;
+      
       const { data: result, error } = await supabase.functions.invoke('full-reanalyze', {
-        body: { syncGmail, forceReanalyze },
+        body: { syncGmail, forceReanalyze, syncLimit: effectiveSyncLimit },
       });
 
       if (error) {
@@ -195,6 +207,47 @@ export function FullReanalyzeDialog({
                   checked={forceReanalyze}
                   onCheckedChange={setForceReanalyze}
                 />
+              </div>
+
+              {/* Sync Limit Option */}
+              <div className="space-y-2 pt-2 border-t">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="sync-limit-toggle" className="flex items-center gap-2">
+                    <Infinity className="h-4 w-4" />
+                    Limiter le nombre d'emails
+                  </Label>
+                  <Switch 
+                    id="sync-limit-toggle" 
+                    checked={syncLimitEnabled}
+                    onCheckedChange={(checked) => {
+                      setSyncLimitEnabled(checked);
+                      if (!checked) setSyncLimit(null);
+                      else if (!syncLimit) setSyncLimit(500);
+                    }}
+                  />
+                </div>
+                
+                {syncLimitEnabled && (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      placeholder="500"
+                      value={syncLimit || ''}
+                      onChange={(e) => setSyncLimit(e.target.value ? parseInt(e.target.value, 10) : null)}
+                      className="w-28"
+                      min={1}
+                      max={50000}
+                    />
+                    <span className="text-sm text-muted-foreground">emails max</span>
+                  </div>
+                )}
+                
+                <p className="text-xs text-muted-foreground">
+                  {syncLimitEnabled 
+                    ? `Sync limitée à ${syncLimit || 500} emails. Utile pour les tests.`
+                    : 'Sync illimitée (tous les emails seront synchronisés).'
+                  }
+                </p>
               </div>
             </div>
           )}
@@ -284,6 +337,21 @@ export function FullReanalyzeDialog({
                     </p>
                     <p className="text-xs text-muted-foreground">Incidents créés</p>
                   </div>
+                </div>
+              )}
+
+              {/* Pagination Info */}
+              {progress?.pagination && (
+                <div className="text-xs text-muted-foreground bg-muted/30 p-2 rounded-lg space-y-1">
+                  <p><strong>Pagination:</strong></p>
+                  <p>• Total récupéré: {progress.pagination.totalFetched}</p>
+                  <p>• Pages: {progress.pagination.pages}</p>
+                  <p>• Arrêt: {
+                    progress.pagination.stoppedBecause === 'no_more_pages' ? 'Fin des emails' :
+                    progress.pagination.stoppedBecause === 'limit_reached' ? `Limite atteinte (${progress.pagination.syncLimit})` :
+                    progress.pagination.stoppedBecause === 'max_pages_reached' ? 'Limite de pages max' :
+                    progress.pagination.stoppedBecause
+                  }</p>
                 </div>
               )}
 

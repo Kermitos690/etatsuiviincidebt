@@ -173,12 +173,12 @@ async function processReanalyze(
   userId: string,
   authToken: string,
   syncId: string,
-  options: { syncGmail: boolean; forceReanalyze: boolean }
+  options: { syncGmail: boolean; forceReanalyze: boolean; syncLimit: number | null }
 ) {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-  const { syncGmail, forceReanalyze } = options;
+  const { syncGmail, forceReanalyze, syncLimit } = options;
 
-  console.log(`[full-reanalyze] Background processing started for user ${userId}, syncId ${syncId}`);
+  console.log(`[full-reanalyze] Background processing started for user ${userId}, syncId ${syncId}, syncLimit=${syncLimit ?? 'unlimited'}`);
 
   const progress: ReanalyzeProgress = {
     step: "Initialisation",
@@ -229,19 +229,26 @@ async function processReanalyze(
         console.log("[Step 1] Gmail config found, syncing with filters...");
         
         try {
-          // Call gmail-sync function with filters
+          // Call gmail-sync function with filters and syncLimit
+          const syncBody: Record<string, unknown> = { 
+            syncMode: "filtered",
+            domains: filters.domains,
+            keywords: filters.keywords,
+          };
+          
+          // Only add syncLimit if it's set
+          if (syncLimit !== null && syncLimit > 0) {
+            syncBody.syncLimit = syncLimit;
+            console.log(`[Step 1] Applying syncLimit: ${syncLimit}`);
+          }
+          
           const syncResponse = await fetch(`${SUPABASE_URL}/functions/v1/gmail-sync`, {
             method: "POST",
             headers: {
               "Authorization": `Bearer ${authToken}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ 
-              maxEmails: 100,
-              syncMode: "filtered",
-              domains: filters.domains,
-              keywords: filters.keywords,
-            }),
+            body: JSON.stringify(syncBody),
           });
 
           if (syncResponse.ok) {
@@ -575,7 +582,7 @@ serve(async (req) => {
   console.log(`[full-reanalyze] Starting for user ${userId}`);
 
   try {
-    const { forceReanalyze = true, syncGmail = true } = await req.json().catch(() => ({}));
+    const { forceReanalyze = true, syncGmail = true, syncLimit = null } = await req.json().catch(() => ({}));
 
     // Create a Supabase client for initial setup
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -623,11 +630,11 @@ serve(async (req) => {
     if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
       // @ts-ignore
       EdgeRuntime.waitUntil(
-        processReanalyze(userId, token, syncId, { syncGmail, forceReanalyze })
+        processReanalyze(userId, token, syncId, { syncGmail, forceReanalyze, syncLimit })
       );
     } else {
       // Fallback: run without waitUntil (may timeout for large datasets)
-      processReanalyze(userId, token, syncId, { syncGmail, forceReanalyze });
+      processReanalyze(userId, token, syncId, { syncGmail, forceReanalyze, syncLimit });
     }
 
     // Return immediately with syncId for polling
