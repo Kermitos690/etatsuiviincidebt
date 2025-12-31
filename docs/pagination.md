@@ -86,10 +86,10 @@ L'Edge Function `legal-verify` dispose de flags de contrôle pour activer des fo
 
 Les protections anti-abus sont implémentées en mémoire et fournissent une protection de base :
 
-| Protection | Limite | Comportement si dépassé |
-|------------|--------|-------------------------|
-| **Debug rate limit** | 5 requêtes/minute par IP | Réponse `source="degraded"` avec `debug.rate_limited=true` |
-| **Seed cooldown** | 1 exécution/10 minutes (global) | `debug.seed.references.reason="cooldown_active"` sans exécution |
+| Protection | Limite | Clé | Comportement si dépassé |
+|------------|--------|-----|-------------------------|
+| **Debug rate limit** | 5 requêtes/minute | IP + queryHash | EARLY RETURN: `source="degraded"` + `debug.rate_limited=true` + `remaining` + `window_ms` |
+| **Seed cooldown** | 1 exécution/10 minutes | IP | `debug.seed.references.reason="cooldown_active"` sans exécution du seed |
 
 **Limitations serverless** : Ces protections sont best-effort. En environnement serverless (cold starts fréquents), les compteurs peuvent être réinitialisés. Cela offre une protection suffisante contre les abus accidentels mais ne constitue pas une sécurité absolue.
 
