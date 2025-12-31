@@ -64,9 +64,10 @@ export function EmailPreview({ domains, keywords, useFilters, onPreviewReady }: 
         query = query.or(keywordConditions);
       }
 
+      // Fetch up to 500 for preview (single batch OK for preview)
       const { data, error, count } = await query
         .order('received_at', { ascending: false })
-        .limit(100);
+        .range(0, 499);
 
       if (error) throw error;
 

@@ -207,97 +207,120 @@ export default function EmailCleanup() {
   const currentGroup = groups[currentIndex];
   const remainingGroups = groups.length - currentIndex;
 
+  // Helper to get email IDs for current group
+  const getGroupEmailIds = (): string[] => {
+    if (!currentGroup) return [];
+    return emails
+      .filter(e => {
+        const domain = extractDomain(e.sender);
+        const senderEmail = extractEmail(e.sender);
+        if (currentGroup.senderEmail) {
+          return senderEmail === currentGroup.senderEmail;
+        }
+        return domain === currentGroup.domain;
+      })
+      .map(e => e.id);
+  };
+
+  // Batch delete helper (max 200 per batch to avoid timeout)
+  const batchDelete = async (ids: string[]): Promise<{ success: boolean; error?: string }> => {
+    const BATCH_SIZE = 200;
+    for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+      const batch = ids.slice(i, i + BATCH_SIZE);
+      const { error } = await supabase.from('emails').delete().in('id', batch);
+      if (error) {
+        console.error('[batchDelete] Error:', error);
+        return { success: false, error: error.message };
+      }
+    }
+    return { success: true };
+  };
+
   // Handle swipe actions
   const handleSwipe = async (direction: SwipeDirection) => {
     if (!currentGroup || deleting) return;
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      toast.error('Session expirée, veuillez vous reconnecter');
+      return;
+    }
+
+    const groupId = currentGroup.senderEmail || currentGroup.domain;
+    const emailIds = getGroupEmailIds();
+
+    console.log({ action: 'swipe', direction, groupId, emailCount: emailIds.length });
+
+    setDeleting(true);
 
     try {
       switch (direction) {
-        case 'left': // Delete all emails from this domain/sender
-          setDeleting(true);
-          const idsToDelete = emails
-            .filter(e => {
-              const domain = extractDomain(e.sender);
-              const senderEmail = extractEmail(e.sender);
-              if (currentGroup.senderEmail) {
-                return senderEmail === currentGroup.senderEmail;
-              }
-              return domain === currentGroup.domain;
-            })
-            .map(e => e.id);
-
-          if (idsToDelete.length > 0) {
-            const { error } = await supabase
-              .from('emails')
-              .delete()
-              .in('id', idsToDelete);
-
-            if (error) throw error;
-
-            setEmails(prev => prev.filter(e => !idsToDelete.includes(e.id)));
-            setStats(prev => ({ ...prev, deleted: prev.deleted + idsToDelete.length }));
-            toast.success(`${idsToDelete.length} emails supprimés`);
+        case 'left': {
+          // Delete all emails from this domain/sender
+          if (emailIds.length > 0) {
+            const result = await batchDelete(emailIds);
+            if (!result.success) {
+              throw new Error(result.error || 'Erreur de suppression');
+            }
+            setEmails(prev => prev.filter(e => !emailIds.includes(e.id)));
+            setStats(prev => ({ ...prev, deleted: prev.deleted + emailIds.length }));
+            toast.success(`${emailIds.length} emails supprimés`);
           }
-          setDeleting(false);
           break;
+        }
 
-        case 'right': // Keep (whitelist domain)
-          // Add domain to gmail_config.domains if not already there
+        case 'right': {
+          // Keep (whitelist domain)
           if (gmailConfig && !gmailConfig.domains.includes(currentGroup.domain)) {
             const updatedDomains = [...gmailConfig.domains, currentGroup.domain];
-            await supabase
+            const { error } = await supabase
               .from('gmail_config')
               .update({ domains: updatedDomains })
               .eq('user_id', user.id);
             
+            if (error) {
+              console.error('[whitelist] RLS error:', error);
+              throw new Error('Droits insuffisants (RLS)');
+            }
             setGmailConfig(prev => prev ? { ...prev, domains: updatedDomains } : null);
           }
           setStats(prev => ({ ...prev, kept: prev.kept + currentGroup.emailCount }));
           toast.success(`${currentGroup.domain} ajouté à la whitelist`);
           break;
+        }
 
-        case 'down': // Delete + Blacklist
-          setDeleting(true);
-          const idsToBlacklist = emails
-            .filter(e => {
-              const domain = extractDomain(e.sender);
-              const senderEmail = extractEmail(e.sender);
-              if (currentGroup.senderEmail) {
-                return senderEmail === currentGroup.senderEmail;
-              }
-              return domain === currentGroup.domain;
-            })
-            .map(e => e.id);
-
-          // Add to blacklist
-          await supabase.from('email_blacklist').insert({
+        case 'down': {
+          // Delete + Blacklist
+          const { error: blacklistError } = await supabase.from('email_blacklist').insert({
             user_id: user.id,
             domain: currentGroup.senderEmail ? null : currentGroup.domain,
             sender_email: currentGroup.senderEmail || null,
             reason: 'Nettoyage manuel - hors périmètre',
           });
 
-          // Delete emails
-          if (idsToBlacklist.length > 0) {
-            await supabase
-              .from('emails')
-              .delete()
-              .in('id', idsToBlacklist);
-
-            setEmails(prev => prev.filter(e => !idsToBlacklist.includes(e.id)));
+          if (blacklistError) {
+            console.error('[blacklist] RLS error:', blacklistError);
+            throw new Error('Droits insuffisants (RLS)');
           }
 
-          setStats(prev => ({ ...prev, blacklisted: prev.blacklisted + idsToBlacklist.length }));
-          toast.success(`${idsToBlacklist.length} emails supprimés et source blacklistée`);
-          setDeleting(false);
-          break;
+          if (emailIds.length > 0) {
+            const result = await batchDelete(emailIds);
+            if (!result.success) {
+              throw new Error(result.error || 'Erreur de suppression');
+            }
+            setEmails(prev => prev.filter(e => !emailIds.includes(e.id)));
+          }
 
-        case 'up': // Skip / View details
+          setStats(prev => ({ ...prev, blacklisted: prev.blacklisted + emailIds.length }));
+          toast.success(`${emailIds.length} emails supprimés et source blacklistée`);
+          break;
+        }
+
+        case 'up': {
+          // Skip / View details
           setStats(prev => ({ ...prev, skipped: prev.skipped + currentGroup.emailCount }));
           break;
+        }
       }
 
       // Move to next group
@@ -307,8 +330,10 @@ export default function EmailCleanup() {
         toast.info('Nettoyage terminé !');
       }
     } catch (error) {
-      console.error('Error handling swipe:', error);
-      toast.error('Erreur lors de l\'action');
+      const msg = error instanceof Error ? error.message : 'Erreur lors de l\'action';
+      console.error('[handleSwipe] Error:', { direction, groupId, error });
+      toast.error(msg);
+    } finally {
       setDeleting(false);
     }
   };

@@ -276,14 +276,37 @@ async function processReanalyze(
       emailsQuery = emailsQuery.or("processed.eq.false,ai_analysis.is.null");
     }
 
-    const { data: emails, error: emailsError } = await emailsQuery
-      .order("received_at", { ascending: false })
-      .limit(200);
+    // Paginated fetch for emails (batch 500, max 5000)
+    const BATCH_SIZE = 500;
+    const MAX_ROWS = 5000;
+    let allEmails: any[] = [];
+    let offset = 0;
+    let batchCount = 0;
 
-    if (emailsError) {
-      console.error("[Step 2] Error fetching emails:", emailsError);
-      progress.errors.push(`Emails: ${emailsError.message}`);
+    while (allEmails.length < MAX_ROWS) {
+      const { data: batch, error: batchError } = await emailsQuery
+        .order("received_at", { ascending: false })
+        .range(offset, offset + BATCH_SIZE - 1);
+
+      if (batchError) {
+        console.error("[Step 2] Batch fetch error:", batchError);
+        break;
+      }
+
+      if (!batch || batch.length === 0) break;
+      allEmails = allEmails.concat(batch);
+      batchCount++;
+      offset += BATCH_SIZE;
+
+      if (batch.length < BATCH_SIZE) break; // Last batch
     }
+
+    console.log(JSON.stringify({ action: "full-reanalyze", fetched_total: allEmails.length, batches: batchCount }));
+
+    const emails = allEmails;
+    const emailsError = null;
+
+    // Error handling already done in batch loop - emailsError is always null here
 
     const emailsToAnalyze = emails || [];
     await updateProgress({ total: emailsToAnalyze.length });

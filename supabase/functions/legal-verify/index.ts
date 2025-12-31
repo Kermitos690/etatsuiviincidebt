@@ -290,22 +290,53 @@ async function saveToCache(
 // LOCAL DB
 // ============================================================
 
+// Paginated fetch utility for Supabase (batch 500, max 2000)
+async function paginatedFetch(
+  supabase: any,
+  table: string,
+  selectCols: string,
+  filters?: { column: string; value: any }[],
+  batchSize = 500,
+  maxRows = 2000
+): Promise<any[]> {
+  const allRows: any[] = [];
+  let offset = 0;
+
+  while (allRows.length < maxRows) {
+    let query = supabase.from(table).select(selectCols).range(offset, offset + batchSize - 1);
+    if (filters) {
+      for (const f of filters) {
+        query = query.eq(f.column, f.value);
+      }
+    }
+    const { data, error } = await query;
+    if (error || !Array.isArray(data) || data.length === 0) break;
+    allRows.push(...data);
+    offset += batchSize;
+    if (data.length < batchSize) break;
+  }
+
+  return allRows;
+}
+
 async function queryLocalLegalArticles(
   supabase: any,
   query: string,
   _topics?: string[]
 ): Promise<LocalLegalMatch[]> {
   try {
-    const { data, error } = await supabase
-      .from("legal_articles")
-      .select("code_name, article_number, article_title, article_text, domain, keywords")
-      .eq("is_current", true)
-      .limit(200);
-
-    if (error || !Array.isArray(data)) return [];
+    // Paginated fetch
+    const data = await paginatedFetch(
+      supabase,
+      "legal_articles",
+      "code_name, article_number, article_title, article_text, domain, keywords",
+      [{ column: "is_current", value: true }],
+      500,
+      2000
+    );
 
     const matches: LocalLegalMatch[] = [];
-    for (const row of data as any[]) {
+    for (const row of data) {
       const code_name = String(row?.code_name || "");
       const article_number = String(row?.article_number || "");
       const article_title = row?.article_title ? String(row.article_title) : undefined;
@@ -341,15 +372,18 @@ async function queryLocalLegalArticles(
 
 async function queryLocalLegalReferences(supabase: any, query: string): Promise<LocalLegalMatch[]> {
   try {
-    const { data, error } = await supabase
-      .from("legal_references")
-      .select("code_name, article_number, article_text, domain, keywords")
-      .limit(200);
-
-    if (error || !Array.isArray(data)) return [];
+    // Paginated fetch
+    const data = await paginatedFetch(
+      supabase,
+      "legal_references",
+      "code_name, article_number, article_text, domain, keywords",
+      undefined,
+      500,
+      2000
+    );
 
     const matches: LocalLegalMatch[] = [];
-    for (const row of data as any[]) {
+    for (const row of data) {
       const code_name = String(row?.code_name || "");
       const article_number = String(row?.article_number || "");
       const article_text = String(row?.article_text || "");
