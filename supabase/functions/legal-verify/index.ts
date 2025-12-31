@@ -308,6 +308,9 @@ type PaginationDebugInfo = {
   probeSansFiltre?: number | null;
   probeAvecFiltre?: number | null;
   probeError?: string | null;
+  // Relevance debug (only for references)
+  topRelevanceScores?: number[];
+  topKeywordsMatched?: string[];
 };
 
 async function paginatedFetchSupabase(
@@ -506,6 +509,12 @@ async function queryLocalLegalReferences(
     );
 
     const matches: LocalLegalMatch[] = [];
+    const qLower = query.toLowerCase();
+    
+    // Debug tracking arrays (only used if debugInfo exists)
+    const debugScores: number[] = [];
+    const debugKwMatched: string[] = [];
+
     for (const row of data as any[]) {
       const code_name = String(row?.code_name || "");
       const article_number = String(row?.article_number || "");
@@ -519,16 +528,48 @@ async function queryLocalLegalReferences(
         keywords
       );
 
-      if (relevance > 0.08) {
+      // 12.2: Keyword boost - check if any keyword is in query
+      let kwHits = 0;
+      const matchedKws: string[] = [];
+      if (keywords && keywords.length > 0) {
+        for (const kw of keywords) {
+          const kwLower = String(kw).toLowerCase();
+          if (qLower.includes(kwLower)) {
+            kwHits++;
+            matchedKws.push(kwLower);
+          }
+        }
+      }
+      const relevanceBoosted = kwHits > 0 ? Math.min(1, relevance + 0.12) : relevance;
+
+      // Track for debug
+      if (debugInfo) {
+        debugScores.push(relevanceBoosted);
+        for (const mk of matchedKws) {
+          debugKwMatched.push(mk);
+        }
+      }
+
+      // 12.1: Lowered threshold from 0.08 to 0.06 for references
+      if (relevanceBoosted > 0.06) {
         matches.push({
           code_name,
           article_number,
           article_text,
           domain,
           keywords,
-          relevance,
+          relevance: relevanceBoosted,
         });
       }
+    }
+
+    // 12.3: Populate debug info with top scores and keywords
+    if (debugInfo) {
+      debugScores.sort((a, b) => b - a);
+      debugInfo.topRelevanceScores = debugScores.slice(0, 3);
+      // Deduplicate keywords and take top 10
+      const uniqueKws = Array.from(new Set(debugKwMatched));
+      debugInfo.topKeywordsMatched = uniqueKws.slice(0, 10);
     }
 
     matches.sort((a, b) => b.relevance - a.relevance);
