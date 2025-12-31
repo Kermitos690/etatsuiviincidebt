@@ -301,6 +301,8 @@ type PaginationDebugInfo = {
   maxRows: number;
   calls: number;
   ranges: { fromIndex: number; toIndex: number }[];
+  rowsFetched: number;
+  stoppedBecause: "not_stopped" | "error" | "empty_page" | "last_page" | "max_rows";
 };
 
 async function paginatedFetchSupabase(
@@ -312,9 +314,15 @@ async function paginatedFetchSupabase(
   maxRows = 2000,
   debugInfo?: PaginationDebugInfo
 ): Promise<unknown[]> {
+  // Track stop reason in outer scope
+  let lastPageLength = 0;
+  let lastLimit = 0;
+  let hadError = false;
+
   const queryFactory = async (offset: number, limit: number) => {
     const fromIndex = offset;
     const toIndex = offset + limit - 1;
+    lastLimit = limit;
 
     // Track ranges if debug enabled
     if (debugInfo) {
@@ -334,13 +342,42 @@ async function paginatedFetchSupabase(
     }
 
     const res = await q;
+    const dataArr = Array.isArray(res.data) ? res.data : [];
+    lastPageLength = dataArr.length;
+
+    // Track rows fetched if debug enabled
+    if (debugInfo) {
+      debugInfo.rowsFetched = debugInfo.rowsFetched + dataArr.length;
+    }
+
+    if (res.error) {
+      hadError = true;
+    }
+
     return {
-      data: Array.isArray(res.data) ? res.data : [],
+      data: dataArr,
       error: res.error ? res.error : null,
     };
   };
 
-  return await paginatedFetchPure(queryFactory, batchSize, maxRows);
+  const result = await paginatedFetchPure(queryFactory, batchSize, maxRows);
+
+  // Determine stop reason after pagination completes
+  if (debugInfo) {
+    if (hadError) {
+      debugInfo.stoppedBecause = "error";
+    } else if (lastPageLength === 0) {
+      debugInfo.stoppedBecause = "empty_page";
+    } else if (lastPageLength < lastLimit) {
+      debugInfo.stoppedBecause = "last_page";
+    } else if (debugInfo.rowsFetched >= maxRows) {
+      debugInfo.stoppedBecause = "max_rows";
+    } else {
+      debugInfo.stoppedBecause = "empty_page"; // Pagination stopped naturally
+    }
+  }
+
+  return result;
 }
 
 async function queryLocalLegalArticles(
@@ -795,10 +832,10 @@ serve(async (req) => {
     // Debug pagination mode - separate tracking for each table
     const debugPagination = Boolean((body as any).debug_pagination);
     const debugInfoArticles: PaginationDebugInfo | undefined = debugPagination
-      ? { enabled: true, batchSize: 1, maxRows: 2000, calls: 0, ranges: [] }
+      ? { enabled: true, batchSize: 1, maxRows: 2000, calls: 0, ranges: [], rowsFetched: 0, stoppedBecause: "not_stopped" }
       : undefined;
     const debugInfoReferences: PaginationDebugInfo | undefined = debugPagination
-      ? { enabled: true, batchSize: 1, maxRows: 2000, calls: 0, ranges: [] }
+      ? { enabled: true, batchSize: 1, maxRows: 2000, calls: 0, ranges: [], rowsFetched: 0, stoppedBecause: "not_stopped" }
       : undefined;
 
     const request: LegalVerifyRequest = {
