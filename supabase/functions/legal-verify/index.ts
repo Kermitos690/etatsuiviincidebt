@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { seedLegalReferencesIfEmpty, type SeedResult } from "./seedLegalReferences.ts";
 
 // ============================================================
 // CORS
@@ -919,6 +920,9 @@ serve(async (req) => {
 
     const supabase: any = createClient(supabaseUrl, serviceKey);
 
+    // Seed legal_references if empty (idempotent)
+    const seedRefs: SeedResult = await seedLegalReferencesIfEmpty(supabase);
+
     const queryHash = await hashQuery(query);
 
     // Cache hit (only if not forcing external and not debugging)
@@ -970,7 +974,7 @@ serve(async (req) => {
       );
 
       const responseBody = debugPagination
-        ? { ...localResponse, debug: { pagination: { articles: debugInfoArticles, references: debugInfoReferences } } }
+        ? { ...localResponse, debug: { pagination: { articles: debugInfoArticles, references: debugInfoReferences }, seed: { references: seedRefs } } }
         : localResponse;
 
       return new Response(JSON.stringify(responseBody), {
@@ -1009,7 +1013,7 @@ serve(async (req) => {
         );
 
         const responseBody = debugPagination
-          ? { ...response, debug: { pagination: { articles: debugInfoArticles, references: debugInfoReferences } } }
+          ? { ...response, debug: { pagination: { articles: debugInfoArticles, references: debugInfoReferences }, seed: { references: seedRefs } } }
           : response;
 
         return new Response(JSON.stringify(responseBody), {
@@ -1057,7 +1061,7 @@ serve(async (req) => {
     );
 
     const responseBody = debugPagination
-      ? { ...merged, debug: { pagination: { articles: debugInfoArticles, references: debugInfoReferences } } }
+      ? { ...merged, debug: { pagination: { articles: debugInfoArticles, references: debugInfoReferences }, seed: { references: seedRefs } } }
       : merged;
 
     return new Response(JSON.stringify(responseBody), {
