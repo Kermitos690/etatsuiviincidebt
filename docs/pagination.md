@@ -82,6 +82,17 @@ L'Edge Function `legal-verify` dispose de flags de contrôle pour activer des fo
 4. Les probes sont **read-only** (count exact head:true)
 5. Aucune donnée PII n'est loggée (pas de query complète, pas de contenu row)
 
+### Anti-abus (best-effort, serverless)
+
+Les protections anti-abus sont implémentées en mémoire et fournissent une protection de base :
+
+| Protection | Limite | Comportement si dépassé |
+|------------|--------|-------------------------|
+| **Debug rate limit** | 5 requêtes/minute par IP | Réponse `source="degraded"` avec `debug.rate_limited=true` |
+| **Seed cooldown** | 1 exécution/10 minutes (global) | `debug.seed.references.reason="cooldown_active"` sans exécution |
+
+**Limitations serverless** : Ces protections sont best-effort. En environnement serverless (cold starts fréquents), les compteurs peuvent être réinitialisés. Cela offre une protection suffisante contre les abus accidentels mais ne constitue pas une sécurité absolue.
+
 ### Structure de la réponse debug
 
 Quand `debug_pagination=true`, la réponse inclut :
