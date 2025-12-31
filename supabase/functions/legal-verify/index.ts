@@ -382,6 +382,126 @@ async function markSeedExecutedPersist(
 }
 
 // ============================================================
+// SELF-TEST DEBUG: Internal validation of rate-limit & seed cooldown
+// Runs 6 rate-limit checks + 2 seed cooldown checks in a single request
+// Returns structured report without touching cache/probes/local queries
+// ============================================================
+
+type SelfTestRateLimitRun = {
+  i: number;
+  allowed: boolean;
+  remaining: number;
+  window_start: string;
+  reset_at: number;
+};
+
+type SelfTestRateLimitReport = {
+  mode: "persist";
+  window_ms: number;
+  max: number;
+  runs: SelfTestRateLimitRun[];
+  pass: boolean;
+};
+
+type SelfTestSeedCooldownReport = {
+  mode: "persist";
+  cooldown_ms: number;
+  first_check_allowed: boolean;
+  after_mark_allowed: boolean;
+  pass: boolean;
+};
+
+type SelfTestDebugReport = {
+  ok: boolean;
+  debug: {
+    debug_version: number;
+    instance_id: string;
+    self_test: {
+      rate_limit: SelfTestRateLimitReport;
+      seed_cooldown: SelfTestSeedCooldownReport;
+    };
+  };
+};
+
+async function runSelfTestDebug(
+  supabase: any,
+  clientIp: string,
+  query: string
+): Promise<SelfTestDebugReport> {
+  // Use unique test keys to avoid interference with normal operations
+  const testSuffix = "_selftest_" + Date.now();
+  
+  // Hash for rate-limit: IP + queryHash + salt + test suffix
+  const queryHashForRL = (typeof query === "string" && query.trim().length > 0)
+    ? await hashQuery(query)
+    : "noq";
+  const keyHashDebug = await hashForPersist(clientIp + ":" + queryHashForRL + testSuffix);
+  
+  // Hash for seed cooldown: IP + salt + test suffix
+  const keyHashSeed = await hashForPersist(clientIp + testSuffix);
+  
+  // ========== RATE-LIMIT TEST: 6 consecutive checks ==========
+  const runs: SelfTestRateLimitRun[] = [];
+  for (let i = 1; i <= 6; i++) {
+    const result = await checkDebugRateLimitPersist(
+      supabase,
+      keyHashDebug,
+      DEBUG_RATE_LIMIT.windowMs,
+      DEBUG_RATE_LIMIT.maxRequests
+    );
+    runs.push({
+      i,
+      allowed: result.allowed,
+      remaining: result.remaining,
+      window_start: result.windowStart,
+      reset_at: result.resetAt,
+    });
+  }
+  
+  // Rate-limit pass: runs 1-5 should be allowed, run 6 should be blocked
+  const rateLimitPass = 
+    runs.slice(0, 5).every(r => r.allowed === true) &&
+    runs[5].allowed === false;
+  
+  // ========== SEED COOLDOWN TEST: check -> mark -> check ==========
+  // First check (should be allowed since we use unique test key)
+  const firstCheck = await checkSeedCooldownPersist(supabase, keyHashSeed, SEED_COOLDOWN_MS);
+  
+  // Mark as executed
+  await markSeedExecutedPersist(supabase, keyHashSeed, SEED_COOLDOWN_MS);
+  
+  // Second check (should be blocked)
+  const secondCheck = await checkSeedCooldownPersist(supabase, keyHashSeed, SEED_COOLDOWN_MS);
+  
+  // Seed cooldown pass: first allowed, second blocked
+  const seedCooldownPass = firstCheck.allowed === true && secondCheck.allowed === false;
+  
+  return {
+    ok: rateLimitPass && seedCooldownPass,
+    debug: {
+      debug_version: 1,
+      instance_id: INSTANCE_ID,
+      self_test: {
+        rate_limit: {
+          mode: "persist",
+          window_ms: DEBUG_RATE_LIMIT.windowMs,
+          max: DEBUG_RATE_LIMIT.maxRequests,
+          runs,
+          pass: rateLimitPass,
+        },
+        seed_cooldown: {
+          mode: "persist",
+          cooldown_ms: SEED_COOLDOWN_MS,
+          first_check_allowed: firstCheck.allowed,
+          after_mark_allowed: secondCheck.allowed,
+          pass: seedCooldownPass,
+        },
+      },
+    },
+  };
+}
+
+// ============================================================
 // UTILITIES
 // ============================================================
 
@@ -1247,17 +1367,32 @@ serve(async (req) => {
     const debugProbes = debugPagination && Boolean((body as any).debug_probes);
     let seedReferences = debugPagination && Boolean((body as any).seed_references);
     const seedCooldownProbe = debugPagination && Boolean((body as any).seed_cooldown_probe);
+    // Self-test mode: run internal checks and return report (strictly opt-in)
+    const selfTestDebug = debugPagination && debugPersist && Boolean((body as any).self_test_debug);
 
     // Get client IP early (needed for rate-limit and seed cooldown)
     const clientIp = debugPagination ? getClientIp(req) : "";
 
-    // ========== SUPABASE CLIENT (needed early for persist mode) ==========
+    // ========== SUPABASE CLIENT (needed early for persist mode and self-test) ==========
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     let supabase: any = null;
 
     if (supabaseUrl && serviceKey) {
       supabase = createClient(supabaseUrl, serviceKey);
+    }
+    
+    // ========== SELF-TEST DEBUG MODE (EARLY RETURN) ==========
+    // When self_test_debug=true: run internal rate-limit/cooldown checks and return report
+    // Does NOT touch cache, probes, local queries, or actual seed
+    if (selfTestDebug && supabase) {
+      const selfTestResult = await runSelfTestDebug(supabase, clientIp, query);
+      const latency = Date.now() - start;
+      console.log(JSON.stringify({ latency, source: "self_test", mode }));
+      return new Response(JSON.stringify(selfTestResult), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // ========== ANTI-ABUSE: Rate limit for debug mode (IP + queryHash) ==========
