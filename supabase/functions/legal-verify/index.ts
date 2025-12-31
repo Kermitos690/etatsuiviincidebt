@@ -291,11 +291,13 @@ async function saveToCache(
 // ============================================================
 
 // Paginated fetch utility for Supabase (batch 500, max 2000)
-async function paginatedFetch<T = Record<string, unknown>>(
-  supabase: ReturnType<typeof createClient>,
+type SupabaseClientAny = any;
+
+async function paginatedFetch<T = any>(
+  supabase: SupabaseClientAny,
   table: string,
   selectCols: string,
-  filters?: { column: string; value: string | number | boolean }[],
+  filters?: { column: string; value: any }[],
   batchSize = 500,
   maxRows = 2000
 ): Promise<T[]> {
@@ -303,17 +305,26 @@ async function paginatedFetch<T = Record<string, unknown>>(
   let offset = 0;
 
   while (allRows.length < maxRows) {
-    let query = supabase.from(table).select(selectCols).range(offset, offset + batchSize - 1);
-    if (filters) {
+    let q = supabase
+      .from(table)
+      .select(selectCols)
+      .range(offset, offset + batchSize - 1);
+
+    if (filters?.length) {
       for (const f of filters) {
-        query = query.eq(f.column, f.value);
+        q = q.eq(f.column, f.value);
       }
     }
-    const { data, error } = await query;
-    if (error || !Array.isArray(data) || data.length === 0) break;
-    allRows.push(...(data as T[]));
+
+    const { data, error } = await q;
+    if (error) throw error;
+
+    const rows = (Array.isArray(data) ? data : []) as T[];
+    if (rows.length === 0) break;
+
+    allRows.push(...rows);
     offset += batchSize;
-    if (data.length < batchSize) break;
+    if (rows.length < batchSize) break;
   }
 
   return allRows;
