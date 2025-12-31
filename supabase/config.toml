@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.legal-verify]
 verify_jwt = false
+
+[functions.hard-data-reset]
+verify_jwt = false
