@@ -2,7 +2,7 @@
  * Unit tests for EmailCleanup utility functions
  * Tests the exported functions from src/utils/emailCleanup.utils.ts
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from "vitest";
 import {
   extractDomain,
   extractEmail,
@@ -13,7 +13,7 @@ import {
   GENERIC_DOMAINS,
   type EmailRow,
   type GmailConfig,
-} from '../src/utils/emailCleanup.utils';
+} from "../src/utils/emailCleanup.utils";
 
 // ============================================================
 // CONSTANTS TESTS
@@ -50,11 +50,19 @@ describe("extractDomain", () => {
   });
 
   it("handles complex domain", () => {
-    expect(extractDomain("Admin <admin@sub.domain.example.ch>")).toBe("sub.domain.example.ch");
+    expect(extractDomain("Admin <admin@sub.domain.example.ch>")).toBe(
+      "sub.domain.example.ch"
+    );
   });
 
   it("handles no @ symbol", () => {
     expect(extractDomain("invalid-email")).toBe("invalid-email");
+  });
+
+  it("handles email with display name and special chars", () => {
+    expect(extractDomain("Service Client <support@company-name.ch>")).toBe(
+      "company-name.ch"
+    );
   });
 });
 
@@ -64,7 +72,9 @@ describe("extractDomain", () => {
 
 describe("extractEmail", () => {
   it("extracts email from angle brackets", () => {
-    expect(extractEmail("John Doe <john@example.com>")).toBe("john@example.com");
+    expect(extractEmail("John Doe <john@example.com>")).toBe(
+      "john@example.com"
+    );
   });
 
   it("returns full string when no brackets", () => {
@@ -73,6 +83,12 @@ describe("extractEmail", () => {
 
   it("handles uppercase", () => {
     expect(extractEmail("John <JOHN@EXAMPLE.COM>")).toBe("john@example.com");
+  });
+
+  it("handles complex display name", () => {
+    expect(extractEmail("Service Client (Support) <support@test.ch>")).toBe(
+      "support@test.ch"
+    );
   });
 });
 
@@ -107,7 +123,7 @@ describe("isEmailRelevant", () => {
     id: "1",
     subject: "Important: Protection des données",
     sender: "admin@canton-vd.ch",
-    received_at: "2024-01-01T00:00:00Z"
+    received_at: "2024-01-01T00:00:00Z",
   };
 
   it("returns relevant when no config", () => {
@@ -146,9 +162,12 @@ describe("isEmailRelevant", () => {
       id: "2",
       subject: "Protection des données personnelles urgent",
       sender: "admin@test.ch",
-      received_at: "2024-01-01T00:00:00Z"
+      received_at: "2024-01-01T00:00:00Z",
     };
-    const config: GmailConfig = { domains: [], keywords: ["protection", "données", "urgent"] };
+    const config: GmailConfig = {
+      domains: [],
+      keywords: ["protection", "données", "urgent"],
+    };
     const result = isEmailRelevant(email, config);
     expect(result.relevant).toBe(true);
     expect(result.matchedKeywords.length).toBeGreaterThanOrEqual(1);
@@ -202,7 +221,7 @@ describe("batchDelete", () => {
   it("handles empty array", async () => {
     const mockDelete = vi.fn(async () => ({ error: null }));
     const result = await batchDelete([], mockDelete);
-    
+
     expect(result.success).toBe(true);
     expect(result.deletedCount).toBe(0);
     expect(mockDelete).not.toHaveBeenCalled();
@@ -278,36 +297,41 @@ describe("handleSwipe state management", () => {
 // ============================================================
 
 describe("Swipe directions", () => {
-  type SwipeDirection = 'left' | 'right' | 'up' | 'down' | null;
+  type SwipeDirection = "left" | "right" | "up" | "down" | null;
 
   const getAction = (direction: SwipeDirection): string => {
     switch (direction) {
-      case 'left': return 'delete';
-      case 'right': return 'whitelist';
-      case 'down': return 'blacklist+delete';
-      case 'up': return 'skip';
-      default: return 'none';
+      case "left":
+        return "delete";
+      case "right":
+        return "whitelist";
+      case "down":
+        return "blacklist+delete";
+      case "up":
+        return "skip";
+      default:
+        return "none";
     }
   };
 
   it("left = delete emails", () => {
-    expect(getAction('left')).toBe('delete');
+    expect(getAction("left")).toBe("delete");
   });
 
   it("right = whitelist domain", () => {
-    expect(getAction('right')).toBe('whitelist');
+    expect(getAction("right")).toBe("whitelist");
   });
 
   it("down = delete + blacklist", () => {
-    expect(getAction('down')).toBe('blacklist+delete');
+    expect(getAction("down")).toBe("blacklist+delete");
   });
 
   it("up = skip/ignore", () => {
-    expect(getAction('up')).toBe('skip');
+    expect(getAction("up")).toBe("skip");
   });
 
   it("null = no action", () => {
-    expect(getAction(null)).toBe('none');
+    expect(getAction(null)).toBe("none");
   });
 });
 
@@ -333,7 +357,7 @@ describe("Stats tracking", () => {
 
   it("increments correctly for swipe actions", () => {
     let stats: Stats = { deleted: 0, kept: 0, blacklisted: 0, skipped: 0 };
-    
+
     // Simulate left swipe (delete 5 emails)
     stats = { ...stats, deleted: stats.deleted + 5 };
     expect(stats.deleted).toBe(5);
@@ -343,7 +367,11 @@ describe("Stats tracking", () => {
     expect(stats.kept).toBe(3);
 
     // Simulate down swipe (blacklist 2 emails)
-    stats = { ...stats, blacklisted: stats.blacklisted + 2, deleted: stats.deleted + 2 };
+    stats = {
+      ...stats,
+      blacklisted: stats.blacklisted + 2,
+      deleted: stats.deleted + 2,
+    };
     expect(stats.blacklisted).toBe(2);
     expect(stats.deleted).toBe(7);
 

@@ -1,6 +1,6 @@
 /**
  * Email Cleanup Utility Functions
- * Exported for testing and reuse
+ * Pure functions exported for testing and reuse
  */
 
 // ============================================================
@@ -10,8 +10,16 @@
 export const EMAIL_CLEANUP_BATCH_SIZE = 200;
 
 export const GENERIC_DOMAINS = [
-  'gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'icloud.com',
-  'protonmail.com', 'live.com', 'msn.com', 'aol.com', 'me.com'
+  "gmail.com",
+  "outlook.com",
+  "hotmail.com",
+  "yahoo.com",
+  "icloud.com",
+  "protonmail.com",
+  "live.com",
+  "msn.com",
+  "aol.com",
+  "me.com",
 ];
 
 // ============================================================
@@ -37,8 +45,8 @@ export interface RelevanceResult {
 
 export interface BatchDeleteResult {
   success: boolean;
+  deletedCount: number;
   error?: string;
-  deletedCount?: number;
 }
 
 // ============================================================
@@ -51,16 +59,12 @@ export interface BatchDeleteResult {
 export function extractDomain(email: string): string {
   // Handle "Name <email@domain.com>" format - extract just the domain
   const bracketMatch = email.match(/<[^@]+@([^>]+)>/);
-  if (bracketMatch) {
-    return bracketMatch[1].toLowerCase().trim();
-  }
-  
+  if (bracketMatch) return bracketMatch[1].toLowerCase().trim();
+
   // Handle plain "email@domain.com" format
   const plainMatch = email.match(/@(.+)$/);
-  if (plainMatch) {
-    return plainMatch[1].toLowerCase().trim();
-  }
-  
+  if (plainMatch) return plainMatch[1].toLowerCase().trim();
+
   return email.toLowerCase().trim();
 }
 
@@ -86,21 +90,20 @@ export function isEmailRelevant(
   const matchedKeywords: string[] = [];
 
   const senderDomain = extractDomain(email.sender);
-  const domainMatch = domains.length === 0 || domains.some(d =>
-    senderDomain.includes(d.toLowerCase().trim())
-  );
+  const domainMatch =
+    domains.length === 0 ||
+    domains.some((d) => senderDomain.includes(d.toLowerCase().trim()));
 
-  const subjectLower = (email.subject || '').toLowerCase();
-  const keywordMatch = keywords.length === 0 || keywords.some(k => {
-    const matches = subjectLower.includes(k.toLowerCase().trim());
-    if (matches) matchedKeywords.push(k);
-    return matches;
-  });
+  const subjectLower = (email.subject || "").toLowerCase();
+  const keywordMatch =
+    keywords.length === 0 ||
+    keywords.some((k) => {
+      const matches = subjectLower.includes(k.toLowerCase().trim());
+      if (matches) matchedKeywords.push(k);
+      return matches;
+    });
 
-  return {
-    relevant: domainMatch && keywordMatch,
-    matchedKeywords
-  };
+  return { relevant: domainMatch && keywordMatch, matchedKeywords };
 }
 
 /**
@@ -111,22 +114,18 @@ export async function batchDelete(
   deleteFunc: (batch: string[]) => Promise<{ error: Error | null }>
 ): Promise<BatchDeleteResult> {
   let deletedCount = 0;
-  
+
   for (let i = 0; i < ids.length; i += EMAIL_CLEANUP_BATCH_SIZE) {
     const batch = ids.slice(i, i + EMAIL_CLEANUP_BATCH_SIZE);
     const { error } = await deleteFunc(batch);
-    
+
     if (error) {
-      return { 
-        success: false, 
-        error: error.message,
-        deletedCount 
-      };
+      return { success: false, error: error.message, deletedCount };
     }
-    
+
     deletedCount += batch.length;
   }
-  
+
   return { success: true, deletedCount };
 }
 
