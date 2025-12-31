@@ -820,6 +820,7 @@ serve(async (req) => {
     let requestKeywords: string[] | null = null;
     let forceAll = false; // Explicit flag to override filters
     let countOnly = false; // NEW: Just count emails without downloading
+    let syncLimit: number | null = null; // NEW: Optional limit on emails to fetch (null = unlimited)
 
     try {
       const body = await req.json();
@@ -830,9 +831,14 @@ serve(async (req) => {
       if (body.keywords) requestKeywords = body.keywords;
       if (body.forceAll === true) forceAll = true;
       if (body.countOnly === true) countOnly = true;
+      if (typeof body.syncLimit === 'number' && body.syncLimit > 0) {
+        syncLimit = body.syncLimit;
+      }
     } catch {
       // No body or invalid JSON - use defaults
     }
+    
+    console.log(`📊 Sync config: syncLimit=${syncLimit ?? 'unlimited'}, countOnly=${countOnly}`);
 
     // Get filters from request or config
     const domains = requestDomains || config.domains || [];
@@ -921,15 +927,27 @@ serve(async (req) => {
     let allMessages: any[] = [];
     let pageToken: string | null = null;
     let pageCount = 0;
-    const maxPages = 200; // Increased for full sync
+    const MAX_PAGES_HARD_LIMIT = 500; // Safety limit: 50,000 emails max
+    let stoppedBecause: 'no_more_pages' | 'limit_reached' | 'error' | 'max_pages_reached' = 'no_more_pages';
 
-    while (pageCount < maxPages) {
+    console.log(`📥 Starting Gmail fetch with syncLimit=${syncLimit ?? 'unlimited'}`);
+
+    while (pageCount < MAX_PAGES_HARD_LIMIT) {
+      // Check if we've reached the sync limit
+      if (syncLimit !== null && allMessages.length >= syncLimit) {
+        stoppedBecause = 'limit_reached';
+        console.log(`🛑 Sync limit reached: ${allMessages.length} >= ${syncLimit}`);
+        // Trim to exact limit
+        allMessages = allMessages.slice(0, syncLimit);
+        break;
+      }
+
       const baseUrl = 'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100';
       const apiUrl = query 
         ? `${baseUrl}&q=${encodeURIComponent(query)}${pageToken ? `&pageToken=${pageToken}` : ''}`
         : `${baseUrl}${pageToken ? `&pageToken=${pageToken}` : ''}`;
 
-      console.log(`Fetching page ${pageCount + 1}...`);
+      console.log(`📄 Fetching page ${pageCount + 1}... (current total: ${allMessages.length})`);
       
       const listResponse: Response = await fetch(apiUrl, { 
         headers: { Authorization: `Bearer ${accessToken}` } 
@@ -941,6 +959,7 @@ serve(async (req) => {
         if (listData.error?.code === 401) {
           accessToken = await refreshAccessToken(supabase, config, refreshToken!);
           if (!accessToken) {
+            stoppedBecause = 'error';
             return new Response(JSON.stringify({ 
               error: "Gmail authentication failed. Please reconnect." 
             }), {
@@ -950,20 +969,41 @@ serve(async (req) => {
           }
           continue;
         } else {
+          stoppedBecause = 'error';
           throw new Error(listData.error?.message || "Gmail API error");
         }
       }
 
       if (listData.messages) {
         allMessages = allMessages.concat(listData.messages);
-        console.log(`Page ${pageCount + 1}: ${listData.messages.length} messages (total: ${allMessages.length})`);
+        console.log(`📄 Page ${pageCount + 1}: +${listData.messages.length} messages (total: ${allMessages.length})`);
       }
 
       pageToken = listData.nextPageToken || null;
       pageCount++;
       
-      if (!pageToken) break;
+      if (!pageToken) {
+        stoppedBecause = 'no_more_pages';
+        break;
+      }
+      
+      if (pageCount >= MAX_PAGES_HARD_LIMIT) {
+        stoppedBecause = 'max_pages_reached';
+        console.log(`⚠️ Max pages limit reached (${MAX_PAGES_HARD_LIMIT})`);
+        break;
+      }
     }
+
+    // Final trim if we overshot the limit
+    if (syncLimit !== null && allMessages.length > syncLimit) {
+      allMessages = allMessages.slice(0, syncLimit);
+    }
+
+    console.log(`📊 Gmail fetch complete:`);
+    console.log(`   - totalFetched: ${allMessages.length}`);
+    console.log(`   - pages: ${pageCount}`);
+    console.log(`   - stoppedBecause: ${stoppedBecause}`);
+    console.log(`   - syncLimit: ${syncLimit ?? 'unlimited'}`);
 
     // COUNT ONLY MODE: Return count without downloading
     if (countOnly) {
@@ -972,6 +1012,12 @@ serve(async (req) => {
         status: "count_complete",
         count: allMessages.length,
         query: query || "(all emails)",
+        pagination: {
+          totalFetched: allMessages.length,
+          pages: pageCount,
+          stoppedBecause,
+          syncLimit: syncLimit ?? 'unlimited',
+        },
         filters: {
           domains: domains.length,
           keywords: keywords.length,
@@ -1024,6 +1070,11 @@ serve(async (req) => {
           drafts: 0,
           custom_folders: 0,
           sync_mode: syncMode,
+          // Pagination stats
+          totalFetched: allMessages.length,
+          pages: pageCount,
+          stoppedBecause,
+          syncLimit: syncLimit ?? 'unlimited',
           // API filtering stats
           api_emails_found: allMessages.length,
           domains_count: domains.length,
@@ -1052,6 +1103,12 @@ serve(async (req) => {
       totalEmails: allMessages.length,
       syncMode,
       customLabelsFound: customLabels.length,
+      pagination: {
+        totalFetched: allMessages.length,
+        pages: pageCount,
+        stoppedBecause,
+        syncLimit: syncLimit ?? 'unlimited',
+      },
       message: `Synchronisation exhaustive de ${allMessages.length} emails en arrière-plan (incluant spam, corbeille, dossiers personnalisés)...`
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
