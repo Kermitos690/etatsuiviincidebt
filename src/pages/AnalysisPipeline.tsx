@@ -396,31 +396,67 @@ export default function AnalysisPipeline() {
       // Step 4: Analyze threads (Pass 2) - with filters
       updateStep(4, { status: 'running', progress: 10 });
       toast.info('Étape 5/6: Analyse des threads (Pass 2)...');
-      
-      const threadRes = await supabase.functions.invoke('analyze-thread-complete', {
-        body: { batchSize: 10, ...filterBody }
-      });
-      
-      updateStep(4, { 
-        status: 'completed', 
-        progress: 100, 
-        details: `${threadRes.data?.results?.analyzed || 0} threads analysés`,
-        count: threadRes.data?.results?.analyzed || 0
+
+      const THREAD_BATCH = 3; // small batches to avoid request cancellation
+      let totalThreadsAnalyzed = 0;
+
+      for (let round = 0; round < 20; round++) {
+        try {
+          updateStep(4, {
+            progress: Math.min(10 + round * 4, 90),
+            details: `${totalThreadsAnalyzed} threads analysés...`,
+          });
+
+          const threadRes = await supabase.functions.invoke('analyze-thread-complete', {
+            body: { batchSize: THREAD_BATCH, ...filterBody },
+          });
+
+          if (threadRes.error) throw new Error(threadRes.error.message);
+
+          const analyzedNow = threadRes.data?.results?.analyzed || 0;
+          totalThreadsAnalyzed += analyzedNow;
+
+          if (analyzedNow === 0) break;
+        } catch (e) {
+          // Typical mobile/network symptom: "Load failed" (request canceled). Retry with an even smaller batch.
+          console.error('analyze-thread-complete failed:', e);
+
+          await new Promise(r => setTimeout(r, 1200));
+          const retryRes = await supabase.functions.invoke('analyze-thread-complete', {
+            body: { batchSize: 1, ...filterBody },
+          });
+
+          if (retryRes.error) throw new Error(retryRes.error.message);
+
+          const analyzedNow = retryRes.data?.results?.analyzed || 0;
+          totalThreadsAnalyzed += analyzedNow;
+
+          if (analyzedNow === 0) break;
+        }
+      }
+
+      updateStep(4, {
+        status: 'completed',
+        progress: 100,
+        details: `${totalThreadsAnalyzed} threads analysés`,
+        count: totalThreadsAnalyzed,
       });
 
       // Step 5: Cross-reference (Pass 3) - with filters
       updateStep(5, { status: 'running', progress: 10 });
       toast.info('Étape 6/6: Corroboration croisée (Pass 3)...');
-      
+
       const corrobRes = await supabase.functions.invoke('cross-reference-analysis', {
-        body: { ...filterBody }
+        body: { ...filterBody },
       });
-      
-      updateStep(5, { 
-        status: 'completed', 
-        progress: 100, 
+
+      if (corrobRes.error) throw new Error(corrobRes.error.message);
+
+      updateStep(5, {
+        status: 'completed',
+        progress: 100,
         details: `${corrobRes.data?.results?.corroborations || 0} corroborations créées`,
-        count: corrobRes.data?.results?.corroborations || 0
+        count: corrobRes.data?.results?.corroborations || 0,
       });
 
       toast.success('Analyse complète terminée !');
