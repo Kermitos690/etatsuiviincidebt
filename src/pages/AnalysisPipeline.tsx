@@ -162,7 +162,7 @@ export default function AnalysisPipeline() {
     }
   });
 
-  // Fetch thread analyses
+  // Fetch thread analyses (paginated up to 500)
   const { data: threadAnalyses, isLoading: loadingThreads } = useQuery({
     queryKey: ['thread-analyses'],
     queryFn: async () => {
@@ -170,14 +170,14 @@ export default function AnalysisPipeline() {
         .from('thread_analyses')
         .select('*')
         .order('analyzed_at', { ascending: false })
-        .limit(50);
+        .range(0, 499);
       
       if (error) throw error;
       return data as ThreadAnalysis[];
     }
   });
 
-  // Fetch corroborations
+  // Fetch corroborations (paginated up to 500)
   const { data: corroborations, isLoading: loadingCorroborations } = useQuery({
     queryKey: ['corroborations'],
     queryFn: async () => {
@@ -185,14 +185,14 @@ export default function AnalysisPipeline() {
         .from('corroborations')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(50);
+        .range(0, 499);
       
       if (error) throw error;
       return data as Corroboration[];
     }
   });
 
-  // Fetch email facts
+  // Fetch email facts (paginated up to 1000)
   const { data: emailFacts, isLoading: loadingFacts } = useQuery({
     queryKey: ['email-facts'],
     queryFn: async () => {
@@ -200,7 +200,7 @@ export default function AnalysisPipeline() {
         .from('email_facts')
         .select('*')
         .order('extracted_at', { ascending: false })
-        .limit(100);
+        .range(0, 999);
       
       if (error) throw error;
       return data as EmailFact[];

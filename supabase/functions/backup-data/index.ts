@@ -116,12 +116,27 @@ serve(async (req) => {
       console.log(`Backed up ${stats.alerts} audit alerts`);
     }
 
-    // Backup Thread Analyses
-    const { data: threadAnalyses, error: threadError } = await supabase
-      .from('thread_analyses')
-      .select('*')
-      .order('analyzed_at', { ascending: false })
-      .limit(200);
+    // Backup Thread Analyses (paginated, max 2000)
+    const BACKUP_BATCH = 1000;
+    const BACKUP_MAX = 2000;
+    let allThreadAnalyses: any[] = [];
+    let taOffset = 0;
+    while (allThreadAnalyses.length < BACKUP_MAX) {
+      const { data: taBatch, error: taError } = await supabase
+        .from('thread_analyses')
+        .select('*')
+        .order('analyzed_at', { ascending: false })
+        .range(taOffset, taOffset + BACKUP_BATCH - 1);
+      
+      if (taError || !taBatch || taBatch.length === 0) break;
+      allThreadAnalyses = allThreadAnalyses.concat(taBatch);
+      taOffset += BACKUP_BATCH;
+      if (taBatch.length < BACKUP_BATCH) break;
+    }
+    console.log(JSON.stringify({ action: 'backup-thread-analyses', fetched_total: allThreadAnalyses.length }));
+
+    const threadAnalyses = allThreadAnalyses;
+    const threadError = null;
     
     if (!threadError) {
       backupData.thread_analyses = threadAnalyses || [];
