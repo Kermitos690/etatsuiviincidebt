@@ -47,17 +47,17 @@ export interface LegalVerifyResponse {
 // CONSTANTS
 // ============================================================
 
-const DEGRADED_RESPONSE: LegalVerifyResponse = {
+export const DEGRADED_RESPONSE: LegalVerifyResponse = {
   summary: "Cadre légal non vérifié – service indisponible",
   key_points: [],
   citations: [],
-  confidence: 0.0,
+  confidence: 0,
   warnings: ["perplexity_unavailable"],
   source: "degraded",
   cost_saved: false,
 };
 
-const LEGAL_KEYWORDS = [
+export const LEGAL_KEYWORDS = [
   "lpd",
   "loi protection données",
   "données personnelles",
@@ -67,21 +67,20 @@ const LEGAL_KEYWORDS = [
   "curateur",
   "curatelle",
   "protection adulte",
-  "cc",
   "code civil",
-  "art. 388",
-  "art. 389",
-  "art. 390",
+  "cc",
   "délai",
   "recours",
   "opposition",
   "contestation",
-  "jpd",
   "juge de paix",
-  "autorité protection",
+  "jdp",
+  "apea",
+  "autorité de protection",
+  "sctp",
 ];
 
-const EXTERNAL_REQUIRED_KEYWORDS = [
+export const EXTERNAL_REQUIRED_KEYWORDS = [
   "jurisprudence",
   "atf",
   "arrêt",
@@ -92,35 +91,35 @@ const EXTERNAL_REQUIRED_KEYWORDS = [
   "recours rejeté",
   "délai exact",
   "combien de jours",
-  "quel délai précis",
+  "quel délai",
 ];
 
-const INSTITUTION_PATTERNS: Record<string, string[]> = {
-  JDP: ["juge de paix", "jdp", "justice de paix"],
-  SCTP: ["sctp", "service des curatelles", "tutelles"],
-  CSR: ["csr", "centre social régional"],
-  AI: ["ai", "assurance invalidité", "office ai"],
-  APEA: ["apea", "autorité protection enfant adulte"],
+export const INSTITUTION_PATTERNS: Record<string, RegExp> = {
+  JDP: /\b(juge de paix|jdp|justice de paix)\b/i,
+  SCTP: /\b(sctp|service des curatelles|tutelles)\b/i,
+  CSR: /\b(csr|centre social régional)\b/i,
+  AI: /\b(assurance invalidité|office ai|\bai\b)\b/i,
+  APEA: /\b(apea|autorité.*protection.*(enfant|adulte))\b/i,
 };
 
-const TOPIC_PATTERNS: Record<string, string[]> = {
-  LPD: ["lpd", "données personnelles", "protection données", "droit d'accès", "traçabilité"],
-  CC: ["code civil", "protection adulte", "curateur", "curatelle", "art. 388", "art. 389"],
-  LPGA: ["lpga", "assurances sociales", "partie générale"],
-  LAI: ["lai", "assurance invalidité", "invalidité"],
+export const TOPIC_PATTERNS: Record<string, RegExp> = {
+  LPD: /\b(lpd|données personnelles|protection des données|droit d'accès)\b/i,
+  CC: /\b(code civil|cc|curateur|curatelle|protection de l'adulte|art\.?\s*388|art\.?\s*389|art\.?\s*390)\b/i,
+  LPGA: /\b(lpga|assurances sociales|partie générale)\b/i,
+  LAI: /\b(lai|assurance invalidité|invalidité)\b/i,
 };
 
 // ============================================================
-// HTML ESCAPE (HARD REQUIREMENT)
+// SECURITY / XSS (HARD)
 // ============================================================
 
 function escapeHtml(text: string): string {
   return String(text)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#39;");
 }
 
 function safeHref(url: string): string {
@@ -133,10 +132,10 @@ function safeHref(url: string): string {
   }
 }
 
-function clamp01(value: unknown): number {
-  const n = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.min(1, n));
+function clamp01(n: unknown): number {
+  const v = typeof n === "number" ? n : Number(n);
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(0, Math.min(1, v));
 }
 
 function isLegalVerifyResponse(data: any): data is LegalVerifyResponse {
@@ -146,10 +145,41 @@ function isLegalVerifyResponse(data: any): data is LegalVerifyResponse {
     typeof data.summary === "string" &&
     Array.isArray(data.key_points) &&
     Array.isArray(data.citations) &&
-    typeof data.confidence !== "undefined" &&
+    typeof data.confidence === "number" &&
     typeof data.source === "string" &&
-    typeof data.cost_saved !== "undefined"
+    typeof data.cost_saved === "boolean"
   );
+}
+
+function normalizeResponse(data: any): LegalVerifyResponse {
+  if (!isLegalVerifyResponse(data)) return { ...DEGRADED_RESPONSE };
+
+  const citations: LegalCitation[] = Array.isArray(data.citations)
+    ? data.citations
+        .map((c: any) => ({ title: String(c?.title || ""), url: String(c?.url || "") }))
+        .filter((c: any) => c.url)
+    : [];
+
+  const keyPoints = Array.isArray(data.key_points)
+    ? data.key_points.map((p: any) => String(p)).filter(Boolean)
+    : [];
+
+  const warnings = Array.isArray(data.warnings) ? data.warnings.map((w: any) => String(w)) : undefined;
+
+  const source =
+    data.source === "local" || data.source === "external" || data.source === "hybrid" || data.source === "degraded"
+      ? (data.source as LegalVerifyResponse["source"])
+      : "degraded";
+
+  return {
+    summary: String(data.summary || DEGRADED_RESPONSE.summary),
+    key_points: keyPoints,
+    citations,
+    confidence: clamp01(data.confidence),
+    warnings,
+    source,
+    cost_saved: Boolean(data.cost_saved),
+  };
 }
 
 // ============================================================
@@ -158,32 +188,11 @@ function isLegalVerifyResponse(data: any): data is LegalVerifyResponse {
 
 export async function verifyLegalContext(request: LegalVerifyRequest): Promise<LegalVerifyResponse> {
   try {
-    const { data, error } = await supabase.functions.invoke("legal-verify", {
-      body: request,
-    });
-
-    if (error) {
-      console.error("[legalVerify] Edge function error:", error);
-      return DEGRADED_RESPONSE;
-    }
-
-    if (!isLegalVerifyResponse(data)) {
-      console.error("[legalVerify] Invalid response structure");
-      return DEGRADED_RESPONSE;
-    }
-
-    return {
-      summary: data.summary,
-      key_points: data.key_points,
-      citations: data.citations,
-      confidence: clamp01(data.confidence),
-      warnings: Array.isArray(data.warnings) ? data.warnings : undefined,
-      source: (data.source as LegalVerifyResponse["source"]) || "degraded",
-      cost_saved: Boolean(data.cost_saved),
-    };
-  } catch (e) {
-    console.error("[legalVerify] Exception:", e);
-    return DEGRADED_RESPONSE;
+    const { data, error } = await supabase.functions.invoke("legal-verify", { body: request });
+    if (error) return { ...DEGRADED_RESPONSE };
+    return normalizeResponse(data);
+  } catch {
+    return { ...DEGRADED_RESPONSE };
   }
 }
 
@@ -191,20 +200,8 @@ export async function verifyLegalContext(request: LegalVerifyRequest): Promise<L
 // HELPERS
 // ============================================================
 
-export function shouldAutoVerifyLegal(incident: {
-  titre?: string;
-  faits?: string;
-  dysfonctionnement?: string;
-  type?: string;
-}): boolean {
-  const text =
-    ((incident.titre || "") +
-      " " +
-      (incident.faits || "") +
-      " " +
-      (incident.dysfonctionnement || ""))
-      .toLowerCase();
-
+export function shouldAutoVerifyLegal(incident: any): boolean {
+  const text = `${incident?.titre || ""} ${incident?.faits || ""} ${incident?.dysfonctionnement || ""}`.toLowerCase();
   return LEGAL_KEYWORDS.some((k) => text.includes(k));
 }
 
@@ -221,58 +218,42 @@ export function estimateCost(request: LegalVerifyRequest): "free" | "paid" | "ma
   return "maybe_paid";
 }
 
-export function buildLegalQueryFromIncident(incident: {
-  titre?: string;
-  faits?: string;
-  dysfonctionnement?: string;
-  type?: string;
-  institution?: string;
-  date_incident?: string;
-}): LegalVerifyRequest {
-  const text =
-    ((incident.titre || "") +
-      " " +
-      (incident.faits || "") +
-      " " +
-      (incident.dysfonctionnement || ""))
-      .toLowerCase();
+export function buildLegalQueryFromIncident(incident: any): LegalVerifyRequest {
+  const rawText = `${incident?.titre || ""} ${incident?.faits || ""} ${incident?.dysfonctionnement || ""} ${incident?.institution || ""}`;
 
-  const institutions: string[] = [];
-  for (const [code, patterns] of Object.entries(INSTITUTION_PATTERNS)) {
-    if (patterns.some((p) => text.includes(p))) institutions.push(code);
-  }
+  const institutions = Object.entries(INSTITUTION_PATTERNS)
+    .filter(([, re]) => re.test(rawText))
+    .map(([k]) => k);
 
-  const topics: string[] = [];
-  for (const [topic, patterns] of Object.entries(TOPIC_PATTERNS)) {
-    if (patterns.some((p) => text.includes(p))) topics.push(topic);
-  }
+  const topics = Object.entries(TOPIC_PATTERNS)
+    .filter(([, re]) => re.test(rawText))
+    .map(([k]) => k);
+
+  const text = rawText.toLowerCase();
 
   let mode: LegalVerifyMode = "legal";
-  if (text.includes("délai") || text.includes("recours") || text.includes("opposition")) {
-    mode = "deadlines";
-  } else if (text.includes("rôle") || text.includes("compétence") || text.includes("responsabilité")) {
-    mode = "roles";
-  } else if (text.includes("procédure") || text.includes("étapes") || text.includes("démarche")) {
-    mode = "procedure";
-  } else if (text.includes("définition") || text.includes("signifie") || text.includes("qu'est-ce")) {
-    mode = "definitions";
-  }
+  if (/(délai|recours|opposition|combien|jours|quel délai)/i.test(text)) mode = "deadlines";
+  else if (/(rôle|compétence|responsabilité)/i.test(text)) mode = "roles";
+  else if (/(procédure|étapes|démarche|comment faire)/i.test(text)) mode = "procedure";
+  else if (/(définition|signifie|qu'est-ce que)/i.test(text)) mode = "definitions";
+
+  const factsSummary = String(incident?.faits || "").slice(0, 500);
 
   const queryParts: string[] = [];
-  if (incident.dysfonctionnement) queryParts.push("Dysfonctionnement: " + incident.dysfonctionnement);
-  if (topics.length > 0) queryParts.push("Domaines: " + topics.join(", "));
-  queryParts.push("Quelles sont les bases légales applicables?");
+  if (incident?.dysfonctionnement) queryParts.push(`Dysfonctionnement: ${incident.dysfonctionnement}`);
+  if (topics.length) queryParts.push(`Thèmes: ${topics.join(", ")}`);
+  queryParts.push("Quelles sont les bases légales applicables et les références officielles?");
 
   return {
     query: queryParts.join(" "),
     context: {
-      incident_title: incident.titre,
-      category: incident.type,
-      event_date: incident.date_incident,
-      facts_summary: incident.faits?.slice(0, 500),
+      incident_title: incident?.titre || undefined,
+      category: incident?.type || undefined,
+      event_date: incident?.date_incident || undefined,
+      facts_summary: factsSummary || undefined,
       jurisdiction: "CH-VD",
-      institutions: institutions.length > 0 ? institutions : undefined,
-      topics: topics.length > 0 ? topics : undefined,
+      institutions: institutions.length ? institutions : undefined,
+      topics: topics.length ? topics : undefined,
     },
     mode,
     max_citations: 5,
@@ -281,146 +262,84 @@ export function buildLegalQueryFromIncident(incident: {
 }
 
 // ============================================================
-// FORMATTING
+// FORMATTERS
 // ============================================================
 
 export function formatLegalResult(result: LegalVerifyResponse): string {
+  const sourceLabel =
+    result.source === "local" ? "Local" : result.source === "external" ? "Externe" : result.source === "hybrid" ? "Hybride" : "Dégradé";
+
   const lines: string[] = [];
-
-  let sourceBadge = "⚠️ Dégradé";
-  if (result.source === "local") sourceBadge = "📚 Local";
-  else if (result.source === "external") sourceBadge = "🌐 Externe";
-  else if (result.source === "hybrid") sourceBadge = "🔗 Hybride";
-
-  let confidenceBadge = "🔴";
-  if (result.confidence >= 0.8) confidenceBadge = "🟢";
-  else if (result.confidence >= 0.5) confidenceBadge = "🟡";
-
-  lines.push("## Cadre juridique " + sourceBadge);
+  lines.push(`## Cadre juridique (${sourceLabel})`);
   lines.push("");
-  lines.push("**Confiance:** " + confidenceBadge + " " + Math.round(result.confidence * 100) + "%");
-
-  if (result.cost_saved) lines.push("💰 *Coût économisé (sources locales)*");
-
+  lines.push(`**Confiance:** ${Math.round(clamp01(result.confidence) * 100)}%`);
+  if (result.cost_saved) lines.push("**Coût:** économisé (local)");
   lines.push("");
   lines.push("### Résumé");
   lines.push(result.summary);
-  lines.push("");
 
-  if (result.key_points.length > 0) {
+  if (result.key_points.length) {
+    lines.push("");
     lines.push("### Points clés");
-    for (const point of result.key_points) lines.push("- " + point);
-    lines.push("");
+    for (const p of result.key_points) lines.push(`- ${p}`);
   }
 
-  if (result.citations.length > 0) {
+  if (result.citations.length) {
+    lines.push("");
     lines.push("### Sources");
-    for (const c of result.citations) lines.push("- [" + c.title + "](" + c.url + ")");
-    lines.push("");
+    for (const c of result.citations) lines.push(`- [${c.title}](${c.url})`);
   }
 
-  if (result.warnings && result.warnings.length > 0) {
-    lines.push("> ⚠️ " + result.warnings.join(" • "));
+  if (result.warnings?.length) {
+    lines.push("");
+    lines.push(`> ⚠️ ${result.warnings.join(" • ")}`);
   }
 
   return lines.join("\n");
 }
 
 export function formatLegalResultHTML(result: LegalVerifyResponse): string {
-  // HARD REQUIREMENT: real HTML markup, escape all user text
-  const parts: string[] = [];
-
   const sourceLabel =
-    result.source === "local"
-      ? "Local"
-      : result.source === "external"
-        ? "Externe"
-        : result.source === "hybrid"
-          ? "Hybride"
-          : "Dégradé";
-
+    result.source === "local" ? "Local" : result.source === "external" ? "Externe" : result.source === "hybrid" ? "Hybride" : "Dégradé";
   const confidencePct = Math.round(clamp01(result.confidence) * 100);
 
-  parts.push('<div class="space-y-4">');
+  const warnings = Array.isArray(result.warnings) ? result.warnings : [];
 
-  // Badges
-  parts.push('<div class="flex flex-wrap items-center gap-2">');
-  parts.push('<span class="inline-flex items-center rounded-md border border-border bg-muted px-2 py-1 text-xs text-muted-foreground">');
-  parts.push("Source: " + escapeHtml(sourceLabel));
-  parts.push("</span>");
+  const keyPointsHtml = result.key_points.length
+    ? `<ul>${result.key_points.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>`
+    : "";
 
-  parts.push('<span class="inline-flex items-center rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground">');
-  parts.push("Confiance: " + escapeHtml(String(confidencePct)) + "%");
-  parts.push("</span>");
+  const citationsHtml = result.citations.length
+    ? `<ul>${result.citations
+        .map((c) => {
+          const href = safeHref(c.url);
+          return `<li><a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(c.title)}</a></li>`;
+        })
+        .join("")}</ul>`
+    : "";
 
-  if (result.cost_saved) {
-    parts.push('<span class="inline-flex items-center rounded-md border border-border bg-muted px-2 py-1 text-xs text-muted-foreground">');
-    parts.push(escapeHtml("Coût économisé"));
-    parts.push("</span>");
-  }
+  const warningsHtml = warnings.length
+    ? `<p><span>${escapeHtml("⚠️ " + warnings.join(" • "))}</span></p>`
+    : "";
 
-  parts.push("</div>");
-
-  // Summary
-  parts.push('<div class="space-y-1">');
-  parts.push('<div class="text-sm font-medium">Résumé</div>');
-  parts.push('<div class="text-sm">' + escapeHtml(result.summary) + "</div>");
-  parts.push("</div>");
-
-  // Key points
-  if (result.key_points.length > 0) {
-    parts.push('<div class="space-y-1">');
-    parts.push('<div class="text-sm font-medium">Points clés</div>');
-    parts.push('<ul class="list-disc list-inside text-sm space-y-1">');
-    for (const point of result.key_points) {
-      parts.push("<li>" + escapeHtml(point) + "</li>");
-    }
-    parts.push("</ul>");
-    parts.push("</div>");
-  }
-
-  // Citations
-  if (result.citations.length > 0) {
-    parts.push('<div class="space-y-1">');
-    parts.push('<div class="text-sm font-medium">Sources</div>');
-    parts.push('<ul class="text-sm space-y-1">');
-    for (const c of result.citations) {
-      const href = safeHref(c.url);
-      parts.push("<li>");
-      parts.push(
-        '<a href="' +
-          escapeHtml(href) +
-          '" target="_blank" rel="noopener noreferrer" class="underline underline-offset-4 text-primary">' +
-          escapeHtml(c.title) +
-          "</a>"
-      );
-      parts.push("</li>");
-    }
-    parts.push("</ul>");
-    parts.push("</div>");
-  }
-
-  // Warnings
-  if (result.warnings && result.warnings.length > 0) {
-    parts.push('<div class="rounded-md border border-border bg-muted/50 p-2 text-xs text-muted-foreground">');
-    parts.push("⚠️ " + escapeHtml(result.warnings.join(" • ")));
-    parts.push("</div>");
-  }
-
-  parts.push("</div>");
-  return parts.join("");
+  return [
+    `<div>`,
+    `<h3>${escapeHtml("Cadre juridique")}</h3>`,
+    `<p><span>${escapeHtml("Source: " + sourceLabel)}</span> <span>${escapeHtml("Confiance: " + String(confidencePct) + "%")}</span></p>`,
+    result.cost_saved ? `<p><span>${escapeHtml("Coût économisé (local)")}</span></p>` : "",
+    `<p>${escapeHtml(result.summary)}</p>`,
+    result.key_points.length ? `<h3>${escapeHtml("Points clés")}</h3>` : "",
+    keyPointsHtml,
+    result.citations.length ? `<h3>${escapeHtml("Sources")}</h3>` : "",
+    citationsHtml,
+    warningsHtml,
+    `</div>`,
+  ].join("");
 }
 
-export function getLegalSummaryBadge(result: LegalVerifyResponse): {
-  label: string;
-  variant: "default" | "secondary" | "destructive" | "outline";
-  icon: string;
-} {
-  if (result.source === "degraded" || result.confidence < 0.3) {
-    return { label: "Non vérifié", variant: "destructive", icon: "⚠️" };
-  }
-  if (result.confidence >= 0.7) {
-    return { label: "Vérifié", variant: "default", icon: "✓" };
-  }
-  return { label: "Partiel", variant: "secondary", icon: "◐" };
+export function getLegalSummaryBadge(result: LegalVerifyResponse): "Non vérifié" | "Partiel" | "Vérifié" {
+  const c = clamp01(result.confidence);
+  if (result.source === "degraded" || c < 0.4) return "Non vérifié";
+  if (result.source === "hybrid" || c < 0.75) return "Partiel";
+  return "Vérifié";
 }

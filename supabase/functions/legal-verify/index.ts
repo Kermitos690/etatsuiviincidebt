@@ -14,14 +14,20 @@ const corsHeaders = {
 // TYPES
 // ============================================================
 
-type LegalVerifyMode = "legal" | "procedure" | "roles" | "deadlines" | "definitions" | "jurisprudence";
+type LegalVerifyMode =
+  | "legal"
+  | "procedure"
+  | "roles"
+  | "deadlines"
+  | "definitions"
+  | "jurisprudence";
 
-interface LegalCitation {
+type LegalCitation = {
   title: string;
   url: string;
-}
+};
 
-interface LegalVerifyRequest {
+type LegalVerifyRequest = {
   query: string;
   context?: {
     incident_title?: string;
@@ -35,9 +41,9 @@ interface LegalVerifyRequest {
   mode?: LegalVerifyMode;
   max_citations?: number;
   force_external?: boolean;
-}
+};
 
-interface LegalVerifyResponse {
+type LegalVerifyResponse = {
   summary: string;
   key_points: string[];
   citations: LegalCitation[];
@@ -45,9 +51,9 @@ interface LegalVerifyResponse {
   warnings?: string[];
   source: "local" | "external" | "hybrid" | "degraded";
   cost_saved: boolean;
-}
+};
 
-interface LocalLegalMatch {
+type LocalLegalMatch = {
   code_name: string;
   article_number: string;
   article_title?: string;
@@ -55,28 +61,28 @@ interface LocalLegalMatch {
   domain?: string;
   keywords?: string[];
   relevance: number;
-}
+};
 
-interface GatekeeperDecision {
+type GatekeeperDecision = {
   needsExternal: boolean;
   reason: string;
-}
+};
 
 // ============================================================
 // CONSTANTS
 // ============================================================
 
 const OFFICIAL_DOMAIN_TITLES: Record<string, string> = {
-  "fedlex.admin.ch": "Fedlex - Droit fédéral",
-  "admin.ch": "Confédération suisse",
-  "edoeb.admin.ch": "Préposé fédéral (PFPDT)",
-  "bger.ch": "Tribunal fédéral",
-  "vd.ch": "Canton de Vaud",
-  "ch.ch": "Portail suisse",
-  "bfs.admin.ch": "Office fédéral de la statistique",
-  "seco.admin.ch": "Secrétariat d'État à l'économie",
-  "bsv.admin.ch": "Office fédéral des assurances sociales",
-  "ejpd.admin.ch": "Département fédéral de justice et police",
+  "fedlex.admin.ch": "fedlex.admin.ch",
+  "admin.ch": "admin.ch",
+  "edoeb.admin.ch": "edoeb.admin.ch",
+  "bger.ch": "bger.ch",
+  "vd.ch": "vd.ch",
+  "ch.ch": "ch.ch",
+  "bfs.admin.ch": "bfs.admin.ch",
+  "seco.admin.ch": "seco.admin.ch",
+  "bsv.admin.ch": "bsv.admin.ch",
+  "ejpd.admin.ch": "ejpd.admin.ch",
 };
 
 const PRIORITY_DOMAINS = [
@@ -95,7 +101,7 @@ const EXTERNAL_REQUIRED_KEYWORDS = [
   "décision",
   "jugement",
   "recours accepté",
-  "recours rejeté",
+  "rejeté",
   "délai exact",
   "combien de jours",
   "quel délai",
@@ -125,7 +131,7 @@ const DEGRADED_RESPONSE: LegalVerifyResponse = {
   summary: "Cadre légal non vérifié – service externe indisponible",
   key_points: [],
   citations: [],
-  confidence: 0.0,
+  confidence: 0,
   warnings: ["perplexity_unavailable"],
   source: "degraded",
   cost_saved: false,
@@ -134,103 +140,121 @@ const DEGRADED_RESPONSE: LegalVerifyResponse = {
 const CACHE_TTL_DAYS = 7;
 
 // ============================================================
-// UTILITY FUNCTIONS
+// UTILITIES
 // ============================================================
 
-function hashQuery(query: string): string {
+function isHostMatch(hostname: string, domain: string): boolean {
+  return hostname === domain || hostname.endsWith("." + domain);
+}
+
+async function hashQuery(query: string): Promise<string> {
   const normalized = query.toLowerCase().trim().replace(/\s+/g, " ");
-  let hash = 0;
-  for (let i = 0; i < normalized.length; i++) {
-    const char = normalized.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  return "lv_" + Math.abs(hash).toString(16);
+  const data = new TextEncoder().encode(normalized);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  return "lv_" + hex;
 }
 
 function calculateRelevance(text: string, query: string, keywords?: string[]): number {
-  const queryLower = query.toLowerCase();
-  const textLower = text.toLowerCase();
-  let score = 0;
+  const q = (query || "").toLowerCase();
+  const t = (text || "").toLowerCase();
+  const qWords = q.split(/\s+/).map((w) => w.trim()).filter((w) => w.length >= 3);
 
-  const queryWords = queryLower.split(/\s+/).filter((w) => w.length > 2);
-  for (const word of queryWords) {
-    if (textLower.includes(word)) score += 0.15;
+  let hits = 0;
+  for (const w of qWords) {
+    if (t.includes(w)) hits += 1;
   }
 
-  if (keywords && Array.isArray(keywords)) {
-    for (const kw of keywords) {
-      if (typeof kw === "string" && queryLower.includes(kw.toLowerCase())) {
-        score += 0.2;
-      }
+  let kwHits = 0;
+  if (Array.isArray(keywords)) {
+    for (const k of keywords) {
+      const kk = String(k || "").toLowerCase();
+      if (kk && q.includes(kk)) kwHits += 1;
     }
   }
 
-  return Math.min(1, score);
+  // simple bounded score
+  const score = Math.min(1, hits * 0.12 + kwHits * 0.22);
+  return score;
 }
 
 function extractTitleFromUrl(url: string): string {
   try {
     const hostname = new URL(url).hostname;
-    for (const [domain, title] of Object.entries(OFFICIAL_DOMAIN_TITLES)) {
-      // SECURITY: strict match only (no `includes`)
-      if (hostname === domain || hostname.endsWith("." + domain)) {
-        return title;
-      }
+    for (const domain of Object.keys(OFFICIAL_DOMAIN_TITLES)) {
+      // SECURITY: strict match only
+      if (isHostMatch(hostname, domain)) return OFFICIAL_DOMAIN_TITLES[domain];
     }
     return hostname;
   } catch {
-    return "Source externe";
+    return "source";
   }
 }
 
-function clampConfidence(value: number): number {
-  if (typeof value !== "number" || Number.isNaN(value)) return 0;
-  return Math.max(0, Math.min(1, value));
+function clampConfidence(n: unknown): number {
+  const v = typeof n === "number" ? n : Number(n);
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(0, Math.min(1, v));
+}
+
+function normalizeText(s: string): string {
+  return String(s || "").replace(/\s+/g, " ").trim();
+}
+
+function uniqueCitations(citations: LegalCitation[], max: number): LegalCitation[] {
+  const seen = new Set<string>();
+  const out: LegalCitation[] = [];
+  for (const c of citations) {
+    const url = String(c?.url || "").trim();
+    if (!url) continue;
+    if (seen.has(url)) continue;
+    seen.add(url);
+    out.push({ title: String(c?.title || extractTitleFromUrl(url)), url });
+    if (out.length >= max) break;
+  }
+  return out;
 }
 
 // ============================================================
-// CACHE FUNCTIONS (SINGLE DEFINITION)
+// CACHE (SINGLE DEFINITIONS)
 // ============================================================
 
 async function checkCache(supabase: any, queryHash: string): Promise<LegalVerifyResponse | null> {
   try {
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - CACHE_TTL_DAYS);
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - CACHE_TTL_DAYS);
 
     const { data, error } = await supabase
       .from("legal_search_results")
-      .select("*")
+      .select("summary, keywords, source_url, source_name, relevance_score, created_at")
       .eq("search_query", queryHash)
-      .gte("created_at", cutoffDate.toISOString())
+      .gte("created_at", cutoff.toISOString())
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     if (error || !data) return null;
+    const row: any = data;
 
-    const row = data as any;
-    const summary = typeof row.summary === "string"
-      ? row.summary
-      : typeof row.title === "string"
-        ? row.title
-        : "";
-    const keywords = Array.isArray(row.keywords) ? row.keywords : [];
+    const summary = typeof row.summary === "string" ? row.summary : "";
+    const keywords = Array.isArray(row.keywords) ? row.keywords.map((k: any) => String(k)) : [];
     const sourceUrl = typeof row.source_url === "string" ? row.source_url : "";
     const sourceName = typeof row.source_name === "string" ? row.source_name : "";
-    const relevanceScore = typeof row.relevance_score === "number" ? row.relevance_score : 50;
+    const relevanceScore = typeof row.relevance_score === "number" ? row.relevance_score : 0;
 
     return {
       summary,
-      key_points: keywords.map((k: unknown) => String(k)),
-      citations: sourceUrl ? [{ title: sourceName || extractTitleFromUrl(sourceUrl), url: sourceUrl }] : [],
+      key_points: keywords,
+      citations: sourceUrl
+        ? [{ title: sourceName || extractTitleFromUrl(sourceUrl), url: sourceUrl }]
+        : [],
       confidence: clampConfidence(relevanceScore / 100),
       warnings: ["cache_hit"],
       source: "local",
       cost_saved: true,
     };
-  } catch (e) {
-    console.error("[legal-verify] Cache check error:", e);
+  } catch {
     return null;
   }
 }
@@ -242,26 +266,28 @@ async function saveToCache(
   userId?: string
 ): Promise<void> {
   try {
-    await supabase.from("legal_search_results").insert({
+    const firstCitation = result.citations?.[0];
+    const payload: any = {
       search_query: queryHash,
-      title: result.summary.slice(0, 255),
+      title: normalizeText(result.summary).slice(0, 255) || "Cadre juridique",
       summary: result.summary,
-      keywords: result.key_points.slice(0, 10),
-      source_url: result.citations[0]?.url || "",
-      source_name: result.citations[0]?.title || "",
+      keywords: (Array.isArray(result.key_points) ? result.key_points : []).slice(0, 12),
+      source_url: typeof firstCitation?.url === "string" ? firstCitation.url : "",
+      source_name: typeof firstCitation?.title === "string" ? firstCitation.title : "",
       source_type: result.source,
-      relevance_score: Math.round(result.confidence * 100),
+      relevance_score: Math.round(clampConfidence(result.confidence) * 100),
       is_saved: true,
       user_id: userId || null,
-    });
-  } catch (e) {
-    // Never crash the main request if cache insert fails
-    console.error("[legal-verify] Cache save error:", e);
+    };
+
+    await supabase.from("legal_search_results").insert(payload);
+  } catch {
+    // Never fail the request because of caching
   }
 }
 
 // ============================================================
-// LOCAL DATABASE QUERIES
+// LOCAL DB
 // ============================================================
 
 async function queryLocalLegalArticles(
@@ -274,26 +300,33 @@ async function queryLocalLegalArticles(
       .from("legal_articles")
       .select("code_name, article_number, article_title, article_text, domain, keywords")
       .eq("is_current", true)
-      .limit(20);
+      .limit(200);
 
-    if (error || !data) return [];
+    if (error || !Array.isArray(data)) return [];
 
     const matches: LocalLegalMatch[] = [];
-    for (const article of data as any[]) {
+    for (const row of data as any[]) {
+      const code_name = String(row?.code_name || "");
+      const article_number = String(row?.article_number || "");
+      const article_title = row?.article_title ? String(row.article_title) : undefined;
+      const article_text = String(row?.article_text || "");
+      const domain = row?.domain ? String(row.domain) : undefined;
+      const keywords = Array.isArray(row?.keywords) ? row.keywords.map((k: any) => String(k)) : undefined;
+
       const relevance = calculateRelevance(
-        String((article.article_title || "") + " " + (article.article_text || "")),
+        normalizeText(`${code_name} ${article_number} ${article_title || ""} ${article_text}`),
         query,
-        article.keywords
+        keywords
       );
 
-      if (relevance > 0.1) {
+      if (relevance > 0.08) {
         matches.push({
-          code_name: String(article.code_name || ""),
-          article_number: String(article.article_number || ""),
-          article_title: article.article_title ? String(article.article_title) : undefined,
-          article_text: String(article.article_text || ""),
-          domain: article.domain ? String(article.domain) : undefined,
-          keywords: Array.isArray(article.keywords) ? article.keywords : undefined,
+          code_name,
+          article_number,
+          article_title,
+          article_text,
+          domain,
+          keywords,
           relevance,
         });
       }
@@ -301,8 +334,7 @@ async function queryLocalLegalArticles(
 
     matches.sort((a, b) => b.relevance - a.relevance);
     return matches.slice(0, 5);
-  } catch (e) {
-    console.error("[legal-verify] Local articles query error:", e);
+  } catch {
     return [];
   }
 }
@@ -312,25 +344,31 @@ async function queryLocalLegalReferences(supabase: any, query: string): Promise<
     const { data, error } = await supabase
       .from("legal_references")
       .select("code_name, article_number, article_text, domain, keywords")
-      .limit(15);
+      .limit(200);
 
-    if (error || !data) return [];
+    if (error || !Array.isArray(data)) return [];
 
     const matches: LocalLegalMatch[] = [];
-    for (const ref of data as any[]) {
+    for (const row of data as any[]) {
+      const code_name = String(row?.code_name || "");
+      const article_number = String(row?.article_number || "");
+      const article_text = String(row?.article_text || "");
+      const domain = row?.domain ? String(row.domain) : undefined;
+      const keywords = Array.isArray(row?.keywords) ? row.keywords.map((k: any) => String(k)) : undefined;
+
       const relevance = calculateRelevance(
-        String((ref.code_name || "") + " " + (ref.article_number || "") + " " + (ref.article_text || "")),
+        normalizeText(`${code_name} ${article_number} ${article_text}`),
         query,
-        ref.keywords
+        keywords
       );
 
-      if (relevance > 0.1) {
+      if (relevance > 0.08) {
         matches.push({
-          code_name: String(ref.code_name || ""),
-          article_number: String(ref.article_number || ""),
-          article_text: String(ref.article_text || ""),
-          domain: ref.domain ? String(ref.domain) : undefined,
-          keywords: Array.isArray(ref.keywords) ? ref.keywords : undefined,
+          code_name,
+          article_number,
+          article_text,
+          domain,
+          keywords,
           relevance,
         });
       }
@@ -338,8 +376,7 @@ async function queryLocalLegalReferences(supabase: any, query: string): Promise<
 
     matches.sort((a, b) => b.relevance - a.relevance);
     return matches.slice(0, 3);
-  } catch (e) {
-    console.error("[legal-verify] Local references query error:", e);
+  } catch {
     return [];
   }
 }
@@ -349,151 +386,151 @@ async function queryLocalLegalReferences(supabase: any, query: string): Promise<
 // ============================================================
 
 function shouldCallPerplexity(request: LegalVerifyRequest, localMatches: LocalLegalMatch[]): GatekeeperDecision {
-  const queryLower = request.query.toLowerCase();
+  const q = (request.query || "").toLowerCase();
   const mode = request.mode || "legal";
 
-  if (request.force_external) {
-    return { needsExternal: true, reason: "force_external_requested" };
-  }
-
-  if (mode === "jurisprudence") {
-    return { needsExternal: true, reason: "jurisprudence_mode" };
-  }
+  if (request.force_external) return { needsExternal: true, reason: "force_external" };
+  if (mode === "jurisprudence") return { needsExternal: true, reason: "jurisprudence" };
 
   for (const kw of EXTERNAL_REQUIRED_KEYWORDS) {
-    if (queryLower.includes(kw)) {
-      return { needsExternal: true, reason: "keyword_" + kw.replace(/\s+/g, "_") };
-    }
+    if (q.includes(kw)) return { needsExternal: true, reason: `external_keyword:${kw}` };
   }
 
   if (mode === "deadlines") {
-    const precisionPatterns = ["exact", "précis", "combien", "jours", "quel délai"];
-    for (const pattern of precisionPatterns) {
-      if (queryLower.includes(pattern)) {
-        return { needsExternal: true, reason: "deadline_precision_required" };
-      }
+    const patterns = ["exact", "précis", "combien", "jours", "quel délai"];
+    if (patterns.some((p) => q.includes(p))) {
+      return { needsExternal: true, reason: "deadline_precision" };
     }
   }
 
-  const highQualityMatches = localMatches.filter((m) => m.relevance >= 0.5);
-
-  if (highQualityMatches.length >= 2) {
-    return { needsExternal: false, reason: "sufficient_local_matches" };
-  }
+  const high = localMatches.filter((m) => m.relevance >= 0.5);
+  if (high.length >= 2) return { needsExternal: false, reason: "local>=2_high" };
 
   if ((mode === "roles" || mode === "definitions") && localMatches.length >= 1) {
-    return { needsExternal: false, reason: "local_sufficient_for_mode" };
+    return { needsExternal: false, reason: "local_for_mode" };
   }
 
-  if (localMatches.length >= 1) {
-    return { needsExternal: false, reason: "local_match_available" };
-  }
+  if (localMatches.length >= 1) return { needsExternal: false, reason: "local>=1" };
 
-  // Optional additional local-sufficient heuristic
+  // optional heuristic: keyword suggests local would suffice (still requires at least one match to answer)
   for (const kw of LOCAL_SUFFICIENT_KEYWORDS) {
-    if (queryLower.includes(kw) && localMatches.length >= 1) {
-      return { needsExternal: false, reason: "local_keyword_match" };
+    if (q.includes(kw)) {
+      return { needsExternal: true, reason: `local_keyword_but_no_match:${kw}` };
     }
   }
 
-  return { needsExternal: true, reason: "no_local_matches" };
+  return { needsExternal: true, reason: "no_local_match" };
 }
 
 // ============================================================
-// LOCAL RESPONSE BUILDER
+// LOCAL RESPONSE
 // ============================================================
 
-function buildLocalResponse(localMatches: LocalLegalMatch[], gatekeeperReason: string): LegalVerifyResponse {
-  if (localMatches.length === 0) {
-    return {
-      summary: "Aucune correspondance trouvée dans le référentiel interne.",
-      key_points: [],
-      citations: [],
-      confidence: 0.2,
-      warnings: ["no_local_matches"],
-      source: "local",
-      cost_saved: true,
-    };
-  }
+function buildLocalResponse(localMatches: LocalLegalMatch[], reason: string): LegalVerifyResponse {
+  const matches = localMatches.slice(0, 8);
 
-  const articlesList = localMatches.map((m) => m.code_name + " art. " + m.article_number).join(", ");
+  const articles = matches
+    .map((m) => `${m.code_name} art. ${m.article_number}`)
+    .filter(Boolean)
+    .join(", ");
 
-  const summary =
-    "Cadre juridique basé sur le référentiel interne. Articles pertinents : " + articlesList + ".";
+  const summary = matches.length
+    ? `Cadre juridique basé sur le référentiel interne. Articles pertinents : ${articles}.`
+    : "Cadre juridique basé sur le référentiel interne.";
 
-  const keyPoints = localMatches
+  const key_points = matches
     .map((m) => {
-      const text = m.article_text || m.article_title || "";
+      const text = normalizeText(m.article_text || m.article_title || "");
       if (!text) return "";
       return text.length > 150 ? text.slice(0, 147) + "..." : text;
     })
-    .filter(Boolean);
+    .filter(Boolean)
+    .slice(0, 8);
 
-  const citations: LegalCitation[] = localMatches.map((m) => {
-    const baseUrl = LOCAL_ONLY_BASE_URLS[m.code_name] || "https://www.fedlex.admin.ch";
-    return {
-      title: m.code_name + " art. " + m.article_number + " (référentiel interne)",
-      url: baseUrl,
-    };
-  });
+  const citations: LegalCitation[] = uniqueCitations(
+    matches
+      .map((m) => {
+        const base = LOCAL_ONLY_BASE_URLS[m.code_name] || "https://fedlex.admin.ch";
+        return {
+          title: `${m.code_name} art. ${m.article_number} (référentiel)`,
+          url: base,
+        };
+      }),
+    5
+  );
 
-  const avgRelevance = localMatches.reduce((sum, m) => sum + m.relevance, 0) / localMatches.length;
-  const confidence = clampConfidence(Math.min(0.75, avgRelevance + 0.3));
+  const avg = matches.length ? matches.reduce((s, m) => s + m.relevance, 0) / matches.length : 0;
+  const confidence = clampConfidence(Math.min(0.75, avg + 0.3));
 
   return {
     summary,
-    key_points: keyPoints,
-    citations: citations.slice(0, 5),
+    key_points,
+    citations,
     confidence,
-    warnings: ["gatekeeper:" + gatekeeperReason],
+    warnings: [`gatekeeper:${reason}`],
     source: "local",
     cost_saved: true,
   };
 }
 
 // ============================================================
-// PERPLEXITY API
+// PERPLEXITY
 // ============================================================
 
 function buildSystemPrompt(request: LegalVerifyRequest): string {
+  const ctx = request.context || {};
   const mode = request.mode || "legal";
-  const context = request.context || {};
 
-  let prompt = "Tu es un expert juridique suisse spécialisé en droit de la protection de l'adulte.\n";
-  prompt += "Juridiction: " + (context.jurisdiction || "Suisse (CH-VD)") + ".\n";
-  prompt += "Mode d'analyse: " + mode + ".\n\n";
+  const parts: string[] = [];
+  parts.push("Tu es un assistant juridique suisse. Tu dois répondre en français.");
+  parts.push("Réponds UNIQUEMENT en JSON strict.");
+  parts.push("Ne donne pas de conseils juridiques personnalisés; reste factuel et cite des sources.");
+  parts.push("Privilégie les sources officielles: fedlex.admin.ch, admin.ch, edoeb.admin.ch, bger.ch, vd.ch.");
+  parts.push(`Mode: ${mode}.`);
+  parts.push(`Juridiction: ${ctx.jurisdiction || "CH"}.`);
+  if (ctx.institutions?.length) parts.push(`Institutions: ${ctx.institutions.join(", ")}.`);
+  if (ctx.topics?.length) parts.push(`Thèmes: ${ctx.topics.join(", ")}.`);
 
-  if (context.incident_title) {
-    prompt += "Contexte - Titre: " + context.incident_title + "\n";
+  parts.push("Format JSON attendu:");
+  parts.push("{");
+  parts.push('  "summary": "...",');
+  parts.push('  "key_points": ["..."],');
+  parts.push('  "citations": [{"title":"...","url":"https://..."}],');
+  parts.push('  "confidence": 0.0');
+  parts.push("}");
+
+  return parts.join("\n");
+}
+
+function parseJsonFromContent(content: string): { parsed: any | null; warnings: string[] } {
+  const warnings: string[] = [];
+  try {
+    return { parsed: JSON.parse(content), warnings };
+  } catch {
+    // fallback: try to extract last JSON block
+    const m = content.match(/\{[\s\S]*?\}\s*$/);
+    if (!m) {
+      warnings.push("json_parse_error");
+      return { parsed: null, warnings };
+    }
+    try {
+      const parsed = JSON.parse(m[0]);
+      warnings.push("json_parse_fallback");
+      return { parsed, warnings };
+    } catch {
+      warnings.push("json_parse_error");
+      return { parsed: null, warnings };
+    }
   }
-  if (context.event_date) {
-    prompt += "Date de l'événement: " + context.event_date + "\n";
+}
+
+function isOfficialUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname;
+    return Object.keys(OFFICIAL_DOMAIN_TITLES).some((d) => isHostMatch(hostname, d));
+  } catch {
+    return false;
   }
-  if (context.facts_summary) {
-    prompt += "Résumé factuel: " + context.facts_summary + "\n";
-  }
-
-  prompt += "\nRÈGLES STRICTES:\n";
-  prompt += "1. Réponds UNIQUEMENT en français\n";
-  prompt += "2. Ne JAMAIS affirmer sans source officielle vérifiable\n";
-  prompt += "3. Maximum 5 citations de sources officielles\n";
-  prompt += "4. Privilégier: fedlex.admin.ch, admin.ch, bger.ch, vd.ch\n\n";
-
-  prompt += "RÉPONSE OBLIGATOIRE en JSON strict:\n";
-  prompt += "{\n";
-  prompt += "  \"summary\": \"résumé clair et neutre (max 300 mots)\",\n";
-  prompt += "  \"key_points\": [\"point clé 1\", \"point clé 2\", \"...\"],\n";
-  prompt += "  \"citations\": [{\"title\": \"titre source\", \"url\": \"url officielle\"}],\n";
-  prompt += "  \"confidence\": 0.0 à 1.0\n";
-  prompt += "}\n\n";
-
-  prompt += "Confidence:\n";
-  prompt += "- 0.9-1.0: sources officielles multiples concordantes\n";
-  prompt += "- 0.7-0.9: sources officielles partielles\n";
-  prompt += "- 0.5-0.7: sources mixtes\n";
-  prompt += "- 0.0-0.5: sources insuffisantes\n";
-
-  return prompt;
 }
 
 async function callPerplexity(
@@ -502,323 +539,368 @@ async function callPerplexity(
   systemPrompt: string,
   maxCitations: number
 ): Promise<LegalVerifyResponse> {
-  const startTime = Date.now();
+  const baseWarnings: string[] = [];
 
-  try {
-    let response = await fetch("https://api.perplexity.ai/chat/completions", {
+  const doFetch = async (domainFilter?: string[]) => {
+    const body: any = {
+      model: "sonar",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: query },
+      ],
+      return_citations: true,
+      max_tokens: 2000,
+    };
+    if (domainFilter && domainFilter.length) {
+      body.search_domain_filter = domainFilter;
+    }
+
+    const res = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: "Bearer " + apiKey,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model: "sonar",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: query },
-        ],
-        max_tokens: 2000,
-        return_citations: true,
-        search_domain_filter: PRIORITY_DOMAINS,
-      }),
+      body: JSON.stringify(body),
     });
 
-    let data: any = await response.json();
-    let usedFallback = false;
+    const data = await res.json();
+    const content =
+      data?.choices?.[0]?.message?.content && typeof data.choices[0].message.content === "string"
+        ? data.choices[0].message.content
+        : "";
 
-    if (!data.citations || data.citations.length === 0) {
-      response = await fetch("https://api.perplexity.ai/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "sonar",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: query },
-          ],
-          max_tokens: 2000,
-          return_citations: true,
-        }),
-      });
-      data = await response.json();
-      usedFallback = true;
-    }
+    const citationsRaw: string[] = Array.isArray(data?.citations) ? data.citations : [];
+    return { content, citationsRaw };
+  };
 
-    if (!response.ok) {
-      console.error("[legal-verify] Perplexity API error:", response.status);
-      return DEGRADED_RESPONSE;
-    }
+  try {
+    // pass 1 (official domains)
+    const pass1 = await doFetch(PRIORITY_DOMAINS);
 
-    const content = data.choices?.[0]?.message?.content || "";
-    const perplexityCitations: string[] = data.citations || [];
-    const warnings: string[] = [];
+    // parse content
+    const p1 = parseJsonFromContent(pass1.content);
+    if (p1.warnings.length) baseWarnings.push(...p1.warnings);
 
-    if (usedFallback) warnings.push("official_filter_no_results");
+    let parsed = p1.parsed;
+    let citationsRaw = pass1.citationsRaw;
 
-    let parsed:
-      | { summary?: string; key_points?: string[]; citations?: LegalCitation[]; confidence?: number }
-      | null = null;
+    // If no citations in response, do a second pass without domain filter
+    if (!Array.isArray(citationsRaw) || citationsRaw.length === 0) {
+      const pass2 = await doFetch(undefined);
+      baseWarnings.push("official_filter_no_results");
 
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      // Non-greedy extraction of a trailing JSON block
-      const jsonMatch = content.match(/\{[\s\S]*?\}\s*$/);
-      if (jsonMatch) {
-        try {
-          parsed = JSON.parse(jsonMatch[0]);
-          warnings.push("json_parse_fallback");
-        } catch {
-          warnings.push("json_parse_error");
-        }
-      } else {
-        warnings.push("json_parse_error");
+      const p2 = parseJsonFromContent(pass2.content);
+      // if first parse failed but second succeeds, use second
+      if (!parsed && p2.parsed) {
+        parsed = p2.parsed;
+        baseWarnings.push(...p2.warnings);
       }
+      citationsRaw = Array.isArray(pass2.citationsRaw) && pass2.citationsRaw.length ? pass2.citationsRaw : citationsRaw;
     }
 
-    const citations: LegalCitation[] = [];
-
-    if (parsed?.citations && Array.isArray(parsed.citations)) {
-      for (const c of parsed.citations) {
-        if (c && typeof c === "object" && typeof (c as any).url === "string") {
-          const url = (c as any).url as string;
-          citations.push({
-            title: typeof (c as any).title === "string" ? ((c as any).title as string) : extractTitleFromUrl(url),
-            url,
-          });
-        }
-      }
+    if (!parsed || typeof parsed !== "object") {
+      return {
+        ...DEGRADED_RESPONSE,
+        warnings: Array.from(new Set([...(DEGRADED_RESPONSE.warnings || []), ...baseWarnings])),
+      };
     }
 
-    for (const url of perplexityCitations) {
-      if (typeof url === "string" && !citations.find((c) => c.url === url)) {
-        citations.push({ title: extractTitleFromUrl(url), url });
-      }
-    }
+    const summary = typeof parsed.summary === "string" ? parsed.summary : "";
+    const key_points = Array.isArray(parsed.key_points)
+      ? parsed.key_points.map((x: any) => String(x)).filter(Boolean)
+      : [];
 
-    const officialCitations = citations.filter((c) => {
-      try {
-        const hostname = new URL(c.url).hostname;
-        return PRIORITY_DOMAINS.some((d) => hostname === d || hostname.endsWith("." + d));
-      } catch {
-        return false;
-      }
-    });
+    const parsedCitations: LegalCitation[] = Array.isArray(parsed.citations)
+      ? parsed.citations
+          .map((c: any) => ({ title: String(c?.title || ""), url: String(c?.url || "") }))
+          .filter((c: any) => c.url)
+      : [];
+
+    const urlCitations: LegalCitation[] = Array.isArray(citationsRaw)
+      ? citationsRaw.map((u) => ({ title: extractTitleFromUrl(String(u)), url: String(u) }))
+      : [];
+
+    const citations = uniqueCitations([...parsedCitations, ...urlCitations], maxCitations);
+
+    const warnings: string[] = [...baseWarnings];
 
     if (citations.length === 0) warnings.push("no_citations");
-    else if (officialCitations.length === 0) warnings.push("no_official_sources");
-    else if (officialCitations.length < citations.length / 2) warnings.push("partial_sources");
 
-    const latency = Date.now() - startTime;
-    console.log("[legal-verify] Perplexity call:", {
-      latency,
-      source: "external",
-      citationsCount: citations.length,
-      confidence: clampConfidence(parsed?.confidence ?? (citations.length > 0 ? 0.7 : 0.4)),
-    });
+    const officialCount = citations.filter((c) => isOfficialUrl(c.url)).length;
+    if (citations.length > 0 && officialCount === 0) warnings.push("no_official_sources");
+    if (citations.length > 0 && officialCount > 0 && officialCount < citations.length) warnings.push("partial_sources");
+
+    const confidence =
+      typeof parsed.confidence === "number"
+        ? clampConfidence(parsed.confidence)
+        : citations.length
+          ? 0.7
+          : 0.4;
 
     return {
-      summary: parsed?.summary || String(content).slice(0, 500),
-      key_points: Array.isArray(parsed?.key_points) ? parsed!.key_points! : [],
-      citations: citations.slice(0, maxCitations),
-      confidence: clampConfidence(parsed?.confidence ?? (citations.length > 0 ? 0.7 : 0.4)),
-      warnings: warnings.length > 0 ? warnings : undefined,
+      summary,
+      key_points,
+      citations,
+      confidence,
+      warnings: warnings.length ? Array.from(new Set(warnings)) : undefined,
       source: "external",
       cost_saved: false,
     };
-  } catch (e) {
-    console.error("[legal-verify] Perplexity call error:", e);
-    return DEGRADED_RESPONSE;
+  } catch {
+    return { ...DEGRADED_RESPONSE };
   }
 }
-
-// ============================================================
-// HYBRID MERGE
-// ============================================================
 
 function mergeHybridResponse(
   externalResponse: LegalVerifyResponse,
   localMatches: LocalLegalMatch[],
   maxCitations: number
 ): LegalVerifyResponse {
-  if (localMatches.length === 0 || externalResponse.source === "degraded") {
-    return externalResponse;
+  if (externalResponse.source === "degraded") return externalResponse;
+
+  const existing = new Set(externalResponse.citations.map((c) => String(c.url)));
+  const additions: LegalCitation[] = [];
+
+  for (const m of localMatches) {
+    const url = LOCAL_ONLY_BASE_URLS[m.code_name] || "https://fedlex.admin.ch";
+    if (existing.has(url)) continue;
+    additions.push({ title: `${m.code_name} art. ${m.article_number} (référentiel)`, url });
+    existing.add(url);
+    if (additions.length >= 2) break;
   }
 
-  const existingUrls = new Set(externalResponse.citations.map((c) => c.url));
-  const localCitations: LegalCitation[] = [];
+  if (additions.length === 0) return externalResponse;
 
-  for (const match of localMatches.slice(0, 2)) {
-    const baseUrl = LOCAL_ONLY_BASE_URLS[match.code_name];
-    if (baseUrl && !existingUrls.has(baseUrl)) {
-      localCitations.push({
-        title: match.code_name + " art. " + match.article_number + " (référentiel)",
-        url: baseUrl,
-      });
-    }
-  }
+  const merged = uniqueCitations([...externalResponse.citations, ...additions], maxCitations);
 
-  const mergedCitations = [...externalResponse.citations, ...localCitations].slice(0, maxCitations);
-  const mergedWarnings = [...(externalResponse.warnings || []), "hybrid_local_merge"];
+  const warnings = Array.isArray(externalResponse.warnings) ? [...externalResponse.warnings] : [];
+  warnings.push("hybrid_local_merge");
 
   return {
     ...externalResponse,
-    citations: mergedCitations,
+    citations: merged,
+    warnings: Array.from(new Set(warnings)),
     source: "hybrid",
-    warnings: mergedWarnings,
+    cost_saved: false,
   };
 }
 
 // ============================================================
-// MAIN HANDLER
+// HANDLER
 // ============================================================
 
 serve(async (req) => {
+  const start = Date.now();
+
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { status: 204, headers: corsHeaders });
   }
 
-  const startTime = Date.now();
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "method_not_allowed" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  let mode: LegalVerifyMode = "legal";
 
   try {
-    const body = await req.json();
+    const body = (await req.json()) as Partial<LegalVerifyRequest>;
+    const query = typeof body.query === "string" ? body.query.trim() : "";
+    mode = (body.mode || "legal") as LegalVerifyMode;
 
-    const request: LegalVerifyRequest = {
-      query: body.query || "",
-      context: body.context,
-      mode: body.mode || "legal",
-      max_citations: body.max_citations || 5,
-      force_external: body.force_external || false,
-    };
-
-    if (!request.query || request.query.trim().length < 10) {
-      return new Response(JSON.stringify({ error: "Query must be at least 10 characters" }), {
+    if (query.length < 10) {
+      return new Response(JSON.stringify({ error: "query_too_short" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const maxCitations =
+      typeof body.max_citations === "number" && body.max_citations > 0
+        ? Math.min(10, Math.floor(body.max_citations))
+        : 5;
 
-    if (!supabaseUrl || !supabaseKey) {
-      console.error("[legal-verify] Missing Supabase credentials");
+    const request: LegalVerifyRequest = {
+      query,
+      context: body.context || undefined,
+      mode,
+      max_citations: maxCitations,
+      force_external: Boolean(body.force_external),
+    };
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!supabaseUrl || !serviceKey) {
+      const latency = Date.now() - start;
+      console.log(
+        JSON.stringify({
+          latency,
+          source: DEGRADED_RESPONSE.source,
+          citationsCount: DEGRADED_RESPONSE.citations.length,
+          confidence: DEGRADED_RESPONSE.confidence,
+          mode,
+        })
+      );
+
       return new Response(JSON.stringify(DEGRADED_RESPONSE), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // IMPORTANT: keep `any` to avoid TS ReturnType friction in Lovable/Deno
-    const supabase: any = createClient(supabaseUrl, supabaseKey);
+    const supabase: any = createClient(supabaseUrl, serviceKey);
 
-    const queryHash = hashQuery(request.query);
+    const queryHash = await hashQuery(query);
 
+    // Cache hit (only if not forcing external)
     if (!request.force_external) {
-      const cachedResult = await checkCache(supabase, queryHash);
-      if (cachedResult) {
-        const latency = Date.now() - startTime;
-        console.log("[legal-verify] Cache hit:", {
-          latency,
-          source: cachedResult.source,
-          citationsCount: cachedResult.citations.length,
-          confidence: cachedResult.confidence,
-          mode: request.mode || "legal",
-        });
+      const cached = await checkCache(supabase, queryHash);
+      if (cached) {
+        const latency = Date.now() - start;
+        console.log(
+          JSON.stringify({
+            latency,
+            source: cached.source,
+            citationsCount: cached.citations.length,
+            confidence: cached.confidence,
+            mode,
+          })
+        );
 
-        return new Response(JSON.stringify(cachedResult), {
+        return new Response(JSON.stringify(cached), {
+          status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
     }
 
-    const localArticles = await queryLocalLegalArticles(supabase, request.query, request.context?.topics);
-    const localRefs = await queryLocalLegalReferences(supabase, request.query);
+    // Local first
+    const [localArticles, localRefs] = await Promise.all([
+      queryLocalLegalArticles(supabase, query, request.context?.topics),
+      queryLocalLegalReferences(supabase, query),
+    ]);
+
     const localMatches = [...localArticles, ...localRefs].sort((a, b) => b.relevance - a.relevance);
 
-    const decision = shouldCallPerplexity(request, localMatches);
+    const gate = shouldCallPerplexity(request, localMatches);
 
-    if (!decision.needsExternal) {
-      const localResponse = buildLocalResponse(localMatches, decision.reason);
-      const latency = Date.now() - startTime;
+    // Local answer
+    if (!gate.needsExternal) {
+      const localResponse = buildLocalResponse(localMatches, gate.reason);
+      await saveToCache(supabase, queryHash, localResponse, undefined);
 
-      console.log("[legal-verify] Local response:", {
-        latency,
-        source: localResponse.source,
-        citationsCount: localResponse.citations.length,
-        confidence: localResponse.confidence,
-        mode: request.mode || "legal",
-      });
-
-      await saveToCache(supabase, queryHash, localResponse);
+      const latency = Date.now() - start;
+      console.log(
+        JSON.stringify({
+          latency,
+          source: localResponse.source,
+          citationsCount: localResponse.citations.length,
+          confidence: localResponse.confidence,
+          mode,
+        })
+      );
 
       return new Response(JSON.stringify(localResponse), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    // External path
     const perplexityKey = Deno.env.get("PERPLEXITY_API_KEY");
 
     if (!perplexityKey) {
       if (localMatches.length > 0) {
-        const fallbackResponse = buildLocalResponse(localMatches, "perplexity_unavailable");
-        fallbackResponse.warnings = [
-          ...(fallbackResponse.warnings || []),
-          "perplexity_unavailable",
-          "fallback_to_local",
-        ];
+        const localFallback = buildLocalResponse(localMatches, gate.reason);
+        const warnings = Array.isArray(localFallback.warnings) ? [...localFallback.warnings] : [];
+        warnings.push("perplexity_unavailable", "fallback_to_local");
 
-        const latency = Date.now() - startTime;
-        console.log("[legal-verify] Fallback local:", {
-          latency,
-          source: fallbackResponse.source,
-          citationsCount: fallbackResponse.citations.length,
-          confidence: fallbackResponse.confidence,
-          mode: request.mode || "legal",
-        });
+        const response: LegalVerifyResponse = {
+          ...localFallback,
+          warnings: Array.from(new Set(warnings)),
+          source: "local",
+          cost_saved: true,
+        };
 
-        return new Response(JSON.stringify(fallbackResponse), {
+        await saveToCache(supabase, queryHash, response, undefined);
+
+        const latency = Date.now() - start;
+        console.log(
+          JSON.stringify({
+            latency,
+            source: response.source,
+            citationsCount: response.citations.length,
+            confidence: response.confidence,
+            mode,
+          })
+        );
+
+        return new Response(JSON.stringify(response), {
+          status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      return new Response(JSON.stringify(DEGRADED_RESPONSE), {
+      const degraded = { ...DEGRADED_RESPONSE };
+      await saveToCache(supabase, queryHash, degraded, undefined);
+
+      const latency = Date.now() - start;
+      console.log(
+        JSON.stringify({
+          latency,
+          source: degraded.source,
+          citationsCount: degraded.citations.length,
+          confidence: degraded.confidence,
+          mode,
+        })
+      );
+
+      return new Response(JSON.stringify(degraded), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const systemPrompt = buildSystemPrompt(request);
+    const external = await callPerplexity(perplexityKey, query, systemPrompt, maxCitations);
 
-    let externalResponse = await callPerplexity(
-      perplexityKey,
-      request.query,
-      systemPrompt,
-      request.max_citations || 5
+    const merged = localMatches.length ? mergeHybridResponse(external, localMatches, maxCitations) : external;
+
+    await saveToCache(supabase, queryHash, merged, undefined);
+
+    const latency = Date.now() - start;
+    console.log(
+      JSON.stringify({
+        latency,
+        source: merged.source,
+        citationsCount: merged.citations.length,
+        confidence: merged.confidence,
+        mode,
+      })
     );
 
-    if (localMatches.length > 0 && externalResponse.source !== "degraded") {
-      externalResponse = mergeHybridResponse(externalResponse, localMatches, request.max_citations || 5);
-    }
-
-    await saveToCache(supabase, queryHash, externalResponse);
-
-    const latency = Date.now() - startTime;
-    console.log("[legal-verify] External response:", {
-      latency,
-      source: externalResponse.source,
-      citationsCount: externalResponse.citations.length,
-      confidence: externalResponse.confidence,
-      mode: request.mode || "legal",
-    });
-
-    return new Response(JSON.stringify(externalResponse), {
+    return new Response(JSON.stringify(merged), {
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (e) {
-    console.error("[legal-verify] Error:", e);
+  } catch {
+    const latency = Date.now() - start;
+    console.log(
+      JSON.stringify({
+        latency,
+        source: DEGRADED_RESPONSE.source,
+        citationsCount: DEGRADED_RESPONSE.citations.length,
+        confidence: DEGRADED_RESPONSE.confidence,
+        mode,
+      })
+    );
+
     return new Response(JSON.stringify(DEGRADED_RESPONSE), {
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
