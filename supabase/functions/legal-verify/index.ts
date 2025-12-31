@@ -291,7 +291,7 @@ async function saveToCache(
 // ============================================================
 
 // Import pure pagination module
-import { paginatedFetch as paginatedFetchPure } from "../../../src/shared/pagination/paginatedFetch.ts";
+import { paginatedFetch as paginatedFetchPure } from "../_shared/paginatedFetch.ts";
 
 // Wrapper for Supabase-specific pagination (uses pure module internally)
 async function paginatedFetchSupabase(
