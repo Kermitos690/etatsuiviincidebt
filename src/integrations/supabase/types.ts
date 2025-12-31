@@ -801,6 +801,36 @@ export type Database = {
           },
         ]
       }
+      debug_guardrails: {
+        Row: {
+          count: number
+          id: string
+          key_hash: string
+          scope: string
+          updated_at: string
+          window_ms: number
+          window_start: string
+        }
+        Insert: {
+          count?: number
+          id?: string
+          key_hash: string
+          scope: string
+          updated_at?: string
+          window_ms: number
+          window_start: string
+        }
+        Update: {
+          count?: number
+          id?: string
+          key_hash?: string
+          scope?: string
+          updated_at?: string
+          window_ms?: number
+          window_start?: string
+        }
+        Relationships: []
+      }
       detection_patterns: {
         Row: {
           accuracy_score: number | null
@@ -2957,6 +2987,7 @@ export type Database = {
     }
     Functions: {
       business_days_between: { Args: { a: string; b: string }; Returns: number }
+      cleanup_old_debug_guardrails: { Args: never; Returns: undefined }
       get_last_curatelle_contact: {
         Args: { p_curatelle_emails: string[]; p_user_id: string }
         Returns: {
