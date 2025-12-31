@@ -144,6 +144,9 @@ const CACHE_TTL_DAYS = 7;
 // ANTI-ABUSE: DEBUG RATE-LIMIT & SEED COOLDOWN (in-memory, best-effort)
 // ============================================================
 
+// Instance ID for diagnosing cold-starts in serverless
+const INSTANCE_ID = crypto.randomUUID();
+
 // Rate limit for debug requests: 5 per minute per IP+queryHash
 const DEBUG_RATE_LIMIT = { windowMs: 60000, maxRequests: 5 };
 const debugRateLimitStore = new Map<string, { count: number; resetAt: number }>();
@@ -385,17 +388,28 @@ function buildDebugObject(
   debugInfoReferences: PaginationDebugInfo | undefined,
   probesArticles: ProbeDebugInfo | undefined,
   probesReferences: ProbeDebugInfo | undefined,
-  seedRefs: SeedResult | undefined
+  seedRefs: SeedResult | undefined,
+  rateCheckResult?: { allowed: boolean; remaining: number; resetAt: number }
 ): any | undefined {
   if (!debugPagination) return undefined;
   
   const debugObj: any = {
     debug_version: 1,
+    instance_id: INSTANCE_ID,
     pagination: {
       articles: debugInfoArticles,
       references: debugInfoReferences,
     },
   };
+  
+  // Rate limit info (without exposing the key which contains IP/hash)
+  if (rateCheckResult) {
+    debugObj.rate_limit = {
+      key_scope: "ip+queryHash",
+      remaining: rateCheckResult.remaining,
+      reset_at: rateCheckResult.resetAt,
+    };
+  }
   
   // Probes only if debug_probes=true
   if (debugProbes && (probesArticles || probesReferences)) {
@@ -1029,9 +1043,11 @@ serve(async (req) => {
     // Probes and seed only active if debug_pagination is true
     const debugProbes = debugPagination && Boolean((body as any).debug_probes);
     let seedReferences = debugPagination && Boolean((body as any).seed_references);
+    const seedCooldownProbe = debugPagination && Boolean((body as any).seed_cooldown_probe);
 
     // ========== ANTI-ABUSE: Rate limit for debug mode (IP + queryHash) ==========
     let clientIp = "";
+    let rateCheckResult: { allowed: boolean; remaining: number; resetAt: number } | undefined;
     if (debugPagination) {
       clientIp = getClientIp(req);
       // Compute queryHash SAFE: only if query is a non-empty string
@@ -1039,16 +1055,17 @@ serve(async (req) => {
         ? await hashQuery(query)
         : "noq";
       const rlKey = "debug:" + clientIp + ":" + queryHashForRL;
-      const rateCheck = checkDebugRateLimit(rlKey);
+      rateCheckResult = checkDebugRateLimit(rlKey);
       
-      if (!rateCheck.allowed) {
+      if (!rateCheckResult.allowed) {
         // Rate limited: EARLY RETURN - do not execute cache, probes, seed, local queries
         const rateLimitedResponse = {
           ...DEGRADED_RESPONSE,
           debug: {
             debug_version: 1,
+            instance_id: INSTANCE_ID,
             rate_limited: true,
-            remaining: rateCheck.remaining,
+            remaining: rateCheckResult.remaining,
             window_ms: DEBUG_RATE_LIMIT.windowMs,
           },
         };
@@ -1116,9 +1133,13 @@ serve(async (req) => {
     let seedRefs: SeedResult | undefined;
     if (seedReferences && !seedCooldownActive) {
       seedRefs = await seedLegalReferencesIfEmpty(supabase);
-      // Mark seed as executed ONLY if actual seed happened (not skipped due to existing rows)
+      // Mark seed as executed ONLY if actual seed happened OR if cooldown probe mode
       if (seedRefs && seedRefs.seeded) {
         markSeedExecuted(clientIp);
+      } else if (seedRefs && seedRefs.reason === "already_has_rows" && seedCooldownProbe) {
+        // Cooldown probe: mark as executed even without writing (for testing cooldown)
+        markSeedExecuted(clientIp);
+        seedRefs = { seeded: false, inserted: 0, reason: "cooldown_probed_no_write" };
       }
     } else if (seedReferences && seedCooldownActive) {
       // Return cooldown info instead of executing seed
@@ -1176,7 +1197,7 @@ serve(async (req) => {
       );
 
       // Build debug object using helper function
-      const debugObj = buildDebugObject(debugPagination, debugProbes, seedReferences, debugInfoArticles, debugInfoReferences, probesArticles, probesReferences, seedRefs);
+      const debugObj = buildDebugObject(debugPagination, debugProbes, seedReferences, debugInfoArticles, debugInfoReferences, probesArticles, probesReferences, seedRefs, rateCheckResult);
       const responseBody = debugObj ? { ...localResponse, debug: debugObj } : localResponse;
 
       return new Response(JSON.stringify(responseBody), {
@@ -1215,7 +1236,7 @@ serve(async (req) => {
         );
 
         // Build debug object using helper function
-        const debugObj = buildDebugObject(debugPagination, debugProbes, seedReferences, debugInfoArticles, debugInfoReferences, probesArticles, probesReferences, seedRefs);
+        const debugObj = buildDebugObject(debugPagination, debugProbes, seedReferences, debugInfoArticles, debugInfoReferences, probesArticles, probesReferences, seedRefs, rateCheckResult);
         const responseBody = debugObj ? { ...response, debug: debugObj } : response;
 
         return new Response(JSON.stringify(responseBody), {
@@ -1263,7 +1284,7 @@ serve(async (req) => {
     );
 
     // Build debug object using helper function
-    const debugObj = buildDebugObject(debugPagination, debugProbes, seedReferences, debugInfoArticles, debugInfoReferences, probesArticles, probesReferences, seedRefs);
+    const debugObj = buildDebugObject(debugPagination, debugProbes, seedReferences, debugInfoArticles, debugInfoReferences, probesArticles, probesReferences, seedRefs, rateCheckResult);
     const responseBody = debugObj ? { ...merged, debug: debugObj } : merged;
 
     return new Response(JSON.stringify(responseBody), {
