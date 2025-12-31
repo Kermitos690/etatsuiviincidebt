@@ -607,9 +607,10 @@ serve(async (req) => {
           });
         }
 
-        const { data: insertedAnalysis, error: insertError } = await supabase
+        // UPSERT: Use onConflict to make thread analysis idempotent
+        const { data: upsertedAnalysis, error: upsertError } = await supabase
           .from('thread_analyses')
-          .insert({
+          .upsert({
             user_id: user.id,
             thread_id: currentThreadId,
             email_ids: threadEmails.map(e => e.id),
@@ -622,28 +623,32 @@ serve(async (req) => {
             citations: (analysis.issues || []).flatMap((i: any) => i.citations || []),
             model: 'google/gemini-2.5-flash',
             prompt_version: 'master-analysis-v1',
+            analyzed_at: new Date().toISOString(),
+          }, {
+            onConflict: 'user_id,thread_id',
+            ignoreDuplicates: false, // Update existing records
           })
           .select('id')
           .single();
 
-        if (insertError) {
-          console.error(`Error storing analysis for thread ${currentThreadId}:`, insertError);
+        if (upsertError) {
+          console.error(`Error storing analysis for thread ${currentThreadId}:`, upsertError);
           results.errors.push(`Storage error for ${currentThreadId}`);
           continue;
         }
         
         // SEAL EVIDENCE: Create proof chain entry for audit trail
-        if (insertedAnalysis) {
+        if (upsertedAnalysis) {
           const proofData = await createProofChainData(
             'thread_analysis',
-            insertedAnalysis.id,
+            upsertedAnalysis.id,
             analysis,
             { thread_id: currentThreadId, emails_count: threadEmails.length }
           );
           
-          await supabase.from('proof_chain').insert({
+          await supabase.from('proof_chain').upsert({
             entity_type: 'thread_analysis',
-            entity_id: insertedAnalysis.id,
+            entity_id: upsertedAnalysis.id,
             content_hash: proofData.content_hash,
             metadata_hash: proofData.metadata_hash,
             combined_hash: proofData.combined_hash,
@@ -653,6 +658,8 @@ serve(async (req) => {
             verification_status: 'valid',
             last_verified_at: new Date().toISOString(),
             user_id: user.id,
+          }, {
+            onConflict: 'entity_type,entity_id',
           });
         }
 
