@@ -401,6 +401,7 @@ type SelfTestRateLimitReport = {
   max: number;
   runs: SelfTestRateLimitRun[];
   pass: boolean;
+  note: string;
 };
 
 type SelfTestSeedCooldownReport = {
@@ -409,6 +410,7 @@ type SelfTestSeedCooldownReport = {
   first_check_allowed: boolean;
   after_mark_allowed: boolean;
   pass: boolean;
+  note: string;
 };
 
 type SelfTestDebugReport = {
@@ -428,17 +430,13 @@ async function runSelfTestDebug(
   clientIp: string,
   query: string
 ): Promise<SelfTestDebugReport> {
-  // Use unique test keys to avoid interference with normal operations
-  const testSuffix = "_selftest_" + Date.now();
-  
-  // Hash for rate-limit: IP + queryHash + salt + test suffix
+  // REAL keys (same as production) - no test suffix
+  // This consumes real quota on the IP+queryHash key
   const queryHashForRL = (typeof query === "string" && query.trim().length > 0)
     ? await hashQuery(query)
     : "noq";
-  const keyHashDebug = await hashForPersist(clientIp + ":" + queryHashForRL + testSuffix);
-  
-  // Hash for seed cooldown: IP + salt + test suffix
-  const keyHashSeed = await hashForPersist(clientIp + testSuffix);
+  const keyHashDebug = await hashForPersist(clientIp + ":" + queryHashForRL);
+  const keyHashSeed = await hashForPersist(clientIp);
   
   // ========== RATE-LIMIT TEST: 6 consecutive checks ==========
   const runs: SelfTestRateLimitRun[] = [];
@@ -464,10 +462,10 @@ async function runSelfTestDebug(
     runs[5].allowed === false;
   
   // ========== SEED COOLDOWN TEST: check -> mark -> check ==========
-  // First check (should be allowed since we use unique test key)
+  // First check
   const firstCheck = await checkSeedCooldownPersist(supabase, keyHashSeed, SEED_COOLDOWN_MS);
   
-  // Mark as executed
+  // Mark as executed (consumes real cooldown quota)
   await markSeedExecutedPersist(supabase, keyHashSeed, SEED_COOLDOWN_MS);
   
   // Second check (should be blocked)
@@ -488,6 +486,7 @@ async function runSelfTestDebug(
           max: DEBUG_RATE_LIMIT.maxRequests,
           runs,
           pass: rateLimitPass,
+          note: "Ce self-test consomme 6 tokens de rate-limit sur la clé réelle IP+queryHash",
         },
         seed_cooldown: {
           mode: "persist",
@@ -495,6 +494,7 @@ async function runSelfTestDebug(
           first_check_allowed: firstCheck.allowed,
           after_mark_allowed: secondCheck.allowed,
           pass: seedCooldownPass,
+          note: "Ce self-test active le cooldown réel sur la clé IP (10 min)",
         },
       },
     },
