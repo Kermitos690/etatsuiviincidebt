@@ -141,7 +141,9 @@ const DEGRADED_RESPONSE: LegalVerifyResponse = {
 const CACHE_TTL_DAYS = 7;
 
 // ============================================================
-// ANTI-ABUSE: DEBUG RATE-LIMIT & SEED COOLDOWN (in-memory, best-effort)
+// ANTI-ABUSE: DEBUG RATE-LIMIT & SEED COOLDOWN
+// - In-memory (best-effort, serverless)
+// - Durable (DB) when debug_persist=true (strictly opt-in)
 // ============================================================
 
 // Instance ID for diagnosing cold-starts in serverless
@@ -169,7 +171,23 @@ function getClientIp(req: Request): string {
   return forwarded?.split(",")[0]?.trim() || "unknown";
 }
 
-function checkDebugRateLimit(key: string): { allowed: boolean; remaining: number; resetAt: number } {
+// Hash for persist mode: hashes IP+salt or IP+queryHash+salt (no raw IP stored)
+async function hashForPersist(input: string): Promise<string> {
+  const salt = Deno.env.get("DEBUG_GUARDRAILS_SALT") || "fallback_salt_v1";
+  const data = new TextEncoder().encode(input + ":" + salt);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Calculate window start for durable rate-limit (aligned to windowMs)
+function calculateWindowStart(now: number, windowMs: number): Date {
+  const windowStart = Math.floor(now / windowMs) * windowMs;
+  return new Date(windowStart);
+}
+
+// ========== In-memory rate-limit (best-effort) ==========
+function checkDebugRateLimitMemory(key: string): { allowed: boolean; remaining: number; resetAt: number } {
   cleanupDebugRateLimit();
   const now = Date.now();
   const entry = debugRateLimitStore.get(key);
@@ -188,7 +206,93 @@ function checkDebugRateLimit(key: string): { allowed: boolean; remaining: number
   return { allowed: true, remaining: DEBUG_RATE_LIMIT.maxRequests - entry.count, resetAt: entry.resetAt };
 }
 
-function checkSeedCooldown(ip: string): { allowed: boolean; reason: string } {
+// ========== Durable rate-limit (DB) ==========
+async function checkDebugRateLimitPersist(
+  supabase: any,
+  keyHash: string,
+  windowMs: number,
+  maxRequests: number
+): Promise<{ allowed: boolean; remaining: number; resetAt: number; windowStart: string }> {
+  const now = Date.now();
+  const windowStart = calculateWindowStart(now, windowMs);
+  const windowStartIso = windowStart.toISOString();
+  const resetAt = windowStart.getTime() + windowMs;
+
+  try {
+    // Atomic upsert: insert or increment count
+    const { data: existingRow, error: selectError } = await supabase
+      .from("debug_guardrails")
+      .select("id, count")
+      .eq("scope", "debug")
+      .eq("key_hash", keyHash)
+      .eq("window_start", windowStartIso)
+      .maybeSingle();
+
+    if (selectError) {
+      console.log(JSON.stringify({ persist_error: "select", msg: selectError.message }));
+      // Fallback: allow but report error
+      return { allowed: true, remaining: maxRequests - 1, resetAt, windowStart: windowStartIso };
+    }
+
+    if (!existingRow) {
+      // Insert new row
+      const { error: insertError } = await supabase
+        .from("debug_guardrails")
+        .insert({
+          scope: "debug",
+          key_hash: keyHash,
+          window_start: windowStartIso,
+          window_ms: windowMs,
+          count: 1,
+        });
+
+      if (insertError) {
+        // Could be race condition (duplicate key) - retry with select
+        const { data: retryRow } = await supabase
+          .from("debug_guardrails")
+          .select("id, count")
+          .eq("scope", "debug")
+          .eq("key_hash", keyHash)
+          .eq("window_start", windowStartIso)
+          .maybeSingle();
+
+        if (retryRow) {
+          // Row was created by another request, increment it
+          const newCount = retryRow.count + 1;
+          await supabase
+            .from("debug_guardrails")
+            .update({ count: newCount, updated_at: new Date().toISOString() })
+            .eq("id", retryRow.id);
+          const allowed = newCount <= maxRequests;
+          return { allowed, remaining: Math.max(0, maxRequests - newCount), resetAt, windowStart: windowStartIso };
+        }
+      }
+
+      return { allowed: true, remaining: maxRequests - 1, resetAt, windowStart: windowStartIso };
+    }
+
+    // Row exists: check and increment
+    const currentCount = existingRow.count || 0;
+    if (currentCount >= maxRequests) {
+      return { allowed: false, remaining: 0, resetAt, windowStart: windowStartIso };
+    }
+
+    const newCount = currentCount + 1;
+    await supabase
+      .from("debug_guardrails")
+      .update({ count: newCount, updated_at: new Date().toISOString() })
+      .eq("id", existingRow.id);
+
+    return { allowed: true, remaining: Math.max(0, maxRequests - newCount), resetAt, windowStart: windowStartIso };
+  } catch (e: any) {
+    console.log(JSON.stringify({ persist_error: "exception", msg: e?.message || "unknown" }));
+    // Fallback: allow on error
+    return { allowed: true, remaining: maxRequests - 1, resetAt, windowStart: windowStartIso };
+  }
+}
+
+// ========== In-memory seed cooldown (best-effort) ==========
+function checkSeedCooldownMemory(ip: string): { allowed: boolean; reason: string } {
   const now = Date.now();
   const key = "seed:" + ip;
   const lastAt = seedCooldownStore.get(key) || 0;
@@ -198,8 +302,83 @@ function checkSeedCooldown(ip: string): { allowed: boolean; reason: string } {
   return { allowed: true, reason: "" };
 }
 
-function markSeedExecuted(ip: string): void {
+function markSeedExecutedMemory(ip: string): void {
   seedCooldownStore.set("seed:" + ip, Date.now());
+}
+
+// ========== Durable seed cooldown (DB) ==========
+async function checkSeedCooldownPersist(
+  supabase: any,
+  keyHash: string,
+  cooldownMs: number
+): Promise<{ allowed: boolean; reason: string; windowStart?: string }> {
+  const now = Date.now();
+  const windowStart = calculateWindowStart(now, cooldownMs);
+  const windowStartIso = windowStart.toISOString();
+
+  try {
+    const { data: existingRow, error } = await supabase
+      .from("debug_guardrails")
+      .select("id, count")
+      .eq("scope", "seed")
+      .eq("key_hash", keyHash)
+      .eq("window_start", windowStartIso)
+      .maybeSingle();
+
+    if (error) {
+      console.log(JSON.stringify({ persist_error: "seed_select", msg: error.message }));
+      return { allowed: true, reason: "", windowStart: windowStartIso };
+    }
+
+    if (!existingRow) {
+      return { allowed: true, reason: "", windowStart: windowStartIso };
+    }
+
+    // Row exists = cooldown active for this window
+    if (existingRow.count >= 1) {
+      return { allowed: false, reason: "cooldown_active", windowStart: windowStartIso };
+    }
+
+    return { allowed: true, reason: "", windowStart: windowStartIso };
+  } catch (e: any) {
+    console.log(JSON.stringify({ persist_error: "seed_exception", msg: e?.message || "unknown" }));
+    return { allowed: true, reason: "", windowStart: windowStartIso };
+  }
+}
+
+async function markSeedExecutedPersist(
+  supabase: any,
+  keyHash: string,
+  cooldownMs: number
+): Promise<void> {
+  const now = Date.now();
+  const windowStart = calculateWindowStart(now, cooldownMs);
+  const windowStartIso = windowStart.toISOString();
+
+  try {
+    // Upsert seed record
+    const { error: insertError } = await supabase
+      .from("debug_guardrails")
+      .insert({
+        scope: "seed",
+        key_hash: keyHash,
+        window_start: windowStartIso,
+        window_ms: cooldownMs,
+        count: 1,
+      });
+
+    if (insertError) {
+      // Could be duplicate - try update
+      await supabase
+        .from("debug_guardrails")
+        .update({ count: 1, updated_at: new Date().toISOString() })
+        .eq("scope", "seed")
+        .eq("key_hash", keyHash)
+        .eq("window_start", windowStartIso);
+    }
+  } catch (e: any) {
+    console.log(JSON.stringify({ persist_error: "seed_mark", msg: e?.message || "unknown" }));
+  }
 }
 
 // ============================================================
@@ -380,6 +559,19 @@ type ProbeDebugInfo = {
 };
 
 // Helper to build the debug object in a stable format
+type RateLimitDebugInfo = {
+  allowed: boolean;
+  remaining: number;
+  resetAt: number;
+  mode?: "memory" | "persist";
+  windowStart?: string;
+};
+
+type SeedCooldownDebugInfo = {
+  mode?: "memory" | "persist";
+  windowStart?: string;
+};
+
 function buildDebugObject(
   debugPagination: boolean,
   debugProbes: boolean,
@@ -389,7 +581,8 @@ function buildDebugObject(
   probesArticles: ProbeDebugInfo | undefined,
   probesReferences: ProbeDebugInfo | undefined,
   seedRefs: SeedResult | undefined,
-  rateCheckResult?: { allowed: boolean; remaining: number; resetAt: number }
+  rateCheckResult?: RateLimitDebugInfo,
+  seedCooldownInfo?: SeedCooldownDebugInfo
 ): any | undefined {
   if (!debugPagination) return undefined;
   
@@ -405,10 +598,14 @@ function buildDebugObject(
   // Rate limit info (without exposing the key which contains IP/hash)
   if (rateCheckResult) {
     debugObj.rate_limit = {
+      mode: rateCheckResult.mode || "memory",
       key_scope: "ip+queryHash",
       remaining: rateCheckResult.remaining,
       reset_at: rateCheckResult.resetAt,
     };
+    if (rateCheckResult.windowStart) {
+      debugObj.rate_limit.window_start = rateCheckResult.windowStart;
+    }
   }
   
   // Probes only if debug_probes=true
@@ -420,7 +617,11 @@ function buildDebugObject(
   
   // Seed only if seed_references=true
   if (seedReferences && seedRefs) {
-    debugObj.seed = { references: seedRefs };
+    debugObj.seed = {
+      references: seedRefs,
+      ...(seedCooldownInfo?.mode && { mode: seedCooldownInfo.mode }),
+      ...(seedCooldownInfo?.windowStart && { window_start: seedCooldownInfo.windowStart }),
+    };
   }
   
   return debugObj;
@@ -1040,22 +1241,53 @@ serve(async (req) => {
 
     // Debug flags - all strictly opt-in
     const debugPagination = Boolean((body as any).debug_pagination);
+    // Persist mode: uses DB for durable rate-limit/cooldown (strictly opt-in)
+    const debugPersist = debugPagination && Boolean((body as any).debug_persist);
     // Probes and seed only active if debug_pagination is true
     const debugProbes = debugPagination && Boolean((body as any).debug_probes);
     let seedReferences = debugPagination && Boolean((body as any).seed_references);
     const seedCooldownProbe = debugPagination && Boolean((body as any).seed_cooldown_probe);
 
+    // Get client IP early (needed for rate-limit and seed cooldown)
+    const clientIp = debugPagination ? getClientIp(req) : "";
+
+    // ========== SUPABASE CLIENT (needed early for persist mode) ==========
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    let supabase: any = null;
+
+    if (supabaseUrl && serviceKey) {
+      supabase = createClient(supabaseUrl, serviceKey);
+    }
+
     // ========== ANTI-ABUSE: Rate limit for debug mode (IP + queryHash) ==========
-    let clientIp = "";
-    let rateCheckResult: { allowed: boolean; remaining: number; resetAt: number } | undefined;
+    let rateCheckResult: RateLimitDebugInfo | undefined;
     if (debugPagination) {
-      clientIp = getClientIp(req);
       // Compute queryHash SAFE: only if query is a non-empty string
       const queryHashForRL = (typeof query === "string" && query.trim().length > 0)
         ? await hashQuery(query)
         : "noq";
-      const rlKey = "debug:" + clientIp + ":" + queryHashForRL;
-      rateCheckResult = checkDebugRateLimit(rlKey);
+      
+      if (debugPersist && supabase) {
+        // Durable mode: use DB
+        const keyHash = await hashForPersist(clientIp + ":" + queryHashForRL);
+        const persistResult = await checkDebugRateLimitPersist(
+          supabase,
+          keyHash,
+          DEBUG_RATE_LIMIT.windowMs,
+          DEBUG_RATE_LIMIT.maxRequests
+        );
+        rateCheckResult = {
+          ...persistResult,
+          mode: "persist",
+          windowStart: persistResult.windowStart,
+        };
+      } else {
+        // Best-effort memory mode
+        const rlKey = "debug:" + clientIp + ":" + queryHashForRL;
+        const memResult = checkDebugRateLimitMemory(rlKey);
+        rateCheckResult = { ...memResult, mode: "memory" };
+      }
       
       if (!rateCheckResult.allowed) {
         // Rate limited: EARLY RETURN - do not execute cache, probes, seed, local queries
@@ -1065,12 +1297,14 @@ serve(async (req) => {
             debug_version: 1,
             instance_id: INSTANCE_ID,
             rate_limited: true,
+            mode: rateCheckResult.mode,
             remaining: rateCheckResult.remaining,
             window_ms: DEBUG_RATE_LIMIT.windowMs,
+            ...(rateCheckResult.windowStart && { window_start: rateCheckResult.windowStart }),
           },
         };
         const latency = Date.now() - start;
-        console.log(JSON.stringify({ latency, source: "degraded", rate_limited: true, mode }));
+        console.log(JSON.stringify({ latency, source: "degraded", rate_limited: true, mode, persist: debugPersist }));
         return new Response(JSON.stringify(rateLimitedResponse), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -1080,10 +1314,19 @@ serve(async (req) => {
 
     // ========== ANTI-ABUSE: Seed cooldown check (per IP) ==========
     let seedCooldownActive = false;
+    let seedCooldownInfo: SeedCooldownDebugInfo | undefined;
     if (seedReferences) {
-      const seedCheck = checkSeedCooldown(clientIp);
-      if (!seedCheck.allowed) {
-        seedCooldownActive = true;
+      if (debugPersist && supabase) {
+        // Durable mode: use DB
+        const keyHash = await hashForPersist(clientIp);
+        const persistResult = await checkSeedCooldownPersist(supabase, keyHash, SEED_COOLDOWN_MS);
+        seedCooldownActive = !persistResult.allowed;
+        seedCooldownInfo = { mode: "persist", windowStart: persistResult.windowStart };
+      } else {
+        // Best-effort memory mode
+        const seedCheck = checkSeedCooldownMemory(clientIp);
+        seedCooldownActive = !seedCheck.allowed;
+        seedCooldownInfo = { mode: "memory" };
       }
     }
 
@@ -1106,10 +1349,7 @@ serve(async (req) => {
       force_external: Boolean(body.force_external),
     };
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-    if (!supabaseUrl || !serviceKey) {
+    if (!supabaseUrl || !serviceKey || !supabase) {
       const latency = Date.now() - start;
       console.log(
         JSON.stringify({
@@ -1127,18 +1367,26 @@ serve(async (req) => {
       });
     }
 
-    const supabase: any = createClient(supabaseUrl, serviceKey);
-
     // Seed legal_references ONLY if debug_pagination AND seed_references are both true AND no cooldown
     let seedRefs: SeedResult | undefined;
     if (seedReferences && !seedCooldownActive) {
       seedRefs = await seedLegalReferencesIfEmpty(supabase);
       // Mark seed as executed ONLY if actual seed happened OR if cooldown probe mode
       if (seedRefs && seedRefs.seeded) {
-        markSeedExecuted(clientIp);
+        if (debugPersist) {
+          const keyHash = await hashForPersist(clientIp);
+          await markSeedExecutedPersist(supabase, keyHash, SEED_COOLDOWN_MS);
+        } else {
+          markSeedExecutedMemory(clientIp);
+        }
       } else if (seedRefs && seedRefs.reason === "already_has_rows" && seedCooldownProbe) {
         // Cooldown probe: mark as executed even without writing (for testing cooldown)
-        markSeedExecuted(clientIp);
+        if (debugPersist) {
+          const keyHash = await hashForPersist(clientIp);
+          await markSeedExecutedPersist(supabase, keyHash, SEED_COOLDOWN_MS);
+        } else {
+          markSeedExecutedMemory(clientIp);
+        }
         seedRefs = { seeded: false, inserted: 0, reason: "cooldown_probed_no_write" };
       }
     } else if (seedReferences && seedCooldownActive) {
@@ -1197,7 +1445,7 @@ serve(async (req) => {
       );
 
       // Build debug object using helper function
-      const debugObj = buildDebugObject(debugPagination, debugProbes, seedReferences, debugInfoArticles, debugInfoReferences, probesArticles, probesReferences, seedRefs, rateCheckResult);
+      const debugObj = buildDebugObject(debugPagination, debugProbes, seedReferences, debugInfoArticles, debugInfoReferences, probesArticles, probesReferences, seedRefs, rateCheckResult, seedCooldownInfo);
       const responseBody = debugObj ? { ...localResponse, debug: debugObj } : localResponse;
 
       return new Response(JSON.stringify(responseBody), {
@@ -1236,7 +1484,7 @@ serve(async (req) => {
         );
 
         // Build debug object using helper function
-        const debugObj = buildDebugObject(debugPagination, debugProbes, seedReferences, debugInfoArticles, debugInfoReferences, probesArticles, probesReferences, seedRefs, rateCheckResult);
+        const debugObj = buildDebugObject(debugPagination, debugProbes, seedReferences, debugInfoArticles, debugInfoReferences, probesArticles, probesReferences, seedRefs, rateCheckResult, seedCooldownInfo);
         const responseBody = debugObj ? { ...response, debug: debugObj } : response;
 
         return new Response(JSON.stringify(responseBody), {
@@ -1284,7 +1532,7 @@ serve(async (req) => {
     );
 
     // Build debug object using helper function
-    const debugObj = buildDebugObject(debugPagination, debugProbes, seedReferences, debugInfoArticles, debugInfoReferences, probesArticles, probesReferences, seedRefs, rateCheckResult);
+    const debugObj = buildDebugObject(debugPagination, debugProbes, seedReferences, debugInfoArticles, debugInfoReferences, probesArticles, probesReferences, seedRefs, rateCheckResult, seedCooldownInfo);
     const responseBody = debugObj ? { ...merged, debug: debugObj } : merged;
 
     return new Response(JSON.stringify(responseBody), {
