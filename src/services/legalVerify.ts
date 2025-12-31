@@ -82,6 +82,19 @@ const TOPIC_PATTERNS: Record<string, string[]> = {
 };
 
 // ============================================================
+// HTML ESCAPE FUNCTION (FIXED)
+// ============================================================
+
+function escapeHtml(text: string): string {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// ============================================================
 // MAIN FUNCTION
 // ============================================================
 
@@ -92,12 +105,12 @@ export async function verifyLegalContext(request: LegalVerifyRequest): Promise<L
     });
 
     if (error) {
-      console.error("Legal verify error:", error);
+      console.error("[legalVerify] Edge function error:", error);
       return DEGRADED_RESPONSE;
     }
 
     if (!data || typeof data.summary !== "string") {
-      console.error("Invalid response structure");
+      console.error("[legalVerify] Invalid response structure");
       return DEGRADED_RESPONSE;
     }
 
@@ -111,7 +124,7 @@ export async function verifyLegalContext(request: LegalVerifyRequest): Promise<L
       cost_saved: Boolean(data.cost_saved),
     };
   } catch (e) {
-    console.error("Legal verify exception:", e);
+    console.error("[legalVerify] Exception:", e);
     return DEGRADED_RESPONSE;
   }
 }
@@ -126,7 +139,7 @@ export function shouldAutoVerifyLegal(incident: {
   dysfonctionnement?: string;
   type?: string;
 }): boolean {
-  const text = `${incident.titre || ""} ${incident.faits || ""} ${incident.dysfonctionnement || ""}`.toLowerCase();
+  const text = ((incident.titre || "") + " " + (incident.faits || "") + " " + (incident.dysfonctionnement || "")).toLowerCase();
 
   for (const keyword of LEGAL_KEYWORDS) {
     if (text.includes(keyword)) {
@@ -177,7 +190,7 @@ export function buildLegalQueryFromIncident(incident: {
   institution?: string;
   date_incident?: string;
 }): LegalVerifyRequest {
-  const text = `${incident.titre || ""} ${incident.faits || ""} ${incident.dysfonctionnement || ""}`.toLowerCase();
+  const text = ((incident.titre || "") + " " + (incident.faits || "") + " " + (incident.dysfonctionnement || "")).toLowerCase();
 
   const institutions: string[] = [];
   for (const [code, patterns] of Object.entries(INSTITUTION_PATTERNS)) {
@@ -212,10 +225,10 @@ export function buildLegalQueryFromIncident(incident: {
 
   const queryParts: string[] = [];
   if (incident.dysfonctionnement) {
-    queryParts.push(`Dysfonctionnement: ${incident.dysfonctionnement}`);
+    queryParts.push("Dysfonctionnement: " + incident.dysfonctionnement);
   }
   if (topics.length > 0) {
-    queryParts.push(`Domaines: ${topics.join(", ")}`);
+    queryParts.push("Domaines: " + topics.join(", "));
   }
   queryParts.push("Quelles sont les bases légales applicables?");
 
@@ -240,29 +253,22 @@ export function buildLegalQueryFromIncident(incident: {
 // FORMATTING FUNCTIONS
 // ============================================================
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
 export function formatLegalResult(result: LegalVerifyResponse): string {
   const lines: string[] = [];
 
-  const sourceBadge = result.source === "local" ? "📚 Local" :
-    result.source === "external" ? "🌐 Externe" :
-    result.source === "hybrid" ? "🔗 Hybride" : "⚠️ Dégradé";
+  let sourceBadge = "⚠️ Dégradé";
+  if (result.source === "local") sourceBadge = "📚 Local";
+  else if (result.source === "external") sourceBadge = "🌐 Externe";
+  else if (result.source === "hybrid") sourceBadge = "🔗 Hybride";
 
-  const confidenceBadge = result.confidence >= 0.8 ? "🟢" :
-    result.confidence >= 0.5 ? "🟡" : "🔴";
+  let confidenceBadge = "🔴";
+  if (result.confidence >= 0.8) confidenceBadge = "🟢";
+  else if (result.confidence >= 0.5) confidenceBadge = "🟡";
 
-  lines.push(`## Cadre juridique ${sourceBadge}`);
+  lines.push("## Cadre juridique " + sourceBadge);
   lines.push("");
-  lines.push(`**Confiance:** ${confidenceBadge} ${Math.round(result.confidence * 100)}%`);
-  
+  lines.push("**Confiance:** " + confidenceBadge + " " + Math.round(result.confidence * 100) + "%");
+
   if (result.cost_saved) {
     lines.push("💰 *Coût économisé (sources locales)*");
   }
@@ -275,7 +281,7 @@ export function formatLegalResult(result: LegalVerifyResponse): string {
   if (result.key_points.length > 0) {
     lines.push("### Points clés");
     for (const point of result.key_points) {
-      lines.push(`- ${point}`);
+      lines.push("- " + point);
     }
     lines.push("");
   }
@@ -283,7 +289,7 @@ export function formatLegalResult(result: LegalVerifyResponse): string {
   if (result.citations.length > 0) {
     lines.push("### Sources");
     for (const citation of result.citations) {
-      lines.push(`- [${citation.title}](${citation.url})`);
+      lines.push("- [" + citation.title + "](" + citation.url + ")");
     }
     lines.push("");
   }
@@ -294,67 +300,88 @@ export function formatLegalResult(result: LegalVerifyResponse): string {
       if (w === "no_citations") return "Aucune source trouvée";
       if (w === "perplexity_unavailable") return "Service externe indisponible";
       if (w === "fallback_to_local") return "Utilisation du référentiel local";
-      if (w.startsWith("gatekeeper:")) return `Décision: ${w.replace("gatekeeper:", "")}`;
+      if (w.startsWith("gatekeeper:")) return "Décision: " + w.replace("gatekeeper:", "");
       return w;
     });
-    lines.push(`> ⚠️ ${warningMessages.join(" • ")}`);
+    lines.push("> ⚠️ " + warningMessages.join(" • "));
   }
 
   return lines.join("\n");
 }
 
 export function formatLegalResultHTML(result: LegalVerifyResponse): string {
-  const sourceBadge = result.source === "local" ? 
-    '<span class="badge bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">📚 Local</span>' :
-    result.source === "external" ? 
-    '<span class="badge bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300">🌐 Externe</span>' :
-    result.source === "hybrid" ? 
-    '<span class="badge bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">🔗 Hybride</span>' :
-    '<span class="badge bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300">⚠️ Dégradé</span>';
+  let sourceBadgeClass = "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300";
+  let sourceBadgeText = "⚠️ Dégradé";
 
-  const confidenceClass = result.confidence >= 0.8 ? "text-green-600" :
-    result.confidence >= 0.5 ? "text-yellow-600" : "text-red-600";
+  if (result.source === "local") {
+    sourceBadgeClass = "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300";
+    sourceBadgeText = "📚 Local";
+  } else if (result.source === "external") {
+    sourceBadgeClass = "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300";
+    sourceBadgeText = "🌐 Externe";
+  } else if (result.source === "hybrid") {
+    sourceBadgeClass = "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
+    sourceBadgeText = "🔗 Hybride";
+  }
 
-  let html = `<div class="legal-result space-y-4">`;
-  
-  html += `<div class="flex items-center gap-2 flex-wrap">`;
-  html += `<h3 class="text-lg font-semibold">Cadre juridique</h3>`;
-  html += sourceBadge;
-  html += `<span class="${confidenceClass} text-sm font-medium">${Math.round(result.confidence * 100)}% confiance</span>`;
+  let confidenceClass = "text-red-600 dark:text-red-400";
+  if (result.confidence >= 0.8) {
+    confidenceClass = "text-green-600 dark:text-green-400";
+  } else if (result.confidence >= 0.5) {
+    confidenceClass = "text-yellow-600 dark:text-yellow-400";
+  }
+
+  let html = '<div class="legal-result space-y-4">';
+
+  // Header with badges
+  html += '<div class="flex items-center gap-2 flex-wrap">';
+  html += '<h3 class="text-lg font-semibold">Cadre juridique</h3>';
+  html += '<span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium ' + sourceBadgeClass + '">' + escapeHtml(sourceBadgeText) + '</span>';
+  html += '<span class="text-sm font-medium ' + confidenceClass + '">' + Math.round(result.confidence * 100) + '% confiance</span>';
   if (result.cost_saved) {
-    html += `<span class="text-xs text-muted-foreground">💰 Économisé</span>`;
+    html += '<span class="text-xs text-muted-foreground">💰 Économisé</span>';
   }
-  html += `</div>`;
+  html += '</div>';
 
-  html += `<p class="text-sm">${escapeHtml(result.summary)}</p>`;
+  // Summary
+  html += '<p class="text-sm">' + escapeHtml(result.summary) + '</p>';
 
+  // Key points
   if (result.key_points.length > 0) {
-    html += `<div class="space-y-1">`;
-    html += `<h4 class="text-sm font-medium">Points clés</h4>`;
-    html += `<ul class="list-disc list-inside text-sm space-y-1">`;
+    html += '<div class="space-y-1">';
+    html += '<h4 class="text-sm font-medium">Points clés</h4>';
+    html += '<ul class="list-disc list-inside text-sm space-y-1">';
     for (const point of result.key_points) {
-      html += `<li>${escapeHtml(point)}</li>`;
+      html += '<li>' + escapeHtml(point) + '</li>';
     }
-    html += `</ul></div>`;
+    html += '</ul>';
+    html += '</div>';
   }
 
+  // Citations
   if (result.citations.length > 0) {
-    html += `<div class="space-y-1">`;
-    html += `<h4 class="text-sm font-medium">Sources</h4>`;
-    html += `<ul class="text-sm space-y-1">`;
+    html += '<div class="space-y-1">';
+    html += '<h4 class="text-sm font-medium">Sources</h4>';
+    html += '<ul class="text-sm space-y-1">';
     for (const citation of result.citations) {
-      html += `<li><a href="${escapeHtml(citation.url)}" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">${escapeHtml(citation.title)}</a></li>`;
+      html += '<li>';
+      html += '<a href="' + escapeHtml(citation.url) + '" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">';
+      html += escapeHtml(citation.title);
+      html += '</a>';
+      html += '</li>';
     }
-    html += `</ul></div>`;
+    html += '</ul>';
+    html += '</div>';
   }
 
+  // Warnings
   if (result.warnings && result.warnings.length > 0) {
-    html += `<div class="text-xs text-muted-foreground bg-muted/50 p-2 rounded">`;
-    html += `⚠️ ${result.warnings.join(" • ")}`;
-    html += `</div>`;
+    html += '<div class="text-xs text-muted-foreground bg-muted/50 p-2 rounded">';
+    html += '⚠️ ' + escapeHtml(result.warnings.join(" • "));
+    html += '</div>';
   }
 
-  html += `</div>`;
+  html += '</div>';
   return html;
 }
 
