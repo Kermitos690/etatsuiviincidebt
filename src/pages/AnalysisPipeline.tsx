@@ -107,6 +107,7 @@ export default function AnalysisPipeline() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('pipeline');
   const [analysisSteps, setAnalysisSteps] = useState<AnalysisStep[]>([
+    { name: 'Synchronisation Gmail', status: 'pending', progress: 0 },
     { name: 'Resynchronisation emails', status: 'pending', progress: 0 },
     { name: 'Téléchargement pièces jointes', status: 'pending', progress: 0 },
     { name: 'Pass 1: Extraction des faits', status: 'pending', progress: 0 },
@@ -263,15 +264,80 @@ export default function AnalysisPipeline() {
     }
     
     try {
-      // Step 1: Resync emails
+      // Step 0: Gmail Sync (NEW - fetch emails from Gmail)
       updateStep(0, { status: 'running', progress: 10 });
-      toast.info('Étape 1/5: Resynchronisation des emails...');
+      toast.info('Étape 1/6: Synchronisation Gmail...');
+      
+      const gmailSyncRes = await supabase.functions.invoke('gmail-sync', {
+        body: { 
+          syncMode: hasFilters ? 'filtered' : 'all',
+          ...filterBody
+        }
+      });
+      
+      // Gmail sync returns immediately with syncId for background processing
+      // We need to poll for completion
+      let emailsSynced = 0;
+      if (gmailSyncRes.data?.syncId) {
+        // Poll sync status for up to 5 minutes
+        const syncId = gmailSyncRes.data.syncId;
+        let attempts = 0;
+        const maxAttempts = 150; // 5 minutes with 2s intervals
+        
+        while (attempts < maxAttempts) {
+          await new Promise(r => setTimeout(r, 2000));
+          const { data: syncStatus } = await supabase
+            .from('sync_status')
+            .select('status, processed_emails, new_emails, total_emails, stats')
+            .eq('id', syncId)
+            .maybeSingle();
+          
+          if (syncStatus?.status === 'completed' || syncStatus?.status === 'error') {
+            emailsSynced = syncStatus.new_emails || syncStatus.processed_emails || 0;
+            const statsObj = syncStatus.stats as Record<string, unknown> | null;
+            const stoppedBecause = statsObj?.stoppedBecause as string || 'terminé';
+            updateStep(0, { 
+              status: syncStatus.status === 'error' ? 'error' : 'completed', 
+              progress: 100, 
+              details: `${emailsSynced} nouveaux emails (${stoppedBecause})`,
+              count: emailsSynced
+            });
+            break;
+          }
+          
+          // Update progress
+          const processed = syncStatus?.processed_emails || 0;
+          const total = syncStatus?.total_emails || 1;
+          const pct = Math.min(Math.round((processed / total) * 100), 99);
+          updateStep(0, { progress: pct, details: `${processed}/${total} emails...` });
+          attempts++;
+        }
+      } else if (gmailSyncRes.data?.emailsProcessed !== undefined) {
+        emailsSynced = gmailSyncRes.data.emailsProcessed;
+        updateStep(0, { 
+          status: 'completed', 
+          progress: 100, 
+          details: `${emailsSynced} emails synchronisés`,
+          count: emailsSynced
+        });
+      } else {
+        updateStep(0, { 
+          status: 'completed', 
+          progress: 100, 
+          details: gmailSyncRes.error ? `Erreur: ${gmailSyncRes.error}` : 'Sync terminée',
+          count: 0
+        });
+      }
+
+      // Step 1: Resync email bodies
+      updateStep(1, { status: 'running', progress: 10 });
+      toast.info('Étape 2/6: Resynchronisation des emails...');
       
       const resyncRes = await supabase.functions.invoke('resync-email-bodies', {
         body: { batchSize: 50 }
       });
       
-      updateStep(0, { 
+      updateStep(1, { 
         status: 'completed', 
         progress: 100, 
         details: `${resyncRes.data?.updated || 0} emails mis à jour`,
@@ -279,14 +345,14 @@ export default function AnalysisPipeline() {
       });
 
       // Step 2: Download attachments
-      updateStep(1, { status: 'running', progress: 10 });
-      toast.info('Étape 2/5: Téléchargement des pièces jointes...');
+      updateStep(2, { status: 'running', progress: 10 });
+      toast.info('Étape 3/6: Téléchargement des pièces jointes...');
       
       const attachRes = await supabase.functions.invoke('download-all-attachments', {
         body: { batchSize: 50 }
       });
       
-      updateStep(1, { 
+      updateStep(2, { 
         status: 'completed', 
         progress: 100, 
         details: `${attachRes.data?.downloaded || 0} pièces jointes`,
@@ -294,14 +360,14 @@ export default function AnalysisPipeline() {
       });
 
       // Step 3: Extract facts (Pass 1) - with filters
-      updateStep(2, { status: 'running', progress: 10 });
-      toast.info('Étape 3/5: Extraction des faits (Pass 1)...');
+      updateStep(3, { status: 'running', progress: 10 });
+      toast.info('Étape 4/6: Extraction des faits (Pass 1)...');
       
       const factsRes = await supabase.functions.invoke('extract-email-facts', {
         body: { batchSize: 50, ...filterBody }
       });
       
-      updateStep(2, { 
+      updateStep(3, { 
         status: 'completed', 
         progress: 100, 
         details: `${factsRes.data?.results?.processed || 0} emails traités`,
@@ -309,14 +375,14 @@ export default function AnalysisPipeline() {
       });
 
       // Step 4: Analyze threads (Pass 2) - with filters
-      updateStep(3, { status: 'running', progress: 10 });
-      toast.info('Étape 4/5: Analyse des threads (Pass 2)...');
+      updateStep(4, { status: 'running', progress: 10 });
+      toast.info('Étape 5/6: Analyse des threads (Pass 2)...');
       
       const threadRes = await supabase.functions.invoke('analyze-thread-complete', {
         body: { batchSize: 10, ...filterBody }
       });
       
-      updateStep(3, { 
+      updateStep(4, { 
         status: 'completed', 
         progress: 100, 
         details: `${threadRes.data?.results?.analyzed || 0} threads analysés`,
@@ -324,14 +390,14 @@ export default function AnalysisPipeline() {
       });
 
       // Step 5: Cross-reference (Pass 3) - with filters
-      updateStep(4, { status: 'running', progress: 10 });
-      toast.info('Étape 5/5: Corroboration croisée (Pass 3)...');
+      updateStep(5, { status: 'running', progress: 10 });
+      toast.info('Étape 6/6: Corroboration croisée (Pass 3)...');
       
       const corrobRes = await supabase.functions.invoke('cross-reference-analysis', {
         body: { ...filterBody }
       });
       
-      updateStep(4, { 
+      updateStep(5, { 
         status: 'completed', 
         progress: 100, 
         details: `${corrobRes.data?.results?.corroborations || 0} corroborations créées`,
