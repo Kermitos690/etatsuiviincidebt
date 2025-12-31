@@ -138,10 +138,11 @@ export default function AnalysisPipeline() {
     }
   });
 
-  // Fetch stats
+  // Fetch stats with filtered count
   const { data: stats, refetch: refetchStats } = useQuery({
-    queryKey: ['analysis-pipeline-stats'],
+    queryKey: ['analysis-pipeline-stats', gmailConfig?.domains, gmailConfig?.keywords, useFilters],
     queryFn: async () => {
+      // Base queries
       const [emailsRes, emailsEmptyRes, factsRes, threadsRes, corroborationsRes, attachmentsRes] = await Promise.all([
         supabase.from('emails').select('id', { count: 'exact', head: true }),
         supabase.from('emails').select('id', { count: 'exact', head: true }).or('body.is.null,body.eq.'),
@@ -151,13 +152,38 @@ export default function AnalysisPipeline() {
         supabase.from('email_attachments').select('id', { count: 'exact', head: true }),
       ]);
 
+      // Calculate filtered emails count
+      let filteredCount = emailsRes.count || 0;
+      const domains = gmailConfig?.domains || [];
+      const keywords = gmailConfig?.keywords || [];
+      const hasFilters = useFilters && (domains.length > 0 || keywords.length > 0);
+
+      if (hasFilters) {
+        let filteredQuery = supabase.from('emails').select('id', { count: 'exact', head: true });
+        
+        if (domains.length > 0) {
+          const domainConditions = domains.map((d: string) => `sender.ilike.%${d}%`).join(',');
+          filteredQuery = filteredQuery.or(domainConditions);
+        }
+        
+        if (keywords.length > 0) {
+          const keywordConditions = keywords.map((k: string) => `subject.ilike.%${k}%`).join(',');
+          filteredQuery = filteredQuery.or(keywordConditions);
+        }
+
+        const { count } = await filteredQuery;
+        filteredCount = count || 0;
+      }
+
       return {
-        totalEmails: emailsRes.count || 0,
+        emailsTotalSynced: emailsRes.count || 0,
+        emailsMatchedFilters: filteredCount,
         emptyEmails: emailsEmptyRes.count || 0,
         factExtracted: factsRes.count || 0,
         threadsAnalyzed: threadsRes.count || 0,
         corroborations: corroborationsRes.count || 0,
         attachments: attachmentsRes.count || 0,
+        filtersActive: hasFilters,
       };
     }
   });
@@ -456,16 +482,34 @@ export default function AnalysisPipeline() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
+          {/* Total Synced */}
           <Card className="glass-card">
             <CardContent className="pt-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-primary/20">
-                  <Mail className="h-5 w-5 text-primary" />
+                <div className="p-2 rounded-lg bg-slate-500/20">
+                  <Mail className="h-5 w-5 text-slate-500" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{stats?.totalEmails || 0}</p>
-                  <p className="text-xs text-muted-foreground">Emails</p>
+                  <p className="text-2xl font-bold">{stats?.emailsTotalSynced || 0}</p>
+                  <p className="text-xs text-muted-foreground">Total sync</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Filtered Emails */}
+          <Card className={`glass-card ${stats?.filtersActive ? 'border-primary/50' : ''}`}>
+            <CardContent className="pt-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/20">
+                  <Filter className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{stats?.emailsMatchedFilters || 0}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {stats?.filtersActive ? 'Filtrés' : 'À analyser'}
+                  </p>
                 </div>
               </div>
             </CardContent>
