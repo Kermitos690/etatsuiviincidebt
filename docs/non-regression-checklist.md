@@ -80,25 +80,27 @@ Checklist à valider avant chaque déploiement pour garantir la non-régression.
 
 ## 3. Tests Automatisés
 
-### ✅ Unit Tests (`src/__tests__/`)
+### ✅ Unit Tests (`tests/`)
 
 ```bash
-npm test
+npx vitest
 ```
 
-- [ ] `legal-verify-utils.test.ts` → PASS
+- [ ] `tests/legal-verify-utils.test.ts` → PASS
   - isHostMatch
   - calculateRelevance
   - clampConfidence
   - uniqueCitations
   - shouldCallPerplexity
+  - paginatedFetch
 
-- [ ] `email-cleanup.test.ts` → PASS
+- [ ] `tests/email-cleanup.test.ts` → PASS
   - extractDomain
   - extractEmail
   - isEmailRelevant
   - batchDelete
   - handleSwipe state management
+  - isGenericDomain
 
 ### ✅ Type Check
 
@@ -114,10 +116,10 @@ npx tsc --noEmit
 
 | Constante | Valeur | Fichier |
 |-----------|--------|---------|
-| `BATCH_SIZE` (emails) | 200 | EmailCleanup.tsx |
-| `BATCH_SIZE` (pagination) | 500 | legal-verify/index.ts |
-| `MAX_ROWS` | 2000 | legal-verify/index.ts |
-| `CACHE_TTL_DAYS` | 7 | legal-verify/index.ts |
+| `EMAIL_CLEANUP_BATCH_SIZE` | 200 | src/utils/emailCleanup.utils.ts |
+| `LEGAL_VERIFY_BATCH_SIZE` | 500 | src/utils/legalVerify.utils.ts |
+| `LEGAL_VERIFY_MAX_ROWS` | 2000 | src/utils/legalVerify.utils.ts |
+| `CACHE_TTL_DAYS` | 7 | src/utils/legalVerify.utils.ts |
 
 ---
 

@@ -1,139 +1,42 @@
 /**
  * Unit tests for legal-verify utility functions
- * These tests ensure non-regression on core logic
+ * Tests the exported functions from src/utils/legalVerify.utils.ts
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import {
+  isHostMatch,
+  calculateRelevance,
+  clampConfidence,
+  uniqueCitations,
+  shouldCallPerplexity,
+  paginatedFetch,
+  LEGAL_VERIFY_BATCH_SIZE,
+  LEGAL_VERIFY_MAX_ROWS,
+  CACHE_TTL_DAYS,
+  type LegalCitation,
+  type LocalLegalMatch,
+} from '../src/utils/legalVerify.utils';
 
 // ============================================================
-// CONSTANTS (mirrored from edge function)
+// CONSTANTS TESTS
 // ============================================================
 
-const BATCH_SIZE = 500;
-const MAX_ROWS = 2000;
-const CACHE_TTL_DAYS = 7;
+describe("constants", () => {
+  it("has correct batch size", () => {
+    expect(LEGAL_VERIFY_BATCH_SIZE).toBe(500);
+  });
+
+  it("has correct max rows", () => {
+    expect(LEGAL_VERIFY_MAX_ROWS).toBe(2000);
+  });
+
+  it("has correct cache TTL", () => {
+    expect(CACHE_TTL_DAYS).toBe(7);
+  });
+});
 
 // ============================================================
-// UTILITY FUNCTIONS (extracted for testing)
-// ============================================================
-
-function isHostMatch(hostname: string, domain: string): boolean {
-  return hostname === domain || hostname.endsWith("." + domain);
-}
-
-function calculateRelevance(text: string, query: string, keywords?: string[]): number {
-  const q = (query || "").toLowerCase();
-  const t = (text || "").toLowerCase();
-  const qWords = q.split(/\s+/).map((w) => w.trim()).filter((w) => w.length >= 3);
-
-  let hits = 0;
-  for (const w of qWords) {
-    if (t.includes(w)) hits += 1;
-  }
-
-  let kwHits = 0;
-  if (Array.isArray(keywords)) {
-    for (const k of keywords) {
-      const kk = String(k || "").toLowerCase();
-      if (kk && q.includes(kk)) kwHits += 1;
-    }
-  }
-
-  const score = Math.min(1, hits * 0.12 + kwHits * 0.22);
-  return score;
-}
-
-function clampConfidence(n: unknown): number {
-  const v = typeof n === "number" ? n : Number(n);
-  if (!Number.isFinite(v)) return 0;
-  return Math.max(0, Math.min(1, v));
-}
-
-interface LegalCitation {
-  title: string;
-  url: string;
-}
-
-function uniqueCitations(citations: LegalCitation[], max: number): LegalCitation[] {
-  const seen = new Set<string>();
-  const out: LegalCitation[] = [];
-  for (const c of citations) {
-    const url = String(c?.url || "").trim();
-    if (!url) continue;
-    if (seen.has(url)) continue;
-    seen.add(url);
-    out.push({ title: String(c?.title || "source"), url });
-    if (out.length >= max) break;
-  }
-  return out;
-}
-
-type LegalVerifyMode = "legal" | "procedure" | "roles" | "deadlines" | "definitions" | "jurisprudence";
-
-interface LegalVerifyRequest {
-  query: string;
-  mode?: LegalVerifyMode;
-  force_external?: boolean;
-}
-
-interface LocalLegalMatch {
-  code_name: string;
-  article_number: string;
-  relevance: number;
-}
-
-interface GatekeeperDecision {
-  needsExternal: boolean;
-  reason: string;
-}
-
-const EXTERNAL_REQUIRED_KEYWORDS = [
-  "jurisprudence", "atf", "arrêt", "tribunal fédéral", "décision",
-  "jugement", "recours accepté", "rejeté", "délai exact", "combien de jours", "quel délai"
-];
-
-const LOCAL_SUFFICIENT_KEYWORDS = [
-  "principe", "définition", "rôle", "compétence", "curateur",
-  "curatelle", "protection adulte", "lpd", "données personnelles", "droit d'accès"
-];
-
-function shouldCallPerplexity(request: LegalVerifyRequest, localMatches: LocalLegalMatch[]): GatekeeperDecision {
-  const q = (request.query || "").toLowerCase();
-  const mode = request.mode || "legal";
-
-  if (request.force_external) return { needsExternal: true, reason: "force_external" };
-  if (mode === "jurisprudence") return { needsExternal: true, reason: "jurisprudence" };
-
-  for (const kw of EXTERNAL_REQUIRED_KEYWORDS) {
-    if (q.includes(kw)) return { needsExternal: true, reason: `external_keyword:${kw}` };
-  }
-
-  if (mode === "deadlines") {
-    const patterns = ["exact", "précis", "combien", "jours", "quel délai"];
-    if (patterns.some((p) => q.includes(p))) {
-      return { needsExternal: true, reason: "deadline_precision" };
-    }
-  }
-
-  const high = localMatches.filter((m) => m.relevance >= 0.5);
-  if (high.length >= 2) return { needsExternal: false, reason: "local>=2_high" };
-
-  if ((mode === "roles" || mode === "definitions") && localMatches.length >= 1) {
-    return { needsExternal: false, reason: "local_for_mode" };
-  }
-
-  if (localMatches.length >= 1) return { needsExternal: false, reason: "local>=1" };
-
-  for (const kw of LOCAL_SUFFICIENT_KEYWORDS) {
-    if (q.includes(kw)) {
-      return { needsExternal: true, reason: `local_keyword_but_no_match:${kw}` };
-    }
-  }
-
-  return { needsExternal: true, reason: "no_local_match" };
-}
-
-// ============================================================
-// TESTS
+// isHostMatch TESTS
 // ============================================================
 
 describe("isHostMatch", () => {
@@ -154,6 +57,10 @@ describe("isHostMatch", () => {
   });
 });
 
+// ============================================================
+// calculateRelevance TESTS
+// ============================================================
+
 describe("calculateRelevance", () => {
   it("returns 0 for no matches", () => {
     const score = calculateRelevance("hello world", "xyz abc", []);
@@ -168,7 +75,7 @@ describe("calculateRelevance", () => {
 
   it("increases score for keyword matches", () => {
     const score = calculateRelevance("article sur lpd", "protection lpd", ["lpd"]);
-    expect(score).toBeGreaterThan(0.2); // keyword hit
+    expect(score).toBeGreaterThan(0.2);
   });
 
   it("clamps score to max 1", () => {
@@ -187,17 +94,26 @@ describe("calculateRelevance", () => {
   });
 });
 
+// ============================================================
+// clampConfidence TESTS
+// ============================================================
+
 describe("clampConfidence", () => {
   it("clamps to 0 for negative", () => {
     expect(clampConfidence(-0.5)).toBe(0);
+    expect(clampConfidence(-1)).toBe(0);
   });
 
   it("clamps to 1 for values > 1", () => {
     expect(clampConfidence(1.5)).toBe(1);
+    expect(clampConfidence(2)).toBe(1);
   });
 
   it("passes through valid values", () => {
     expect(clampConfidence(0.5)).toBe(0.5);
+    expect(clampConfidence(0)).toBe(0);
+    expect(clampConfidence(1)).toBe(1);
+    expect(clampConfidence(0.4)).toBe(0.4);
   });
 
   it("handles non-number inputs", () => {
@@ -207,6 +123,10 @@ describe("clampConfidence", () => {
     expect(clampConfidence(undefined)).toBe(0);
   });
 });
+
+// ============================================================
+// uniqueCitations TESTS
+// ============================================================
 
 describe("uniqueCitations", () => {
   it("removes duplicates by URL", () => {
@@ -245,6 +165,10 @@ describe("uniqueCitations", () => {
     expect(uniqueCitations([], 5)).toEqual([]);
   });
 });
+
+// ============================================================
+// shouldCallPerplexity TESTS
+// ============================================================
 
 describe("shouldCallPerplexity", () => {
   it("returns true for force_external", () => {
@@ -307,48 +231,68 @@ describe("shouldCallPerplexity", () => {
 });
 
 // ============================================================
-// PAGINATION LOGIC TESTS
+// paginatedFetch TESTS
 // ============================================================
 
-describe("Pagination constants", () => {
-  it("has correct batch size", () => {
-    expect(BATCH_SIZE).toBe(500);
+describe("paginatedFetch", () => {
+  it("paginates until last page (data < batchSize)", async () => {
+    const pages = [
+      Array.from({ length: 500 }, (_, i) => ({ id: i })),
+      Array.from({ length: 300 }, (_, i) => ({ id: 500 + i })),
+    ];
+    let callIndex = 0;
+
+    const fetchPage = vi.fn(async () => {
+      const data = pages[callIndex] ?? [];
+      callIndex++;
+      return { data, error: null };
+    });
+
+    const data = await paginatedFetch<{ id: number }>(fetchPage, 500, 2000);
+
+    expect(data).toHaveLength(800);
+    expect(fetchPage).toHaveBeenCalledTimes(2);
   });
 
-  it("has correct max rows", () => {
-    expect(MAX_ROWS).toBe(2000);
+  it("stops when reaching maxRows", async () => {
+    // Create pages that would exceed maxRows
+    const fetchPage = vi.fn(async () => ({
+      data: Array.from({ length: 500 }, (_, i) => ({ id: i })),
+      error: null
+    }));
+
+    const data = await paginatedFetch<{ id: number }>(fetchPage, 500, 1500);
+
+    // Should stop at 1500 even though pages have 500 each
+    expect(data.length).toBeLessThanOrEqual(1500);
+    expect(fetchPage).toHaveBeenCalledTimes(3); // 500 + 500 + 500 = 1500
   });
 
-  it("has correct cache TTL", () => {
-    expect(CACHE_TTL_DAYS).toBe(7);
-  });
-});
+  it("stops on error", async () => {
+    let callCount = 0;
+    const fetchPage = vi.fn(async () => {
+      callCount++;
+      if (callCount === 2) {
+        return { data: null, error: new Error("DB error") };
+      }
+      return { data: [{ id: 1 }], error: null };
+    });
 
-// Mock paginatedFetch behavior test
-describe("paginatedFetch behavior", () => {
-  it("should stop when data < batch size", () => {
-    // Simulate: first batch returns 300 items (< 500)
-    const batchSize = 500;
-    const firstBatchLength = 300;
-    expect(firstBatchLength < batchSize).toBe(true);
-    // In real impl, loop would break here
-  });
+    const data = await paginatedFetch<{ id: number }>(fetchPage);
 
-  it("should stop when reaching maxRows", () => {
-    // Simulate: 4 batches of 500 = 2000, then stop
-    const batchSize = 500;
-    const maxRows = 2000;
-    const batches = Math.ceil(maxRows / batchSize);
-    expect(batches).toBe(4);
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+    expect(data).toHaveLength(1); // Only first page
   });
 
-  it("should accumulate all rows", () => {
-    // Simulate accumulation
-    const allRows: number[] = [];
-    const batches = [[1, 2, 3], [4, 5, 6]];
-    for (const batch of batches) {
-      allRows.push(...batch);
-    }
-    expect(allRows).toEqual([1, 2, 3, 4, 5, 6]);
+  it("handles empty first page", async () => {
+    const fetchPage = vi.fn(async () => ({
+      data: [],
+      error: null
+    }));
+
+    const data = await paginatedFetch<{ id: number }>(fetchPage);
+
+    expect(data).toHaveLength(0);
+    expect(fetchPage).toHaveBeenCalledTimes(1);
   });
 });

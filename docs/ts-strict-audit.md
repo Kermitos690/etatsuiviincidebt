@@ -129,30 +129,37 @@ function escapeHtml(text: string): string {
 
 ## 5. Corrections Appliquées (Session Actuelle)
 
-### 5.1 `supabase/functions/legal-verify/index.ts`
-- ✅ `paginatedFetch` converti en générique `<T = any>`
-- ✅ Retour typé `Promise<T[]>`
-- ✅ Type alias `SupabaseClientAny = any` pour éviter erreurs de typage complexe
+### 5.1 `src/utils/legalVerify.utils.ts` (NOUVEAU)
+- ✅ Fonctions utilitaires exportées: `isHostMatch`, `calculateRelevance`, `clampConfidence`, `uniqueCitations`, `shouldCallPerplexity`, `paginatedFetch`
+- ✅ Constantes exportées: `LEGAL_VERIFY_BATCH_SIZE`, `LEGAL_VERIFY_MAX_ROWS`, `CACHE_TTL_DAYS`
+- ✅ Types exportés: `LegalCitation`, `LegalVerifyRequest`, `LocalLegalMatch`, `GatekeeperDecision`
 
-### 5.2 `src/components/dashboard/TopIncidentsTable.tsx`
+### 5.2 `src/utils/emailCleanup.utils.ts` (NOUVEAU)
+- ✅ Fonctions utilitaires exportées: `extractDomain`, `extractEmail`, `isEmailRelevant`, `batchDelete`, `isGenericDomain`
+- ✅ Constantes exportées: `EMAIL_CLEANUP_BATCH_SIZE`, `GENERIC_DOMAINS`
+- ✅ Types exportés: `EmailRow`, `GmailConfig`, `RelevanceResult`, `BatchDeleteResult`
+- ✅ Bug fix: `extractDomain` corrigé pour ne pas inclure le `>` final
+
+### 5.3 `tests/legal-verify-utils.test.ts`
+- ✅ Import depuis `../src/utils/legalVerify.utils`
+- ✅ Tests réels avec mocks `vi.fn()`
+- ✅ Test `paginatedFetch` avec simulation de pages
+
+### 5.4 `tests/email-cleanup.test.ts`
+- ✅ Import depuis `../src/utils/emailCleanup.utils`
+- ✅ Tests `extractDomain` corrigés (expect "example.com" pas "example.com>")
+- ✅ Tests `batchDelete` avec mock et compteur
+
+### 5.5 `src/components/dashboard/TopIncidentsTable.tsx`
 - ✅ `forwardRef` importé
 - ✅ Signature `forwardRef<HTMLDivElement, TopIncidentsTableProps>`
 - ✅ `ref` attaché au `<div>` racine
 - ✅ `displayName` défini
 
-### 5.3 `src/components/layout/MobileBottomNav.tsx`
+### 5.6 `src/components/layout/MobileBottomNav.tsx`
 - ✅ `forwardRef<HTMLElement, Record<string, never>>`
 - ✅ `ref` attaché au `<nav>` racine
 - ✅ `displayName` défini
-
-### 5.4 `src/pages/EmailCleanup.tsx`
-- ✅ Interface `EmailRow` ajoutée
-- ✅ `handleSwipe` avec try/catch/finally
-- ✅ `batchDelete` helper avec retour typé
-
-### 5.5 `src/services/legalVerify.ts`
-- ✅ `escapeHtml` avec regex valides (pas de quotes invalides)
-- ✅ Types stricts pour `LegalVerifyRequest`, `LegalVerifyResponse`
 
 ---
 
@@ -169,6 +176,7 @@ Garder le mode permissif actuel avec:
 1. **Types locaux** pour les interfaces critiques
 2. **Type guards** pour les réponses API
 3. **Generics** pour les fonctions utilitaires
+4. **Fichiers utils séparés** avec exports testables
 
 ---
 
@@ -178,17 +186,23 @@ Garder le mode permissif actuel avec:
 Erreurs TypeScript initiales: 0 (mode permissif)
 Erreurs TypeScript finales:   0
 Warnings React forwardRef:    0
+Tests unitaires:              ✅ PASS
 Build status:                 ✅ CLEAN
 ```
 
 ---
 
-## 8. Fichiers de Types Utiles Créés
+## 8. Fichiers Utils Créés
 
-Aucun fichier de types supplémentaire n'a été créé car:
-- Les types Supabase sont auto-générés dans `src/integrations/supabase/types.ts`
-- Les interfaces locales suffisent pour les composants
-- Le mode permissif ne requiert pas de types exhaustifs
+| Fichier | Exports |
+|---------|---------|
+| `src/utils/emailCleanup.utils.ts` | Fonctions et types pour Email Cleanup |
+| `src/utils/legalVerify.utils.ts` | Fonctions et types pour Legal Verify |
+
+Ces fichiers permettent:
+- Tests unitaires avec imports réels
+- Réutilisation dans Edge Functions et Frontend
+- Constantes centralisées
 
 ---
 

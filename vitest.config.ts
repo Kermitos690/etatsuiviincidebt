@@ -11,6 +11,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Allow tests to import from src/ directly
+      '../src': path.resolve(__dirname, './src'),
     },
   },
 });
