@@ -296,6 +296,7 @@ async function saveToCache(
 import { paginatedFetch as paginatedFetchPure } from "../_shared/paginatedFetch.ts";
 
 // Wrapper for Supabase-specific pagination (uses pure module internally)
+// Pagination debug info (without probes - probes are separate)
 type PaginationDebugInfo = {
   enabled: boolean;
   batchSize: number;
@@ -304,14 +305,53 @@ type PaginationDebugInfo = {
   ranges: { fromIndex: number; toIndex: number }[];
   rowsFetched: number;
   stoppedBecause: "not_stopped" | "error" | "empty_page" | "last_page" | "max_rows";
-  // Probe diagnostics (only for debug mode)
-  probeSansFiltre?: number | null;
-  probeAvecFiltre?: number | null;
-  probeError?: string | null;
   // Relevance debug (only for references)
   topRelevanceScores?: number[];
   topKeywordsMatched?: string[];
 };
+
+// Probe diagnostics (separate from pagination)
+type ProbeDebugInfo = {
+  probeSansFiltre?: number | null;
+  probeAvecFiltre?: number | null;
+  probeError?: string | null;
+};
+
+// Helper to build the debug object in a stable format
+function buildDebugObject(
+  debugPagination: boolean,
+  debugProbes: boolean,
+  seedReferences: boolean,
+  debugInfoArticles: PaginationDebugInfo | undefined,
+  debugInfoReferences: PaginationDebugInfo | undefined,
+  probesArticles: ProbeDebugInfo | undefined,
+  probesReferences: ProbeDebugInfo | undefined,
+  seedRefs: SeedResult | undefined
+): any | undefined {
+  if (!debugPagination) return undefined;
+  
+  const debugObj: any = {
+    debug_version: 1,
+    pagination: {
+      articles: debugInfoArticles,
+      references: debugInfoReferences,
+    },
+  };
+  
+  // Probes only if debug_probes=true
+  if (debugProbes && (probesArticles || probesReferences)) {
+    debugObj.probes = {};
+    if (probesArticles) debugObj.probes.articles = probesArticles;
+    if (probesReferences) debugObj.probes.references = probesReferences;
+  }
+  
+  // Seed only if seed_references=true
+  if (seedReferences && seedRefs) {
+    debugObj.seed = { references: seedRefs };
+  }
+  
+  return debugObj;
+}
 
 async function paginatedFetchSupabase(
   supabase: any,
@@ -393,32 +433,33 @@ async function queryLocalLegalArticles(
   query: string,
   _topics?: string[],
   debugInfo?: PaginationDebugInfo,
-  enableProbes?: boolean
+  enableProbes?: boolean,
+  probeInfo?: ProbeDebugInfo
 ): Promise<LocalLegalMatch[]> {
   try {
     // Probe diagnostics ONLY if debug AND enableProbes are both true
-    if (debugInfo && enableProbes) {
+    if (debugInfo && enableProbes && probeInfo) {
       try {
         // Probe sans filtre
         const probeSans = await supabase
           .from("legal_articles")
           .select("id", { count: "exact", head: true });
-        debugInfo.probeSansFiltre = probeSans.count ?? null;
+        probeInfo.probeSansFiltre = probeSans.count ?? null;
         
         // Probe avec filtre (is_current = true)
         const probeAvec = await supabase
           .from("legal_articles")
           .select("id", { count: "exact", head: true })
           .eq("is_current", true);
-        debugInfo.probeAvecFiltre = probeAvec.count ?? null;
+        probeInfo.probeAvecFiltre = probeAvec.count ?? null;
         
         if (probeSans.error) {
-          debugInfo.probeError = probeSans.error.message;
+          probeInfo.probeError = probeSans.error.message;
         } else if (probeAvec.error) {
-          debugInfo.probeError = probeAvec.error.message;
+          probeInfo.probeError = probeAvec.error.message;
         }
       } catch (probeErr: any) {
-        debugInfo.probeError = probeErr?.message || "probe_failed";
+        probeInfo.probeError = probeErr?.message || "probe_failed";
       }
     }
 
@@ -474,26 +515,27 @@ async function queryLocalLegalReferences(
   supabase: any,
   query: string,
   debugInfo?: PaginationDebugInfo,
-  enableProbes?: boolean
+  enableProbes?: boolean,
+  probeInfo?: ProbeDebugInfo
 ): Promise<LocalLegalMatch[]> {
   try {
     // Probe diagnostics ONLY if debug AND enableProbes are both true
-    if (debugInfo && enableProbes) {
+    if (debugInfo && enableProbes && probeInfo) {
       try {
         // Probe sans filtre (legal_references n'a pas de filtre ici)
         const probeSans = await supabase
           .from("legal_references")
           .select("id", { count: "exact", head: true });
-        debugInfo.probeSansFiltre = probeSans.count ?? null;
+        probeInfo.probeSansFiltre = probeSans.count ?? null;
         
         // Probe avec filtre = même chose car pas de filtre appliqué
-        debugInfo.probeAvecFiltre = probeSans.count ?? null;
+        probeInfo.probeAvecFiltre = probeSans.count ?? null;
         
         if (probeSans.error) {
-          debugInfo.probeError = probeSans.error.message;
+          probeInfo.probeError = probeSans.error.message;
         }
       } catch (probeErr: any) {
-        debugInfo.probeError = probeErr?.message || "probe_failed";
+        probeInfo.probeError = probeErr?.message || "probe_failed";
       }
     }
 
@@ -935,6 +977,10 @@ serve(async (req) => {
     const debugInfoReferences: PaginationDebugInfo | undefined = debugPagination
       ? { enabled: true, batchSize: 1, maxRows: 2000, calls: 0, ranges: [], rowsFetched: 0, stoppedBecause: "not_stopped" }
       : undefined;
+    
+    // Probe info objects - only created if debug_probes is true
+    const probesArticles: ProbeDebugInfo | undefined = debugProbes ? {} : undefined;
+    const probesReferences: ProbeDebugInfo | undefined = debugProbes ? {} : undefined;
 
     const request: LegalVerifyRequest = {
       query,
@@ -997,11 +1043,10 @@ serve(async (req) => {
       }
     }
 
-    // Local first - pass separate debug info to each table query
-    // Pass enableProbes flag to control probe execution
+    // Local first - pass separate debug info and probe info to each table query
     const [localArticles, localRefs] = await Promise.all([
-      queryLocalLegalArticles(supabase, query, request.context?.topics, debugInfoArticles, debugProbes),
-      queryLocalLegalReferences(supabase, query, debugInfoReferences, debugProbes),
+      queryLocalLegalArticles(supabase, query, request.context?.topics, debugInfoArticles, debugProbes, probesArticles),
+      queryLocalLegalReferences(supabase, query, debugInfoReferences, debugProbes, probesReferences),
     ]);
 
     const localMatches = [...localArticles, ...localRefs].sort((a, b) => b.relevance - a.relevance);
@@ -1024,15 +1069,9 @@ serve(async (req) => {
         })
       );
 
-      // Build debug object only if debug_pagination is true
-      let responseBody: any = localResponse;
-      if (debugPagination) {
-        const debugObj: any = { pagination: { articles: debugInfoArticles, references: debugInfoReferences } };
-        if (seedReferences && seedRefs) {
-          debugObj.seed = { references: seedRefs };
-        }
-        responseBody = { ...localResponse, debug: debugObj };
-      }
+      // Build debug object using helper function
+      const debugObj = buildDebugObject(debugPagination, debugProbes, seedReferences, debugInfoArticles, debugInfoReferences, probesArticles, probesReferences, seedRefs);
+      const responseBody = debugObj ? { ...localResponse, debug: debugObj } : localResponse;
 
       return new Response(JSON.stringify(responseBody), {
         status: 200,
@@ -1069,15 +1108,9 @@ serve(async (req) => {
           })
         );
 
-        // Build debug object only if debug_pagination is true
-        let responseBody: any = response;
-        if (debugPagination) {
-          const debugObj: any = { pagination: { articles: debugInfoArticles, references: debugInfoReferences } };
-          if (seedReferences && seedRefs) {
-            debugObj.seed = { references: seedRefs };
-          }
-          responseBody = { ...response, debug: debugObj };
-        }
+        // Build debug object using helper function
+        const debugObj = buildDebugObject(debugPagination, debugProbes, seedReferences, debugInfoArticles, debugInfoReferences, probesArticles, probesReferences, seedRefs);
+        const responseBody = debugObj ? { ...response, debug: debugObj } : response;
 
         return new Response(JSON.stringify(responseBody), {
           status: 200,
@@ -1123,15 +1156,9 @@ serve(async (req) => {
       })
     );
 
-    // Build debug object only if debug_pagination is true
-    let responseBody: any = merged;
-    if (debugPagination) {
-      const debugObj: any = { pagination: { articles: debugInfoArticles, references: debugInfoReferences } };
-      if (seedReferences && seedRefs) {
-        debugObj.seed = { references: seedRefs };
-      }
-      responseBody = { ...merged, debug: debugObj };
-    }
+    // Build debug object using helper function
+    const debugObj = buildDebugObject(debugPagination, debugProbes, seedReferences, debugInfoArticles, debugInfoReferences, probesArticles, probesReferences, seedRefs);
+    const responseBody = debugObj ? { ...merged, debug: debugObj } : merged;
 
     return new Response(JSON.stringify(responseBody), {
       status: 200,
