@@ -290,44 +290,41 @@ async function saveToCache(
 // LOCAL DB
 // ============================================================
 
-// Paginated fetch utility for Supabase (batch 500, max 2000)
-type SupabaseClientAny = any;
+// Import pure pagination module
+import { paginatedFetch as paginatedFetchPure } from "../../../src/shared/pagination/paginatedFetch.ts";
 
-export async function paginatedFetch<T = any>(
-  supabase: SupabaseClientAny,
+// Wrapper for Supabase-specific pagination (uses pure module internally)
+async function paginatedFetchSupabase(
+  supabase: any,
   table: string,
   selectCols: string,
   filters?: { column: string; value: any }[],
   batchSize = 500,
   maxRows = 2000
-): Promise<T[]> {
-  const allRows: T[] = [];
-  let offset = 0;
+): Promise<unknown[]> {
+  const queryFactory = async (offset: number, limit: number) => {
+    const fromIndex = offset;
+    const toIndex = offset + limit - 1;
 
-  while (allRows.length < maxRows) {
     let q = supabase
       .from(table)
       .select(selectCols)
-      .range(offset, offset + batchSize - 1);
+      .range(fromIndex, toIndex);
 
-    if (filters?.length) {
+    if (filters && Array.isArray(filters)) {
       for (const f of filters) {
         q = q.eq(f.column, f.value);
       }
     }
 
-    const { data, error } = await q;
-    if (error) throw error;
+    const res = await q;
+    return {
+      data: Array.isArray(res.data) ? res.data : [],
+      error: res.error ? res.error : null,
+    };
+  };
 
-    const rows = (Array.isArray(data) ? data : []) as T[];
-    if (rows.length === 0) break;
-
-    allRows.push(...rows);
-    offset += batchSize;
-    if (rows.length < batchSize) break;
-  }
-
-  return allRows;
+  return await paginatedFetchPure(queryFactory, batchSize, maxRows);
 }
 
 async function queryLocalLegalArticles(
@@ -337,7 +334,7 @@ async function queryLocalLegalArticles(
 ): Promise<LocalLegalMatch[]> {
   try {
     // Paginated fetch
-    const data = await paginatedFetch(
+    const data = await paginatedFetchSupabase(
       supabase,
       "legal_articles",
       "code_name, article_number, article_title, article_text, domain, keywords",
@@ -347,7 +344,7 @@ async function queryLocalLegalArticles(
     );
 
     const matches: LocalLegalMatch[] = [];
-    for (const row of data) {
+    for (const row of data as any[]) {
       const code_name = String(row?.code_name || "");
       const article_number = String(row?.article_number || "");
       const article_title = row?.article_title ? String(row.article_title) : undefined;
@@ -384,7 +381,7 @@ async function queryLocalLegalArticles(
 async function queryLocalLegalReferences(supabase: any, query: string): Promise<LocalLegalMatch[]> {
   try {
     // Paginated fetch
-    const data = await paginatedFetch(
+    const data = await paginatedFetchSupabase(
       supabase,
       "legal_references",
       "code_name, article_number, article_text, domain, keywords",
@@ -394,7 +391,7 @@ async function queryLocalLegalReferences(supabase: any, query: string): Promise<
     );
 
     const matches: LocalLegalMatch[] = [];
-    for (const row of data) {
+    for (const row of data as any[]) {
       const code_name = String(row?.code_name || "");
       const article_number = String(row?.article_number || "");
       const article_text = String(row?.article_text || "");
