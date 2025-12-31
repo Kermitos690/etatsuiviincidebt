@@ -1,7 +1,4 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { Resend } from "https://esm.sh/resend@2.0.0";
-
-const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -35,17 +32,18 @@ const handler = async (req: Request): Promise<Response> => {
       filename 
     } = body;
 
-    // Validation
+    // Validation des champs requis
     if (!recipientEmail || !pdfBase64 || !filename) {
-      console.error("Missing required fields");
+      console.error("Missing required fields:", { recipientEmail: !!recipientEmail, pdfBase64: !!pdfBase64, filename: !!filename });
       return new Response(
         JSON.stringify({ ok: false, error: "Champs requis manquants" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Check if RESEND_API_KEY is configured
-    if (!Deno.env.get("RESEND_API_KEY")) {
+    // Vérifier RESEND_API_KEY
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    if (!resendApiKey) {
       console.error("RESEND_API_KEY not configured");
       return new Response(
         JSON.stringify({ ok: false, error: "Service email non configuré" }),
@@ -58,8 +56,8 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`Sending PDF for ${incidentRef} to ${recipientEmail}`);
 
-    // Send email with PDF attachment
-    const emailResponse = await resend.emails.send({
+    // Construire le body Resend API
+    const resendBody = {
       from: `Curatelle Track <${fromEmail}>`,
       to: [recipientEmail],
       subject: `[TRANSMIS JP] ${incidentRef} - ${incidentTitre}`,
@@ -113,12 +111,35 @@ const handler = async (req: Request): Promise<Response> => {
           content: pdfBase64,
         },
       ],
+    };
+
+    // Appel REST Resend
+    const resendResponse = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(resendBody),
     });
 
-    console.log("Email sent successfully:", emailResponse);
+    const resendData = await resendResponse.json();
+
+    if (!resendResponse.ok) {
+      console.error("Resend API error:", resendResponse.status, resendData);
+      return new Response(
+        JSON.stringify({ 
+          ok: false, 
+          error: `Resend error: ${resendData.message || resendData.error || 'Unknown error'}` 
+        }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log("Email sent successfully:", resendData);
 
     return new Response(
-      JSON.stringify({ ok: true, emailId: emailResponse?.data?.id }),
+      JSON.stringify({ ok: true, emailId: resendData.id }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
