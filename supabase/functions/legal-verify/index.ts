@@ -290,7 +290,8 @@ async function saveToCache(
 // LOCAL DB
 // ============================================================
 
-// Import pure pagination module
+// Pagination: utiliser paginatedFetchPure via wrapper paginatedFetchSupabase.
+// Ne pas copier/coller la logique de pagination ici.
 import { paginatedFetch as paginatedFetchPure } from "../_shared/paginatedFetch.ts";
 
 // Wrapper for Supabase-specific pagination (uses pure module internally)

@@ -1,4 +1,7 @@
 /**
+ * NOTE: Ce module est Edge-safe. Ne pas importer depuis /src.
+ * Ne pas réintroduire de génériques TypeScript (Loveable peut casser < >).
+ *
  * Pure pagination module - Node/Deno agnostic
  * No external dependencies, no Supabase, no Deno APIs
  */
