@@ -144,13 +144,13 @@ const CACHE_TTL_DAYS = 7;
 // ANTI-ABUSE: DEBUG RATE-LIMIT & SEED COOLDOWN (in-memory, best-effort)
 // ============================================================
 
-// Rate limit for debug requests: 5 per minute per IP
+// Rate limit for debug requests: 5 per minute per IP+queryHash
 const DEBUG_RATE_LIMIT = { windowMs: 60000, maxRequests: 5 };
 const debugRateLimitStore = new Map<string, { count: number; resetAt: number }>();
 
-// Seed cooldown: 1 execution per 10 minutes (global)
+// Seed cooldown: 1 execution per 10 minutes per IP
 const SEED_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
-let lastSeedExecutionAt = 0;
+const seedCooldownStore = new Map<string, number>();
 
 function cleanupDebugRateLimit(): void {
   const now = Date.now();
@@ -166,35 +166,37 @@ function getClientIp(req: Request): string {
   return forwarded?.split(",")[0]?.trim() || "unknown";
 }
 
-function checkDebugRateLimit(ip: string): { allowed: boolean; remaining: number } {
+function checkDebugRateLimit(key: string): { allowed: boolean; remaining: number; resetAt: number } {
   cleanupDebugRateLimit();
   const now = Date.now();
-  const key = `debug:${ip}`;
   const entry = debugRateLimitStore.get(key);
 
   if (!entry || entry.resetAt < now) {
-    debugRateLimitStore.set(key, { count: 1, resetAt: now + DEBUG_RATE_LIMIT.windowMs });
-    return { allowed: true, remaining: DEBUG_RATE_LIMIT.maxRequests - 1 };
+    const resetAt = now + DEBUG_RATE_LIMIT.windowMs;
+    debugRateLimitStore.set(key, { count: 1, resetAt });
+    return { allowed: true, remaining: DEBUG_RATE_LIMIT.maxRequests - 1, resetAt };
   }
 
   if (entry.count >= DEBUG_RATE_LIMIT.maxRequests) {
-    return { allowed: false, remaining: 0 };
+    return { allowed: false, remaining: 0, resetAt: entry.resetAt };
   }
 
   entry.count++;
-  return { allowed: true, remaining: DEBUG_RATE_LIMIT.maxRequests - entry.count };
+  return { allowed: true, remaining: DEBUG_RATE_LIMIT.maxRequests - entry.count, resetAt: entry.resetAt };
 }
 
-function checkSeedCooldown(): { allowed: boolean; reason: string } {
+function checkSeedCooldown(ip: string): { allowed: boolean; reason: string } {
   const now = Date.now();
-  if (now - lastSeedExecutionAt < SEED_COOLDOWN_MS) {
+  const key = "seed:" + ip;
+  const lastAt = seedCooldownStore.get(key) || 0;
+  if (now - lastAt < SEED_COOLDOWN_MS) {
     return { allowed: false, reason: "cooldown_active" };
   }
   return { allowed: true, reason: "" };
 }
 
-function markSeedExecuted(): void {
-  lastSeedExecutionAt = Date.now();
+function markSeedExecuted(ip: string): void {
+  seedCooldownStore.set("seed:" + ip, Date.now());
 }
 
 // ============================================================
@@ -1028,16 +1030,27 @@ serve(async (req) => {
     const debugProbes = debugPagination && Boolean((body as any).debug_probes);
     let seedReferences = debugPagination && Boolean((body as any).seed_references);
 
-    // ========== ANTI-ABUSE: Rate limit for debug mode ==========
+    // ========== ANTI-ABUSE: Rate limit for debug mode (IP + queryHash) ==========
+    let clientIp = "";
     if (debugPagination) {
-      const clientIp = getClientIp(req);
-      const rateCheck = checkDebugRateLimit(clientIp);
+      clientIp = getClientIp(req);
+      // Compute queryHash SAFE: only if query is a non-empty string
+      const queryHashForRL = (typeof query === "string" && query.trim().length > 0)
+        ? await hashQuery(query)
+        : "noq";
+      const rlKey = "debug:" + clientIp + ":" + queryHashForRL;
+      const rateCheck = checkDebugRateLimit(rlKey);
       
       if (!rateCheck.allowed) {
-        // Rate limited: return degraded response with minimal debug info
+        // Rate limited: EARLY RETURN - do not execute cache, probes, seed, local queries
         const rateLimitedResponse = {
           ...DEGRADED_RESPONSE,
-          debug: { debug_version: 1, rate_limited: true },
+          debug: {
+            debug_version: 1,
+            rate_limited: true,
+            remaining: rateCheck.remaining,
+            window_ms: DEBUG_RATE_LIMIT.windowMs,
+          },
         };
         const latency = Date.now() - start;
         console.log(JSON.stringify({ latency, source: "degraded", rate_limited: true, mode }));
@@ -1048,10 +1061,10 @@ serve(async (req) => {
       }
     }
 
-    // ========== ANTI-ABUSE: Seed cooldown check ==========
+    // ========== ANTI-ABUSE: Seed cooldown check (per IP) ==========
     let seedCooldownActive = false;
     if (seedReferences) {
-      const seedCheck = checkSeedCooldown();
+      const seedCheck = checkSeedCooldown(clientIp);
       if (!seedCheck.allowed) {
         seedCooldownActive = true;
       }
@@ -1105,7 +1118,7 @@ serve(async (req) => {
       seedRefs = await seedLegalReferencesIfEmpty(supabase);
       // Mark seed as executed ONLY if actual seed happened (not skipped due to existing rows)
       if (seedRefs && seedRefs.seeded) {
-        markSeedExecuted();
+        markSeedExecuted(clientIp);
       }
     } else if (seedReferences && seedCooldownActive) {
       // Return cooldown info instead of executing seed
