@@ -283,7 +283,9 @@ export default function AnalysisPipeline() {
         const syncId = gmailSyncRes.data.syncId;
         let attempts = 0;
         const maxAttempts = 150; // 5 minutes with 2s intervals
-        
+        let lastProcessed = -1;
+        let stagnantPolls = 0;
+
         while (attempts < maxAttempts) {
           await new Promise(r => setTimeout(r, 2000));
           const { data: syncStatus } = await supabase
@@ -291,27 +293,44 @@ export default function AnalysisPipeline() {
             .select('status, processed_emails, new_emails, total_emails, stats')
             .eq('id', syncId)
             .maybeSingle();
-          
+
+          const statsObj = syncStatus?.stats as Record<string, unknown> | null;
+          const stoppedBecause = (statsObj?.stoppedBecause as string | undefined) || undefined;
+
           if (syncStatus?.status === 'completed' || syncStatus?.status === 'error') {
             emailsSynced = syncStatus.new_emails || syncStatus.processed_emails || 0;
-            const statsObj = syncStatus.stats as Record<string, unknown> | null;
-            const stoppedBecause = statsObj?.stoppedBecause as string || 'terminé';
-            updateStep(0, { 
-              status: syncStatus.status === 'error' ? 'error' : 'completed', 
-              progress: 100, 
-              details: `${emailsSynced} nouveaux emails (${stoppedBecause})`,
+            updateStep(0, {
+              status: syncStatus.status === 'error' ? 'error' : 'completed',
+              progress: 100,
+              details: `${emailsSynced} nouveaux emails (${stoppedBecause || 'terminé'})`,
               count: emailsSynced
             });
             break;
           }
-          
+
           // Update progress
           const processed = syncStatus?.processed_emails || 0;
           const total = syncStatus?.total_emails || 1;
+
+          if (processed === lastProcessed) stagnantPolls += 1;
+          else stagnantPolls = 0;
+          lastProcessed = processed;
+
+          // If Gmail fetch finished but background processing didn't start, stop blocking
+          if (stagnantPolls >= 8 && processed === 0 && stoppedBecause) {
+            updateStep(0, {
+              status: 'error',
+              progress: 100,
+              details: `Sync bloquée (stoppedBecause=${stoppedBecause}). Relance la synchronisation.`
+            });
+            throw new Error('Sync Gmail bloquée');
+          }
+
           const pct = Math.min(Math.round((processed / total) * 100), 99);
           updateStep(0, { progress: pct, details: `${processed}/${total} emails...` });
           attempts++;
         }
+
       } else if (gmailSyncRes.data?.emailsProcessed !== undefined) {
         emailsSynced = gmailSyncRes.data.emailsProcessed;
         updateStep(0, { 
