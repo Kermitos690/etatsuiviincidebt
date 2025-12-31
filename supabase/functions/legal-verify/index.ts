@@ -295,17 +295,32 @@ async function saveToCache(
 import { paginatedFetch as paginatedFetchPure } from "../_shared/paginatedFetch.ts";
 
 // Wrapper for Supabase-specific pagination (uses pure module internally)
+type PaginationDebugInfo = {
+  enabled: boolean;
+  batchSize: number;
+  maxRows: number;
+  calls: number;
+  ranges: { fromIndex: number; toIndex: number }[];
+};
+
 async function paginatedFetchSupabase(
   supabase: any,
   table: string,
   selectCols: string,
   filters?: { column: string; value: any }[],
   batchSize = 500,
-  maxRows = 2000
+  maxRows = 2000,
+  debugInfo?: PaginationDebugInfo
 ): Promise<unknown[]> {
   const queryFactory = async (offset: number, limit: number) => {
     const fromIndex = offset;
     const toIndex = offset + limit - 1;
+
+    // Track ranges if debug enabled
+    if (debugInfo) {
+      debugInfo.calls = debugInfo.calls + 1;
+      debugInfo.ranges.push({ fromIndex, toIndex });
+    }
 
     let q = supabase
       .from(table)
@@ -331,17 +346,21 @@ async function paginatedFetchSupabase(
 async function queryLocalLegalArticles(
   supabase: any,
   query: string,
-  _topics?: string[]
+  _topics?: string[],
+  debugInfo?: PaginationDebugInfo
 ): Promise<LocalLegalMatch[]> {
   try {
     // Paginated fetch
+    const batchSize = debugInfo ? debugInfo.batchSize : 500;
+    const maxRows = debugInfo ? debugInfo.maxRows : 2000;
     const data = await paginatedFetchSupabase(
       supabase,
       "legal_articles",
       "code_name, article_number, article_title, article_text, domain, keywords",
       [{ column: "is_current", value: true }],
-      500,
-      2000
+      batchSize,
+      maxRows,
+      debugInfo
     );
 
     const matches: LocalLegalMatch[] = [];
@@ -379,16 +398,23 @@ async function queryLocalLegalArticles(
   }
 }
 
-async function queryLocalLegalReferences(supabase: any, query: string): Promise<LocalLegalMatch[]> {
+async function queryLocalLegalReferences(
+  supabase: any,
+  query: string,
+  debugInfo?: PaginationDebugInfo
+): Promise<LocalLegalMatch[]> {
   try {
     // Paginated fetch
+    const batchSize = debugInfo ? debugInfo.batchSize : 500;
+    const maxRows = debugInfo ? debugInfo.maxRows : 2000;
     const data = await paginatedFetchSupabase(
       supabase,
       "legal_references",
       "code_name, article_number, article_text, domain, keywords",
       undefined,
-      500,
-      2000
+      batchSize,
+      maxRows,
+      debugInfo
     );
 
     const matches: LocalLegalMatch[] = [];
@@ -766,6 +792,12 @@ serve(async (req) => {
         ? Math.min(10, Math.floor(body.max_citations))
         : 5;
 
+    // Debug pagination mode
+    const debugPagination = Boolean((body as any).debug_pagination);
+    const debugInfo: PaginationDebugInfo | undefined = debugPagination
+      ? { enabled: true, batchSize: 1, maxRows: 2000, calls: 0, ranges: [] }
+      : undefined;
+
     const request: LegalVerifyRequest = {
       query,
       context: body.context || undefined,
@@ -799,8 +831,8 @@ serve(async (req) => {
 
     const queryHash = await hashQuery(query);
 
-    // Cache hit (only if not forcing external)
-    if (!request.force_external) {
+    // Cache hit (only if not forcing external and not debugging)
+    if (!request.force_external && !debugPagination) {
       const cached = await checkCache(supabase, queryHash);
       if (cached) {
         const latency = Date.now() - start;
@@ -823,8 +855,8 @@ serve(async (req) => {
 
     // Local first
     const [localArticles, localRefs] = await Promise.all([
-      queryLocalLegalArticles(supabase, query, request.context?.topics),
-      queryLocalLegalReferences(supabase, query),
+      queryLocalLegalArticles(supabase, query, request.context?.topics, debugInfo),
+      queryLocalLegalReferences(supabase, query, debugInfo),
     ]);
 
     const localMatches = [...localArticles, ...localRefs].sort((a, b) => b.relevance - a.relevance);
@@ -847,7 +879,11 @@ serve(async (req) => {
         })
       );
 
-      return new Response(JSON.stringify(localResponse), {
+      const responseBody = debugInfo
+        ? { ...localResponse, debug: { pagination: debugInfo } }
+        : localResponse;
+
+      return new Response(JSON.stringify(responseBody), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -882,7 +918,11 @@ serve(async (req) => {
           })
         );
 
-        return new Response(JSON.stringify(response), {
+        const responseBody = debugInfo
+          ? { ...response, debug: { pagination: debugInfo } }
+          : response;
+
+        return new Response(JSON.stringify(responseBody), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -926,7 +966,11 @@ serve(async (req) => {
       })
     );
 
-    return new Response(JSON.stringify(merged), {
+    const responseBody = debugInfo
+      ? { ...merged, debug: { pagination: debugInfo } }
+      : merged;
+
+    return new Response(JSON.stringify(responseBody), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
