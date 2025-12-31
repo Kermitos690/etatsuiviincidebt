@@ -62,43 +62,83 @@ Les tests simulent queryFactory avec des retours de pages, sans importer de code
 
 ---
 
-## 5) Sécurité / Flags (legal-verify)
+## 5) Debug Flags (legal-verify)
 
 L'Edge Function `legal-verify` dispose de flags de contrôle pour activer des fonctionnalités de debug et maintenance.
 
-**Flags disponibles (dans le body JSON):**
+### Tableau des flags
 
 | Flag | Type | Défaut | Description |
 |------|------|--------|-------------|
-| `debug_pagination` | boolean | false | Active l'instrumentation pagination (batchSize=1, ranges, rowsFetched, stoppedBecause) |
+| `debug_pagination` | boolean | false | Active l'instrumentation pagination (batchSize, ranges, rowsFetched, stoppedBecause) |
 | `debug_probes` | boolean | false | Active les probes diagnostiques (probeSansFiltre, probeAvecFiltre). **Requiert** debug_pagination=true |
 | `seed_references` | boolean | false | Autorise le seed de `legal_references` si table vide. **Requiert** debug_pagination=true |
 
-**Règles de sécurité:**
+### Règles de sécurité
 
 1. Par défaut, **tout est désactivé** (zéro effet de bord)
 2. `debug_probes` et `seed_references` sont **ignorés** si `debug_pagination=false`
 3. Le seed est **idempotent** (upsert avec onConflict sur code_name, article_number)
 4. Les probes sont **read-only** (count exact head:true)
+5. Aucune donnée PII n'est loggée (pas de query complète, pas de contenu row)
 
-**Exemples de payloads:**
+### Structure de la réponse debug
+
+Quand `debug_pagination=true`, la réponse inclut :
 
 ```json
-// Mode normal (production) - aucun debug
+{
+  "debug": {
+    "debug_version": 1,
+    "pagination": {
+      "articles": { "enabled": true, "batchSize": 1, "calls": 65, "rowsFetched": 64, "stoppedBecause": "empty_page", ... },
+      "references": { "enabled": true, "batchSize": 1, "calls": 16, "rowsFetched": 15, "stoppedBecause": "empty_page", ... }
+    },
+    "probes": {
+      "articles": { "probeSansFiltre": 64, "probeAvecFiltre": 64 },
+      "references": { "probeSansFiltre": 15, "probeAvecFiltre": 15 }
+    },
+    "seed": {
+      "references": { "seeded": false, "inserted": 0, "reason": "already_has_rows" }
+    }
+  }
+}
+```
+
+- `probes` n'apparaît **QUE** si `debug_probes=true`
+- `seed` n'apparaît **QUE** si `seed_references=true`
+
+### Exemples de payloads
+
+**1) Mode normal (production) - aucun debug**
+```json
 { "query": "LPD accès données", "mode": "legal" }
+```
+→ Pas de champ `debug` dans la réponse
 
-// Debug pagination seul (pas de probes, pas de seed)
+**2) Debug pagination seul**
+```json
 { "query": "LPD accès données", "mode": "legal", "debug_pagination": true }
+```
+→ `debug.pagination` présent, pas de `probes`, pas de `seed`
 
-// Debug avec probes activés
+**3) Debug avec probes activés**
+```json
 { "query": "LPD accès données", "mode": "legal", "debug_pagination": true, "debug_probes": true }
+```
+→ `debug.pagination` + `debug.probes` présents, pas de `seed`
 
-// Debug avec seed activé (write DB autorisé)
+**4) Debug avec seed activé**
+```json
 { "query": "LPD accès données", "mode": "legal", "debug_pagination": true, "seed_references": true }
+```
+→ `debug.pagination` + `debug.seed` présents, pas de `probes`
 
-// Debug complet (probes + seed)
+**5) Debug complet**
+```json
 { "query": "LPD accès données", "mode": "legal", "debug_pagination": true, "debug_probes": true, "seed_references": true }
 ```
+→ `debug.pagination` + `debug.probes` + `debug.seed` tous présents
 
 ---
 
@@ -107,3 +147,4 @@ L'Edge Function `legal-verify` dispose de flags de contrôle pour activer des fo
 - Ne jamais importer `src/` depuis une Edge Function
 - Ne pas réintroduire de génériques TypeScript (Loveable peut casser les chevrons)
 - Source de vérité Edge : `supabase/functions/_shared/paginatedFetch.ts`
+- Debug doit rester 100% opt-in : aucun effet si `debug_pagination=false`
