@@ -73,6 +73,7 @@ L'Edge Function `legal-verify` dispose de flags de contrôle pour activer des fo
 | `debug_pagination` | boolean | false | Active l'instrumentation pagination (batchSize, ranges, rowsFetched, stoppedBecause) |
 | `debug_probes` | boolean | false | Active les probes diagnostiques (probeSansFiltre, probeAvecFiltre). **Requiert** debug_pagination=true |
 | `seed_references` | boolean | false | Autorise le seed de `legal_references` si table vide. **Requiert** debug_pagination=true |
+| `seed_cooldown_probe` | boolean | false | Test du cooldown sans écrire. **Requiert** debug_pagination=true ET seed_references=true |
 
 ### Règles de sécurité
 
@@ -93,6 +94,19 @@ Les protections anti-abus sont implémentées en mémoire et fournissent une pro
 
 **Limitations serverless** : Ces protections sont best-effort. En environnement serverless (cold starts fréquents), les compteurs peuvent être réinitialisés. Cela offre une protection suffisante contre les abus accidentels mais ne constitue pas une sécurité absolue.
 
+### Observability (serverless)
+
+Pour diagnostiquer le comportement en environnement serverless :
+
+| Champ debug | Description |
+|-------------|-------------|
+| `instance_id` | UUID unique de l'instance Deno. Si identique entre requêtes = même instance (hot). Si différent = cold start. |
+| `rate_limit.key_scope` | Toujours "ip+queryHash" (la clé réelle n'est pas exposée pour éviter les fuites IP/hash) |
+| `rate_limit.remaining` | Nombre de requêtes debug restantes pour cette clé |
+| `rate_limit.reset_at` | Timestamp Unix (ms) de reset du compteur |
+
+**Note** : Les stores rate-limit et cooldown sont en mémoire. En serverless, chaque cold start réinitialise ces compteurs. Pour valider le rate-limit, il faut que les 6 requêtes touchent la même instance (même `instance_id`).
+
 ### Structure de la réponse debug
 
 Quand `debug_pagination=true`, la réponse inclut :
@@ -101,9 +115,15 @@ Quand `debug_pagination=true`, la réponse inclut :
 {
   "debug": {
     "debug_version": 1,
+    "instance_id": "a1b2c3d4-...",
+    "rate_limit": {
+      "key_scope": "ip+queryHash",
+      "remaining": 4,
+      "reset_at": 1767207800000
+    },
     "pagination": {
-      "articles": { "enabled": true, "batchSize": 1, "calls": 65, "rowsFetched": 64, "stoppedBecause": "empty_page", ... },
-      "references": { "enabled": true, "batchSize": 1, "calls": 16, "rowsFetched": 15, "stoppedBecause": "empty_page", ... }
+      "articles": { "enabled": true, "batchSize": 1, "calls": 65, "rowsFetched": 64, "stoppedBecause": "empty_page" },
+      "references": { "enabled": true, "batchSize": 1, "calls": 16, "rowsFetched": 15, "stoppedBecause": "empty_page" }
     },
     "probes": {
       "articles": { "probeSansFiltre": 64, "probeAvecFiltre": 64 },
@@ -145,7 +165,14 @@ Quand `debug_pagination=true`, la réponse inclut :
 ```
 → `debug.pagination` + `debug.seed` présents, pas de `probes`
 
-**5) Debug complet**
+**5) Test cooldown sans écrire (seed_cooldown_probe)**
+```json
+{ "query": "LPD accès données", "mode": "legal", "debug_pagination": true, "seed_references": true, "seed_cooldown_probe": true }
+```
+→ 1er appel: `debug.seed.references.reason="cooldown_probed_no_write"` (marque le cooldown sans écrire)
+→ 2e appel (<10min): `debug.seed.references.reason="cooldown_active"` (prouve que le cooldown fonctionne)
+
+**6) Debug complet**
 ```json
 { "query": "LPD accès données", "mode": "legal", "debug_pagination": true, "debug_probes": true, "seed_references": true }
 ```
