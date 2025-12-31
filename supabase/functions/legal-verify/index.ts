@@ -303,6 +303,10 @@ type PaginationDebugInfo = {
   ranges: { fromIndex: number; toIndex: number }[];
   rowsFetched: number;
   stoppedBecause: "not_stopped" | "error" | "empty_page" | "last_page" | "max_rows";
+  // Probe diagnostics (only for debug mode)
+  probeSansFiltre?: number | null;
+  probeAvecFiltre?: number | null;
+  probeError?: string | null;
 };
 
 async function paginatedFetchSupabase(
@@ -387,6 +391,32 @@ async function queryLocalLegalArticles(
   debugInfo?: PaginationDebugInfo
 ): Promise<LocalLegalMatch[]> {
   try {
+    // Probe diagnostics if debug enabled
+    if (debugInfo) {
+      try {
+        // Probe sans filtre
+        const probeSans = await supabase
+          .from("legal_articles")
+          .select("id", { count: "exact", head: true });
+        debugInfo.probeSansFiltre = probeSans.count ?? null;
+        
+        // Probe avec filtre (is_current = true)
+        const probeAvec = await supabase
+          .from("legal_articles")
+          .select("id", { count: "exact", head: true })
+          .eq("is_current", true);
+        debugInfo.probeAvecFiltre = probeAvec.count ?? null;
+        
+        if (probeSans.error) {
+          debugInfo.probeError = probeSans.error.message;
+        } else if (probeAvec.error) {
+          debugInfo.probeError = probeAvec.error.message;
+        }
+      } catch (probeErr: any) {
+        debugInfo.probeError = probeErr?.message || "probe_failed";
+      }
+    }
+
     // Paginated fetch
     const batchSize = debugInfo ? debugInfo.batchSize : 500;
     const maxRows = debugInfo ? debugInfo.maxRows : 2000;
@@ -441,6 +471,26 @@ async function queryLocalLegalReferences(
   debugInfo?: PaginationDebugInfo
 ): Promise<LocalLegalMatch[]> {
   try {
+    // Probe diagnostics if debug enabled
+    if (debugInfo) {
+      try {
+        // Probe sans filtre (legal_references n'a pas de filtre ici)
+        const probeSans = await supabase
+          .from("legal_references")
+          .select("id", { count: "exact", head: true });
+        debugInfo.probeSansFiltre = probeSans.count ?? null;
+        
+        // Probe avec filtre = même chose car pas de filtre appliqué
+        debugInfo.probeAvecFiltre = probeSans.count ?? null;
+        
+        if (probeSans.error) {
+          debugInfo.probeError = probeSans.error.message;
+        }
+      } catch (probeErr: any) {
+        debugInfo.probeError = probeErr?.message || "probe_failed";
+      }
+    }
+
     // Paginated fetch
     const batchSize = debugInfo ? debugInfo.batchSize : 500;
     const maxRows = debugInfo ? debugInfo.maxRows : 2000;
