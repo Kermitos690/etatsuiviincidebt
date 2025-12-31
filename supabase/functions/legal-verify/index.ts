@@ -41,7 +41,7 @@ interface LegalVerifyResponse {
   summary: string;
   key_points: string[];
   citations: LegalCitation[];
-  confidence: number;
+  confidence: number; // 0..1
   warnings?: string[];
   source: "local" | "external" | "hybrid" | "degraded";
   cost_saved: boolean;
@@ -88,22 +88,37 @@ const PRIORITY_DOMAINS = [
 ];
 
 const EXTERNAL_REQUIRED_KEYWORDS = [
-  "jurisprudence", "atf", "arrêt", "tribunal fédéral",
-  "décision", "jugement", "recours accepté", "recours rejeté",
-  "délai exact", "combien de jours", "quel délai",
+  "jurisprudence",
+  "atf",
+  "arrêt",
+  "tribunal fédéral",
+  "décision",
+  "jugement",
+  "recours accepté",
+  "recours rejeté",
+  "délai exact",
+  "combien de jours",
+  "quel délai",
 ];
 
 const LOCAL_SUFFICIENT_KEYWORDS = [
-  "principe", "définition", "rôle", "compétence",
-  "curateur", "curatelle", "protection adulte",
-  "lpd", "données personnelles", "droit d'accès",
+  "principe",
+  "définition",
+  "rôle",
+  "compétence",
+  "curateur",
+  "curatelle",
+  "protection adulte",
+  "lpd",
+  "données personnelles",
+  "droit d'accès",
 ];
 
 const LOCAL_ONLY_BASE_URLS: Record<string, string> = {
-  "LPD": "https://www.fedlex.admin.ch/eli/cc/2022/491/fr",
-  "CC": "https://www.fedlex.admin.ch/eli/cc/24/233_245_233/fr",
-  "LPGA": "https://www.fedlex.admin.ch/eli/cc/2002/510/fr",
-  "LAI": "https://www.fedlex.admin.ch/eli/cc/1959/827_857_845/fr",
+  LPD: "https://www.fedlex.admin.ch/eli/cc/2022/491/fr",
+  CC: "https://www.fedlex.admin.ch/eli/cc/24/233_245_233/fr",
+  LPGA: "https://www.fedlex.admin.ch/eli/cc/2002/510/fr",
+  LAI: "https://www.fedlex.admin.ch/eli/cc/1959/827_857_845/fr",
 };
 
 const DEGRADED_RESPONSE: LegalVerifyResponse = {
@@ -127,7 +142,7 @@ function hashQuery(query: string): string {
   let hash = 0;
   for (let i = 0; i < normalized.length; i++) {
     const char = normalized.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash = hash & hash;
   }
   return "lv_" + Math.abs(hash).toString(16);
@@ -138,7 +153,7 @@ function calculateRelevance(text: string, query: string, keywords?: string[]): n
   const textLower = text.toLowerCase();
   let score = 0;
 
-  const queryWords = queryLower.split(/\s+/).filter(w => w.length > 2);
+  const queryWords = queryLower.split(/\s+/).filter((w) => w.length > 2);
   for (const word of queryWords) {
     if (textLower.includes(word)) score += 0.15;
   }
@@ -158,6 +173,7 @@ function extractTitleFromUrl(url: string): string {
   try {
     const hostname = new URL(url).hostname;
     for (const [domain, title] of Object.entries(OFFICIAL_DOMAIN_TITLES)) {
+      // SECURITY: strict match only (no `includes`)
       if (hostname === domain || hostname.endsWith("." + domain)) {
         return title;
       }
@@ -169,7 +185,7 @@ function extractTitleFromUrl(url: string): string {
 }
 
 function clampConfidence(value: number): number {
-  if (typeof value !== "number" || isNaN(value)) return 0;
+  if (typeof value !== "number" || Number.isNaN(value)) return 0;
   return Math.max(0, Math.min(1, value));
 }
 
@@ -177,10 +193,7 @@ function clampConfidence(value: number): number {
 // CACHE FUNCTIONS (SINGLE DEFINITION)
 // ============================================================
 
-async function checkCache(
-  supabase: any,
-  queryHash: string
-): Promise<LegalVerifyResponse | null> {
+async function checkCache(supabase: any, queryHash: string): Promise<LegalVerifyResponse | null> {
   try {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - CACHE_TTL_DAYS);
@@ -197,7 +210,11 @@ async function checkCache(
     if (error || !data) return null;
 
     const row = data as any;
-    const summary = typeof row.summary === "string" ? row.summary : (typeof row.title === "string" ? row.title : "");
+    const summary = typeof row.summary === "string"
+      ? row.summary
+      : typeof row.title === "string"
+        ? row.title
+        : "";
     const keywords = Array.isArray(row.keywords) ? row.keywords : [];
     const sourceUrl = typeof row.source_url === "string" ? row.source_url : "";
     const sourceName = typeof row.source_name === "string" ? row.source_name : "";
@@ -238,6 +255,7 @@ async function saveToCache(
       user_id: userId || null,
     });
   } catch (e) {
+    // Never crash the main request if cache insert fails
     console.error("[legal-verify] Cache save error:", e);
   }
 }
@@ -263,10 +281,11 @@ async function queryLocalLegalArticles(
     const matches: LocalLegalMatch[] = [];
     for (const article of data as any[]) {
       const relevance = calculateRelevance(
-        ((article.article_title || "") + " " + (article.article_text || "")),
+        String((article.article_title || "") + " " + (article.article_text || "")),
         query,
         article.keywords
       );
+
       if (relevance > 0.1) {
         matches.push({
           code_name: String(article.code_name || ""),
@@ -288,10 +307,7 @@ async function queryLocalLegalArticles(
   }
 }
 
-async function queryLocalLegalReferences(
-  supabase: any,
-  query: string
-): Promise<LocalLegalMatch[]> {
+async function queryLocalLegalReferences(supabase: any, query: string): Promise<LocalLegalMatch[]> {
   try {
     const { data, error } = await supabase
       .from("legal_references")
@@ -303,10 +319,11 @@ async function queryLocalLegalReferences(
     const matches: LocalLegalMatch[] = [];
     for (const ref of data as any[]) {
       const relevance = calculateRelevance(
-        ((ref.code_name || "") + " " + (ref.article_number || "") + " " + (ref.article_text || "")),
+        String((ref.code_name || "") + " " + (ref.article_number || "") + " " + (ref.article_text || "")),
         query,
         ref.keywords
       );
+
       if (relevance > 0.1) {
         matches.push({
           code_name: String(ref.code_name || ""),
@@ -331,10 +348,7 @@ async function queryLocalLegalReferences(
 // GATEKEEPER
 // ============================================================
 
-function shouldCallPerplexity(
-  request: LegalVerifyRequest,
-  localMatches: LocalLegalMatch[]
-): GatekeeperDecision {
+function shouldCallPerplexity(request: LegalVerifyRequest, localMatches: LocalLegalMatch[]): GatekeeperDecision {
   const queryLower = request.query.toLowerCase();
   const mode = request.mode || "legal";
 
@@ -361,7 +375,7 @@ function shouldCallPerplexity(
     }
   }
 
-  const highQualityMatches = localMatches.filter(m => m.relevance >= 0.5);
+  const highQualityMatches = localMatches.filter((m) => m.relevance >= 0.5);
 
   if (highQualityMatches.length >= 2) {
     return { needsExternal: false, reason: "sufficient_local_matches" };
@@ -375,6 +389,13 @@ function shouldCallPerplexity(
     return { needsExternal: false, reason: "local_match_available" };
   }
 
+  // Optional additional local-sufficient heuristic
+  for (const kw of LOCAL_SUFFICIENT_KEYWORDS) {
+    if (queryLower.includes(kw) && localMatches.length >= 1) {
+      return { needsExternal: false, reason: "local_keyword_match" };
+    }
+  }
+
   return { needsExternal: true, reason: "no_local_matches" };
 }
 
@@ -382,10 +403,7 @@ function shouldCallPerplexity(
 // LOCAL RESPONSE BUILDER
 // ============================================================
 
-function buildLocalResponse(
-  localMatches: LocalLegalMatch[],
-  gatekeeperReason: string
-): LegalVerifyResponse {
+function buildLocalResponse(localMatches: LocalLegalMatch[], gatekeeperReason: string): LegalVerifyResponse {
   if (localMatches.length === 0) {
     return {
       summary: "Aucune correspondance trouvée dans le référentiel interne.",
@@ -398,33 +416,33 @@ function buildLocalResponse(
     };
   }
 
-  const articlesList = localMatches
-    .map(m => m.code_name + " art. " + m.article_number)
-    .join(", ");
+  const articlesList = localMatches.map((m) => m.code_name + " art. " + m.article_number).join(", ");
 
-  const summary = "Cadre juridique basé sur le référentiel interne. Articles pertinents : " + articlesList + ".";
+  const summary =
+    "Cadre juridique basé sur le référentiel interne. Articles pertinents : " + articlesList + ".";
 
-  const keyPoints: string[] = [];
-  for (const m of localMatches) {
-    const text = m.article_text || m.article_title || "";
-    keyPoints.push(text.length > 150 ? text.slice(0, 147) + "..." : text);
-  }
+  const keyPoints = localMatches
+    .map((m) => {
+      const text = m.article_text || m.article_title || "";
+      if (!text) return "";
+      return text.length > 150 ? text.slice(0, 147) + "..." : text;
+    })
+    .filter(Boolean);
 
-  const citations: LegalCitation[] = [];
-  for (const m of localMatches) {
+  const citations: LegalCitation[] = localMatches.map((m) => {
     const baseUrl = LOCAL_ONLY_BASE_URLS[m.code_name] || "https://www.fedlex.admin.ch";
-    citations.push({
+    return {
       title: m.code_name + " art. " + m.article_number + " (référentiel interne)",
       url: baseUrl,
-    });
-  }
+    };
+  });
 
   const avgRelevance = localMatches.reduce((sum, m) => sum + m.relevance, 0) / localMatches.length;
   const confidence = clampConfidence(Math.min(0.75, avgRelevance + 0.3));
 
   return {
     summary,
-    key_points: keyPoints.filter(Boolean),
+    key_points: keyPoints,
     citations: citations.slice(0, 5),
     confidence,
     warnings: ["gatekeeper:" + gatekeeperReason],
@@ -461,13 +479,13 @@ function buildSystemPrompt(request: LegalVerifyRequest): string {
   prompt += "3. Maximum 5 citations de sources officielles\n";
   prompt += "4. Privilégier: fedlex.admin.ch, admin.ch, bger.ch, vd.ch\n\n";
 
-  prompt += 'RÉPONSE OBLIGATOIRE en JSON strict:\n';
-  prompt += '{\n';
-  prompt += '  "summary": "résumé clair et neutre (max 300 mots)",\n';
-  prompt += '  "key_points": ["point clé 1", "point clé 2", "..."],\n';
-  prompt += '  "citations": [{"title": "titre source", "url": "url officielle"}],\n';
-  prompt += '  "confidence": 0.0 à 1.0\n';
-  prompt += '}\n\n';
+  prompt += "RÉPONSE OBLIGATOIRE en JSON strict:\n";
+  prompt += "{\n";
+  prompt += "  \"summary\": \"résumé clair et neutre (max 300 mots)\",\n";
+  prompt += "  \"key_points\": [\"point clé 1\", \"point clé 2\", \"...\"],\n";
+  prompt += "  \"citations\": [{\"title\": \"titre source\", \"url\": \"url officielle\"}],\n";
+  prompt += "  \"confidence\": 0.0 à 1.0\n";
+  prompt += "}\n\n";
 
   prompt += "Confidence:\n";
   prompt += "- 0.9-1.0: sources officielles multiples concordantes\n";
@@ -490,7 +508,7 @@ async function callPerplexity(
     let response = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": "Bearer " + apiKey,
+        Authorization: "Bearer " + apiKey,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -505,14 +523,14 @@ async function callPerplexity(
       }),
     });
 
-    let data = await response.json();
+    let data: any = await response.json();
     let usedFallback = false;
 
     if (!data.citations || data.citations.length === 0) {
       response = await fetch("https://api.perplexity.ai/chat/completions", {
         method: "POST",
         headers: {
-          "Authorization": "Bearer " + apiKey,
+          Authorization: "Bearer " + apiKey,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -538,16 +556,17 @@ async function callPerplexity(
     const perplexityCitations: string[] = data.citations || [];
     const warnings: string[] = [];
 
-    if (usedFallback) {
-      warnings.push("official_filter_no_results");
-    }
+    if (usedFallback) warnings.push("official_filter_no_results");
 
-    let parsed: { summary?: string; key_points?: string[]; citations?: LegalCitation[]; confidence?: number } | null = null;
+    let parsed:
+      | { summary?: string; key_points?: string[]; citations?: LegalCitation[]; confidence?: number }
+      | null = null;
 
     try {
       parsed = JSON.parse(content);
     } catch {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      // Non-greedy extraction of a trailing JSON block
+      const jsonMatch = content.match(/\{[\s\S]*?\}\s*$/);
       if (jsonMatch) {
         try {
           parsed = JSON.parse(jsonMatch[0]);
@@ -564,47 +583,46 @@ async function callPerplexity(
 
     if (parsed?.citations && Array.isArray(parsed.citations)) {
       for (const c of parsed.citations) {
-        if (c && typeof c === "object" && typeof c.url === "string") {
+        if (c && typeof c === "object" && typeof (c as any).url === "string") {
+          const url = (c as any).url as string;
           citations.push({
-            title: typeof c.title === "string" ? c.title : extractTitleFromUrl(c.url),
-            url: c.url,
+            title: typeof (c as any).title === "string" ? ((c as any).title as string) : extractTitleFromUrl(url),
+            url,
           });
         }
       }
     }
 
     for (const url of perplexityCitations) {
-      if (typeof url === "string" && !citations.find(c => c.url === url)) {
-        citations.push({
-          title: extractTitleFromUrl(url),
-          url,
-        });
+      if (typeof url === "string" && !citations.find((c) => c.url === url)) {
+        citations.push({ title: extractTitleFromUrl(url), url });
       }
     }
 
-    const officialCitations = citations.filter(c => {
+    const officialCitations = citations.filter((c) => {
       try {
         const hostname = new URL(c.url).hostname;
-        return PRIORITY_DOMAINS.some(d => hostname === d || hostname.endsWith("." + d));
+        return PRIORITY_DOMAINS.some((d) => hostname === d || hostname.endsWith("." + d));
       } catch {
         return false;
       }
     });
 
-    if (citations.length === 0) {
-      warnings.push("no_citations");
-    } else if (officialCitations.length === 0) {
-      warnings.push("no_official_sources");
-    } else if (officialCitations.length < citations.length / 2) {
-      warnings.push("partial_sources");
-    }
+    if (citations.length === 0) warnings.push("no_citations");
+    else if (officialCitations.length === 0) warnings.push("no_official_sources");
+    else if (officialCitations.length < citations.length / 2) warnings.push("partial_sources");
 
     const latency = Date.now() - startTime;
-    console.log("[legal-verify] Perplexity call: " + latency + "ms, citations: " + citations.length);
+    console.log("[legal-verify] Perplexity call:", {
+      latency,
+      source: "external",
+      citationsCount: citations.length,
+      confidence: clampConfidence(parsed?.confidence ?? (citations.length > 0 ? 0.7 : 0.4)),
+    });
 
     return {
-      summary: parsed?.summary || content.slice(0, 500),
-      key_points: Array.isArray(parsed?.key_points) ? parsed.key_points : [],
+      summary: parsed?.summary || String(content).slice(0, 500),
+      key_points: Array.isArray(parsed?.key_points) ? parsed!.key_points! : [],
       citations: citations.slice(0, maxCitations),
       confidence: clampConfidence(parsed?.confidence ?? (citations.length > 0 ? 0.7 : 0.4)),
       warnings: warnings.length > 0 ? warnings : undefined,
@@ -630,7 +648,7 @@ function mergeHybridResponse(
     return externalResponse;
   }
 
-  const existingUrls = new Set(externalResponse.citations.map(c => c.url));
+  const existingUrls = new Set(externalResponse.citations.map((c) => c.url));
   const localCitations: LegalCitation[] = [];
 
   for (const match of localMatches.slice(0, 2)) {
@@ -667,6 +685,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
+
     const request: LegalVerifyRequest = {
       query: body.query || "",
       context: body.context,
@@ -676,10 +695,10 @@ serve(async (req) => {
     };
 
     if (!request.query || request.query.trim().length < 10) {
-      return new Response(
-        JSON.stringify({ error: "Query must be at least 10 characters" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Query must be at least 10 characters" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -687,24 +706,31 @@ serve(async (req) => {
 
     if (!supabaseUrl || !supabaseKey) {
       console.error("[legal-verify] Missing Supabase credentials");
-      return new Response(
-        JSON.stringify(DEGRADED_RESPONSE),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify(DEGRADED_RESPONSE), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // IMPORTANT: keep `any` to avoid TS ReturnType friction in Lovable/Deno
+    const supabase: any = createClient(supabaseUrl, supabaseKey);
+
     const queryHash = hashQuery(request.query);
 
     if (!request.force_external) {
       const cachedResult = await checkCache(supabase, queryHash);
       if (cachedResult) {
         const latency = Date.now() - startTime;
-        console.log("[legal-verify] Cache hit: " + latency + "ms");
-        return new Response(
-          JSON.stringify(cachedResult),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        console.log("[legal-verify] Cache hit:", {
+          latency,
+          source: cachedResult.source,
+          citationsCount: cachedResult.citations.length,
+          confidence: cachedResult.confidence,
+          mode: request.mode || "legal",
+        });
+
+        return new Response(JSON.stringify(cachedResult), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
     }
 
@@ -717,14 +743,20 @@ serve(async (req) => {
     if (!decision.needsExternal) {
       const localResponse = buildLocalResponse(localMatches, decision.reason);
       const latency = Date.now() - startTime;
-      console.log("[legal-verify] Local response: " + latency + "ms, confidence: " + localResponse.confidence);
+
+      console.log("[legal-verify] Local response:", {
+        latency,
+        source: localResponse.source,
+        citationsCount: localResponse.citations.length,
+        confidence: localResponse.confidence,
+        mode: request.mode || "legal",
+      });
 
       await saveToCache(supabase, queryHash, localResponse);
 
-      return new Response(
-        JSON.stringify(localResponse),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify(localResponse), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const perplexityKey = Deno.env.get("PERPLEXITY_API_KEY");
@@ -732,24 +764,33 @@ serve(async (req) => {
     if (!perplexityKey) {
       if (localMatches.length > 0) {
         const fallbackResponse = buildLocalResponse(localMatches, "perplexity_unavailable");
-        fallbackResponse.warnings = [...(fallbackResponse.warnings || []), "perplexity_unavailable", "fallback_to_local"];
+        fallbackResponse.warnings = [
+          ...(fallbackResponse.warnings || []),
+          "perplexity_unavailable",
+          "fallback_to_local",
+        ];
 
         const latency = Date.now() - startTime;
-        console.log("[legal-verify] Fallback local: " + latency + "ms");
+        console.log("[legal-verify] Fallback local:", {
+          latency,
+          source: fallbackResponse.source,
+          citationsCount: fallbackResponse.citations.length,
+          confidence: fallbackResponse.confidence,
+          mode: request.mode || "legal",
+        });
 
-        return new Response(
-          JSON.stringify(fallbackResponse),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return new Response(JSON.stringify(fallbackResponse), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
-      return new Response(
-        JSON.stringify(DEGRADED_RESPONSE),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify(DEGRADED_RESPONSE), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const systemPrompt = buildSystemPrompt(request);
+
     let externalResponse = await callPerplexity(
       perplexityKey,
       request.query,
@@ -764,17 +805,21 @@ serve(async (req) => {
     await saveToCache(supabase, queryHash, externalResponse);
 
     const latency = Date.now() - startTime;
-    console.log("[legal-verify] External response: " + latency + "ms, source: " + externalResponse.source);
+    console.log("[legal-verify] External response:", {
+      latency,
+      source: externalResponse.source,
+      citationsCount: externalResponse.citations.length,
+      confidence: externalResponse.confidence,
+      mode: request.mode || "legal",
+    });
 
-    return new Response(
-      JSON.stringify(externalResponse),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify(externalResponse), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (e) {
     console.error("[legal-verify] Error:", e);
-    return new Response(
-      JSON.stringify(DEGRADED_RESPONSE),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify(DEGRADED_RESPONSE), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
