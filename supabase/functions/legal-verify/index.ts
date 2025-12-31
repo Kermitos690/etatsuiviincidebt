@@ -291,15 +291,15 @@ async function saveToCache(
 // ============================================================
 
 // Paginated fetch utility for Supabase (batch 500, max 2000)
-async function paginatedFetch(
-  supabase: any,
+async function paginatedFetch<T = Record<string, unknown>>(
+  supabase: ReturnType<typeof createClient>,
   table: string,
   selectCols: string,
-  filters?: { column: string; value: any }[],
+  filters?: { column: string; value: string | number | boolean }[],
   batchSize = 500,
   maxRows = 2000
-): Promise<any[]> {
-  const allRows: any[] = [];
+): Promise<T[]> {
+  const allRows: T[] = [];
   let offset = 0;
 
   while (allRows.length < maxRows) {
@@ -311,7 +311,7 @@ async function paginatedFetch(
     }
     const { data, error } = await query;
     if (error || !Array.isArray(data) || data.length === 0) break;
-    allRows.push(...data);
+    allRows.push(...(data as T[]));
     offset += batchSize;
     if (data.length < batchSize) break;
   }
