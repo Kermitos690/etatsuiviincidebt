@@ -252,7 +252,7 @@ Réponse attendue:
         "mode": "persist",
         "cooldown_ms": 600000,
         "first_check_allowed": true,
-        "after_mark_allowed": false,
+        "after_mark_blocked": true,
         "pass": true,
         "note": "Ce self-test active le cooldown réel sur la clé IP (10 min)"
       }

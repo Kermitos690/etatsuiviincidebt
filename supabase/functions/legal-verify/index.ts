@@ -408,7 +408,7 @@ type SelfTestSeedCooldownReport = {
   mode: "persist";
   cooldown_ms: number;
   first_check_allowed: boolean;
-  after_mark_allowed: boolean;
+  after_mark_blocked: boolean;
   pass: boolean;
   note: string;
 };
@@ -492,7 +492,7 @@ async function runSelfTestDebug(
           mode: "persist",
           cooldown_ms: SEED_COOLDOWN_MS,
           first_check_allowed: firstCheck.allowed,
-          after_mark_allowed: secondCheck.allowed,
+          after_mark_blocked: secondCheck.allowed === false,
           pass: seedCooldownPass,
           note: "Ce self-test active le cooldown réel sur la clé IP (10 min)",
         },
