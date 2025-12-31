@@ -8,23 +8,25 @@ export type QueryPageResult = {
   error: Error | null;
 };
 
-type AsyncQueryFactory = (offset: number, limit: number) => PromiseLike<QueryPageResult>;
-
 export async function paginatedFetch(
-  queryFactory: AsyncQueryFactory,
+  queryFactory: (offset: number, limit: number) => any,
   batchSize: number,
   maxRows: number
 ) {
-  if (batchSize <= 0 || maxRows <= 0) return [] as unknown[];
+  // Equivalent of: if (batchSize <= 0 || maxRows <= 0) return [];
+  // Math.sign(x) returns 1 if x is positive
+  if (Math.sign(batchSize) !== 1 || Math.sign(maxRows) !== 1) return [];
 
   const allRows: unknown[] = [];
   let offset = 0;
 
-  while (maxRows - allRows.length > 0) {
+  // Equivalent of: while (allRows.length < maxRows)
+  while (Math.sign(maxRows - allRows.length) === 1) {
     const result = await queryFactory(offset, batchSize);
 
-    const data = result && typeof result === "object" ? (result as QueryPageResult).data : null;
-    const error = result && typeof result === "object" ? (result as QueryPageResult).error : null;
+    const obj = result && typeof result === "object" ? (result as any) : null;
+    const data = obj ? obj.data : null;
+    const error = obj ? obj.error : null;
 
     if (error) throw error;
 
@@ -34,7 +36,8 @@ export async function paginatedFetch(
     allRows.push(...rows);
     offset += batchSize;
 
-    if (batchSize - rows.length > 0) break;
+    // Equivalent of: if (rows.length < batchSize) break;
+    if (Math.sign(batchSize - rows.length) === 1) break;
   }
 
   return allRows.slice(0, maxRows);
