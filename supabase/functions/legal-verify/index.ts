@@ -141,6 +141,63 @@ const DEGRADED_RESPONSE: LegalVerifyResponse = {
 const CACHE_TTL_DAYS = 7;
 
 // ============================================================
+// ANTI-ABUSE: DEBUG RATE-LIMIT & SEED COOLDOWN (in-memory, best-effort)
+// ============================================================
+
+// Rate limit for debug requests: 5 per minute per IP
+const DEBUG_RATE_LIMIT = { windowMs: 60000, maxRequests: 5 };
+const debugRateLimitStore = new Map<string, { count: number; resetAt: number }>();
+
+// Seed cooldown: 1 execution per 10 minutes (global)
+const SEED_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
+let lastSeedExecutionAt = 0;
+
+function cleanupDebugRateLimit(): void {
+  const now = Date.now();
+  for (const [key, entry] of debugRateLimitStore.entries()) {
+    if (entry.resetAt < now) {
+      debugRateLimitStore.delete(key);
+    }
+  }
+}
+
+function getClientIp(req: Request): string {
+  const forwarded = req.headers.get("x-forwarded-for");
+  return forwarded?.split(",")[0]?.trim() || "unknown";
+}
+
+function checkDebugRateLimit(ip: string): { allowed: boolean; remaining: number } {
+  cleanupDebugRateLimit();
+  const now = Date.now();
+  const key = `debug:${ip}`;
+  const entry = debugRateLimitStore.get(key);
+
+  if (!entry || entry.resetAt < now) {
+    debugRateLimitStore.set(key, { count: 1, resetAt: now + DEBUG_RATE_LIMIT.windowMs });
+    return { allowed: true, remaining: DEBUG_RATE_LIMIT.maxRequests - 1 };
+  }
+
+  if (entry.count >= DEBUG_RATE_LIMIT.maxRequests) {
+    return { allowed: false, remaining: 0 };
+  }
+
+  entry.count++;
+  return { allowed: true, remaining: DEBUG_RATE_LIMIT.maxRequests - entry.count };
+}
+
+function checkSeedCooldown(): { allowed: boolean; reason: string } {
+  const now = Date.now();
+  if (now - lastSeedExecutionAt < SEED_COOLDOWN_MS) {
+    return { allowed: false, reason: "cooldown_active" };
+  }
+  return { allowed: true, reason: "" };
+}
+
+function markSeedExecuted(): void {
+  lastSeedExecutionAt = Date.now();
+}
+
+// ============================================================
 // UTILITIES
 // ============================================================
 
@@ -969,7 +1026,36 @@ serve(async (req) => {
     const debugPagination = Boolean((body as any).debug_pagination);
     // Probes and seed only active if debug_pagination is true
     const debugProbes = debugPagination && Boolean((body as any).debug_probes);
-    const seedReferences = debugPagination && Boolean((body as any).seed_references);
+    let seedReferences = debugPagination && Boolean((body as any).seed_references);
+
+    // ========== ANTI-ABUSE: Rate limit for debug mode ==========
+    if (debugPagination) {
+      const clientIp = getClientIp(req);
+      const rateCheck = checkDebugRateLimit(clientIp);
+      
+      if (!rateCheck.allowed) {
+        // Rate limited: return degraded response with minimal debug info
+        const rateLimitedResponse = {
+          ...DEGRADED_RESPONSE,
+          debug: { debug_version: 1, rate_limited: true },
+        };
+        const latency = Date.now() - start;
+        console.log(JSON.stringify({ latency, source: "degraded", rate_limited: true, mode }));
+        return new Response(JSON.stringify(rateLimitedResponse), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // ========== ANTI-ABUSE: Seed cooldown check ==========
+    let seedCooldownActive = false;
+    if (seedReferences) {
+      const seedCheck = checkSeedCooldown();
+      if (!seedCheck.allowed) {
+        seedCooldownActive = true;
+      }
+    }
 
     const debugInfoArticles: PaginationDebugInfo | undefined = debugPagination
       ? { enabled: true, batchSize: 1, maxRows: 2000, calls: 0, ranges: [], rowsFetched: 0, stoppedBecause: "not_stopped" }
@@ -1013,10 +1099,17 @@ serve(async (req) => {
 
     const supabase: any = createClient(supabaseUrl, serviceKey);
 
-    // Seed legal_references ONLY if debug_pagination AND seed_references are both true
+    // Seed legal_references ONLY if debug_pagination AND seed_references are both true AND no cooldown
     let seedRefs: SeedResult | undefined;
-    if (seedReferences) {
+    if (seedReferences && !seedCooldownActive) {
       seedRefs = await seedLegalReferencesIfEmpty(supabase);
+      // Mark seed as executed ONLY if actual seed happened (not skipped due to existing rows)
+      if (seedRefs && seedRefs.seeded) {
+        markSeedExecuted();
+      }
+    } else if (seedReferences && seedCooldownActive) {
+      // Return cooldown info instead of executing seed
+      seedRefs = { seeded: false, inserted: 0, reason: "cooldown_active" };
     }
 
     const queryHash = await hashQuery(query);
