@@ -219,6 +219,12 @@ Quand `debug_pagination=true`, la réponse inclut :
   - 6 appels rate-limit → vérifie que le 6e est bloqué
   - 2 appels seed cooldown → vérifie que le 2e est bloqué après mark
 
+**⚠️ ATTENTION:** Le self-test consomme du quota RÉEL:
+- **Rate-limit:** 6 tokens sur la clé `hash(IP + queryHash)` (fenêtre 1 min)
+- **Seed cooldown:** Active le cooldown réel sur la clé `hash(IP)` (10 min)
+
+Cela garantit que le test valide le vrai mécanisme anti-abus (pas une clé isolée).
+
 Réponse attendue:
 ```json
 {
@@ -239,21 +245,23 @@ Réponse attendue:
           { "i": 5, "allowed": true, "remaining": 0, "window_start": "...", "reset_at": 123 },
           { "i": 6, "allowed": false, "remaining": 0, "window_start": "...", "reset_at": 123 }
         ],
-        "pass": true
+        "pass": true,
+        "note": "Ce self-test consomme 6 tokens de rate-limit sur la clé réelle IP+queryHash"
       },
       "seed_cooldown": {
         "mode": "persist",
         "cooldown_ms": 600000,
         "first_check_allowed": true,
         "after_mark_allowed": false,
-        "pass": true
+        "pass": true,
+        "note": "Ce self-test active le cooldown réel sur la clé IP (10 min)"
       }
     }
   }
 }
 ```
 
-**Note:** Le self-test utilise des clés uniques (avec timestamp) pour éviter d'interférer avec les opérations normales. Il ne touche ni le cache, ni les probes, ni les requêtes locales.
+**Prérequis:** `debug_pagination=true` ET `debug_persist=true` sont obligatoires pour activer le self-test.
 
 ## Maintenance
 
