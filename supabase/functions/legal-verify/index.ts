@@ -792,9 +792,12 @@ serve(async (req) => {
         ? Math.min(10, Math.floor(body.max_citations))
         : 5;
 
-    // Debug pagination mode
+    // Debug pagination mode - separate tracking for each table
     const debugPagination = Boolean((body as any).debug_pagination);
-    const debugInfo: PaginationDebugInfo | undefined = debugPagination
+    const debugInfoArticles: PaginationDebugInfo | undefined = debugPagination
+      ? { enabled: true, batchSize: 1, maxRows: 2000, calls: 0, ranges: [] }
+      : undefined;
+    const debugInfoReferences: PaginationDebugInfo | undefined = debugPagination
       ? { enabled: true, batchSize: 1, maxRows: 2000, calls: 0, ranges: [] }
       : undefined;
 
@@ -853,10 +856,10 @@ serve(async (req) => {
       }
     }
 
-    // Local first
+    // Local first - pass separate debug info to each table query
     const [localArticles, localRefs] = await Promise.all([
-      queryLocalLegalArticles(supabase, query, request.context?.topics, debugInfo),
-      queryLocalLegalReferences(supabase, query, debugInfo),
+      queryLocalLegalArticles(supabase, query, request.context?.topics, debugInfoArticles),
+      queryLocalLegalReferences(supabase, query, debugInfoReferences),
     ]);
 
     const localMatches = [...localArticles, ...localRefs].sort((a, b) => b.relevance - a.relevance);
@@ -879,8 +882,8 @@ serve(async (req) => {
         })
       );
 
-      const responseBody = debugInfo
-        ? { ...localResponse, debug: { pagination: debugInfo } }
+      const responseBody = debugPagination
+        ? { ...localResponse, debug: { pagination: { articles: debugInfoArticles, references: debugInfoReferences } } }
         : localResponse;
 
       return new Response(JSON.stringify(responseBody), {
@@ -918,8 +921,8 @@ serve(async (req) => {
           })
         );
 
-        const responseBody = debugInfo
-          ? { ...response, debug: { pagination: debugInfo } }
+        const responseBody = debugPagination
+          ? { ...response, debug: { pagination: { articles: debugInfoArticles, references: debugInfoReferences } } }
           : response;
 
         return new Response(JSON.stringify(responseBody), {
@@ -966,8 +969,8 @@ serve(async (req) => {
       })
     );
 
-    const responseBody = debugInfo
-      ? { ...merged, debug: { pagination: debugInfo } }
+    const responseBody = debugPagination
+      ? { ...merged, debug: { pagination: { articles: debugInfoArticles, references: debugInfoReferences } } }
       : merged;
 
     return new Response(JSON.stringify(responseBody), {
