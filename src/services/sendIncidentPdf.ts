@@ -5,6 +5,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { buildIncidentPdfBlob, blobToBase64, generatePdfFilename } from './pdfExport';
+import { JP_EMAIL_RECIPIENT } from '@/config/legalDelivery';
 import type { Incident } from '@/types/incident';
 
 interface SendPdfResult {
@@ -14,10 +15,11 @@ interface SendPdfResult {
 
 /**
  * Envoie un PDF d'incident par email via l'Edge Function send-incident-pdf
+ * Ne throw jamais - retourne toujours un objet result
  */
 export async function sendIncidentPdfByEmail(
   incident: Incident,
-  recipientEmail: string = 'gaetan.2025@icloud.com'
+  recipientEmail?: string
 ): Promise<SendPdfResult> {
   try {
     // 1. Générer le PDF blob
@@ -32,7 +34,7 @@ export async function sendIncidentPdfByEmail(
     // 4. Appeler l'Edge Function
     const { data, error } = await supabase.functions.invoke('send-incident-pdf', {
       body: {
-        recipientEmail,
+        recipientEmail: recipientEmail ?? JP_EMAIL_RECIPIENT,
         incidentNumero: incident.numero,
         incidentTitre: incident.titre,
         incidentDate: incident.dateIncident,
@@ -42,10 +44,10 @@ export async function sendIncidentPdfByEmail(
     });
 
     if (error) {
-      console.error('Edge function error:', error);
+      console.error('Edge function invoke error:', error);
       return { 
         success: false, 
-        error: `Erreur d'envoi: ${error.message || 'Erreur inconnue'}` 
+        error: `Erreur d'appel: ${error.message || 'Erreur inconnue'}` 
       };
     }
 
@@ -58,7 +60,7 @@ export async function sendIncidentPdfByEmail(
 
     return { success: true };
   } catch (err: any) {
-    console.error('Error sending PDF:', err);
+    console.error('Error in sendIncidentPdfByEmail:', err);
     return { 
       success: false, 
       error: err.message || 'Erreur lors de la génération ou envoi du PDF' 
