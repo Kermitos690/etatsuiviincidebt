@@ -3,19 +3,19 @@
  * No external dependencies, no Supabase, no Deno APIs
  */
 
-export type QueryPageResult<T> = {
-  data: T[] | null;
+export type QueryPageResult = {
+  data: unknown[] | null;
   error: Error | null;
 };
 
-export async function paginatedFetch<T>(
-  queryFactory: (offset: number, limit: number) => Promise<QueryPageResult<T>>,
+export async function paginatedFetch(
+  queryFactory: (offset: number, limit: number) => Promise<QueryPageResult>,
   batchSize: number,
   maxRows: number
-): Promise<T[]> {
+): Promise<unknown[]> {
   if (batchSize <= 0 || maxRows <= 0) return [];
 
-  const allRows: T[] = [];
+  const allRows: unknown[] = [];
   let offset = 0;
 
   while (allRows.length < maxRows) {
