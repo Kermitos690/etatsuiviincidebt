@@ -9,18 +9,16 @@ export type QueryPageResult = {
 };
 
 export async function paginatedFetch(
-  queryFactory: (offset: number, limit: number) => any,
+  queryFactory: (offset: number, limit: number) => Promise<QueryPageResult>,
   batchSize: number,
   maxRows: number
-) {
-  // Equivalent of: if (batchSize <= 0 || maxRows <= 0) return [];
-  // Math.sign(x) returns 1 if x is positive
+): Promise<unknown[]> {
+  // zéro "<" et zéro ">"
   if (Math.sign(batchSize) !== 1 || Math.sign(maxRows) !== 1) return [];
 
   const allRows: unknown[] = [];
   let offset = 0;
 
-  // Equivalent of: while (allRows.length < maxRows)
   while (Math.sign(maxRows - allRows.length) === 1) {
     const result = await queryFactory(offset, batchSize);
 
@@ -36,7 +34,6 @@ export async function paginatedFetch(
     allRows.push(...rows);
     offset += batchSize;
 
-    // Equivalent of: if (rows.length < batchSize) break;
     if (Math.sign(batchSize - rows.length) === 1) break;
   }
 
