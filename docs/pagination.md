@@ -75,6 +75,7 @@ L'Edge Function `legal-verify` dispose de flags de contrôle pour activer des fo
 | `debug_probes` | boolean | false | Active les probes diagnostiques (probeSansFiltre, probeAvecFiltre). **Requiert** debug_pagination=true |
 | `seed_references` | boolean | false | Autorise le seed de `legal_references` si table vide. **Requiert** debug_pagination=true |
 | `seed_cooldown_probe` | boolean | false | Test du cooldown sans écrire. **Requiert** debug_pagination=true ET seed_references=true |
+| `self_test_debug` | boolean | false | Exécute un auto-test interne (6 rate-limits + 2 cooldowns). **Requiert** debug_pagination=true ET debug_persist=true |
 
 ### Règles de sécurité
 
@@ -210,7 +211,49 @@ Quand `debug_pagination=true`, la réponse inclut :
 ```
 → Tous les champs debug avec mode persist
 
----
+**9) Self-test debug (validation interne)**
+```json
+{ "query": "LPD accès données", "mode": "legal", "debug_pagination": true, "debug_persist": true, "self_test_debug": true }
+```
+→ Exécute dans une seule requête:
+  - 6 appels rate-limit → vérifie que le 6e est bloqué
+  - 2 appels seed cooldown → vérifie que le 2e est bloqué après mark
+
+Réponse attendue:
+```json
+{
+  "ok": true,
+  "debug": {
+    "debug_version": 1,
+    "instance_id": "a1b2c3d4-...",
+    "self_test": {
+      "rate_limit": {
+        "mode": "persist",
+        "window_ms": 60000,
+        "max": 5,
+        "runs": [
+          { "i": 1, "allowed": true, "remaining": 4, "window_start": "...", "reset_at": 123 },
+          { "i": 2, "allowed": true, "remaining": 3, "window_start": "...", "reset_at": 123 },
+          { "i": 3, "allowed": true, "remaining": 2, "window_start": "...", "reset_at": 123 },
+          { "i": 4, "allowed": true, "remaining": 1, "window_start": "...", "reset_at": 123 },
+          { "i": 5, "allowed": true, "remaining": 0, "window_start": "...", "reset_at": 123 },
+          { "i": 6, "allowed": false, "remaining": 0, "window_start": "...", "reset_at": 123 }
+        ],
+        "pass": true
+      },
+      "seed_cooldown": {
+        "mode": "persist",
+        "cooldown_ms": 600000,
+        "first_check_allowed": true,
+        "after_mark_allowed": false,
+        "pass": true
+      }
+    }
+  }
+}
+```
+
+**Note:** Le self-test utilise des clés uniques (avec timestamp) pour éviter d'interférer avec les opérations normales. Il ne touche ni le cache, ni les probes, ni les requêtes locales.
 
 ## Maintenance
 
