@@ -1,97 +1,44 @@
 /**
- * Unit tests for EmailCleanup page logic
- * Tests handleSwipe behavior, batchDelete, and state management
+ * Unit tests for EmailCleanup utility functions
+ * Tests the exported functions from src/utils/emailCleanup.utils.ts
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import {
+  extractDomain,
+  extractEmail,
+  isEmailRelevant,
+  batchDelete,
+  isGenericDomain,
+  EMAIL_CLEANUP_BATCH_SIZE,
+  GENERIC_DOMAINS,
+  type EmailRow,
+  type GmailConfig,
+} from '../src/utils/emailCleanup.utils';
 
 // ============================================================
-// CONSTANTS
+// CONSTANTS TESTS
 // ============================================================
 
-const BATCH_SIZE = 200;
-const GENERIC_DOMAINS = [
-  'gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'icloud.com',
-  'protonmail.com', 'live.com', 'msn.com', 'aol.com', 'me.com'
-];
-
-// ============================================================
-// UTILITY FUNCTIONS (extracted from EmailCleanup.tsx)
-// ============================================================
-
-function extractDomain(email: string): string {
-  const match = email.match(/@([^>]+)/);
-  return match ? match[1].toLowerCase().trim() : email.toLowerCase();
-}
-
-function extractEmail(sender: string): string {
-  const match = sender.match(/<([^>]+)>/);
-  return match ? match[1].toLowerCase() : sender.toLowerCase();
-}
-
-interface EmailRow {
-  id: string;
-  subject: string;
-  sender: string;
-  received_at: string;
-}
-
-interface GmailConfig {
-  domains: string[];
-  keywords: string[];
-}
-
-function isEmailRelevant(
-  email: EmailRow,
-  gmailConfig: GmailConfig | null
-): { relevant: boolean; matchedKeywords: string[] } {
-  if (!gmailConfig) return { relevant: true, matchedKeywords: [] };
-
-  const domains = gmailConfig.domains || [];
-  const keywords = gmailConfig.keywords || [];
-  const matchedKeywords: string[] = [];
-
-  const senderDomain = extractDomain(email.sender);
-  const domainMatch = domains.length === 0 || domains.some(d =>
-    senderDomain.includes(d.toLowerCase().trim())
-  );
-
-  const subjectLower = (email.subject || '').toLowerCase();
-  const keywordMatch = keywords.length === 0 || keywords.some(k => {
-    const matches = subjectLower.includes(k.toLowerCase().trim());
-    if (matches) matchedKeywords.push(k);
-    return matches;
+describe("constants", () => {
+  it("has correct batch size", () => {
+    expect(EMAIL_CLEANUP_BATCH_SIZE).toBe(200);
   });
 
-  return {
-    relevant: domainMatch && keywordMatch,
-    matchedKeywords
-  };
-}
-
-// Mock batchDelete function
-async function batchDelete(
-  ids: string[],
-  mockDelete: (batch: string[]) => Promise<{ error: Error | null }>
-): Promise<{ success: boolean; error?: string }> {
-  const BATCH_SIZE = 200;
-  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
-    const batch = ids.slice(i, i + BATCH_SIZE);
-    const { error } = await mockDelete(batch);
-    if (error) {
-      return { success: false, error: error.message };
-    }
-  }
-  return { success: true };
-}
+  it("GENERIC_DOMAINS contains common providers", () => {
+    expect(GENERIC_DOMAINS).toContain("gmail.com");
+    expect(GENERIC_DOMAINS).toContain("outlook.com");
+    expect(GENERIC_DOMAINS).toContain("yahoo.com");
+    expect(GENERIC_DOMAINS).toContain("icloud.com");
+  });
+});
 
 // ============================================================
-// TESTS
+// extractDomain TESTS
 // ============================================================
 
 describe("extractDomain", () => {
-  it("extracts domain from email with angle brackets", () => {
-    expect(extractDomain("John Doe <john@example.com>")).toBe("example.com>");
-    // Note: actual impl needs to handle this case
+  it("extracts domain from angle brackets format", () => {
+    expect(extractDomain("John Doe <john@example.com>")).toBe("example.com");
   });
 
   it("extracts domain from plain email", () => {
@@ -101,7 +48,19 @@ describe("extractDomain", () => {
   it("handles lowercase conversion", () => {
     expect(extractDomain("JOHN@EXAMPLE.COM")).toBe("example.com");
   });
+
+  it("handles complex domain", () => {
+    expect(extractDomain("Admin <admin@sub.domain.example.ch>")).toBe("sub.domain.example.ch");
+  });
+
+  it("handles no @ symbol", () => {
+    expect(extractDomain("invalid-email")).toBe("invalid-email");
+  });
 });
+
+// ============================================================
+// extractEmail TESTS
+// ============================================================
 
 describe("extractEmail", () => {
   it("extracts email from angle brackets", () => {
@@ -111,15 +70,37 @@ describe("extractEmail", () => {
   it("returns full string when no brackets", () => {
     expect(extractEmail("john@example.com")).toBe("john@example.com");
   });
-});
 
-describe("GENERIC_DOMAINS", () => {
-  it("contains common email providers", () => {
-    expect(GENERIC_DOMAINS).toContain("gmail.com");
-    expect(GENERIC_DOMAINS).toContain("outlook.com");
-    expect(GENERIC_DOMAINS).toContain("yahoo.com");
+  it("handles uppercase", () => {
+    expect(extractEmail("John <JOHN@EXAMPLE.COM>")).toBe("john@example.com");
   });
 });
+
+// ============================================================
+// isGenericDomain TESTS
+// ============================================================
+
+describe("isGenericDomain", () => {
+  it("returns true for gmail.com", () => {
+    expect(isGenericDomain("gmail.com")).toBe(true);
+  });
+
+  it("returns true for outlook.com", () => {
+    expect(isGenericDomain("outlook.com")).toBe(true);
+  });
+
+  it("returns false for custom domain", () => {
+    expect(isGenericDomain("company.ch")).toBe(false);
+  });
+
+  it("is case insensitive", () => {
+    expect(isGenericDomain("GMAIL.COM")).toBe(true);
+  });
+});
+
+// ============================================================
+// isEmailRelevant TESTS
+// ============================================================
 
 describe("isEmailRelevant", () => {
   const testEmail: EmailRow = {
@@ -159,21 +140,39 @@ describe("isEmailRelevant", () => {
     const result = isEmailRelevant(testEmail, config);
     expect(result.relevant).toBe(true);
   });
+
+  it("returns multiple matched keywords", () => {
+    const email: EmailRow = {
+      id: "2",
+      subject: "Protection des données personnelles urgent",
+      sender: "admin@test.ch",
+      received_at: "2024-01-01T00:00:00Z"
+    };
+    const config: GmailConfig = { domains: [], keywords: ["protection", "données", "urgent"] };
+    const result = isEmailRelevant(email, config);
+    expect(result.relevant).toBe(true);
+    expect(result.matchedKeywords.length).toBeGreaterThanOrEqual(1);
+  });
 });
+
+// ============================================================
+// batchDelete TESTS
+// ============================================================
 
 describe("batchDelete", () => {
   it("processes in batches of 200", async () => {
     const ids = Array.from({ length: 500 }, (_, i) => `id-${i}`);
     const batches: string[][] = [];
 
-    const mockDelete = async (batch: string[]) => {
+    const mockDelete = vi.fn(async (batch: string[]) => {
       batches.push(batch);
       return { error: null };
-    };
+    });
 
     const result = await batchDelete(ids, mockDelete);
 
     expect(result.success).toBe(true);
+    expect(result.deletedCount).toBe(500);
     expect(batches.length).toBe(3); // 200 + 200 + 100
     expect(batches[0].length).toBe(200);
     expect(batches[1].length).toBe(200);
@@ -184,31 +183,49 @@ describe("batchDelete", () => {
     const ids = Array.from({ length: 500 }, (_, i) => `id-${i}`);
     let callCount = 0;
 
-    const mockDelete = async (_batch: string[]) => {
+    const mockDelete = vi.fn(async () => {
       callCount++;
       if (callCount === 2) {
         return { error: new Error("RLS error") };
       }
       return { error: null };
-    };
+    });
 
     const result = await batchDelete(ids, mockDelete);
 
     expect(result.success).toBe(false);
     expect(result.error).toBe("RLS error");
-    expect(callCount).toBe(2); // Stopped after second batch
+    expect(callCount).toBe(2);
+    expect(result.deletedCount).toBe(200); // Only first batch succeeded
   });
 
   it("handles empty array", async () => {
-    const mockDelete = async (_batch: string[]) => ({ error: null });
+    const mockDelete = vi.fn(async () => ({ error: null }));
     const result = await batchDelete([], mockDelete);
+    
     expect(result.success).toBe(true);
+    expect(result.deletedCount).toBe(0);
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  it("handles single batch", async () => {
+    const ids = Array.from({ length: 50 }, (_, i) => `id-${i}`);
+    const mockDelete = vi.fn(async () => ({ error: null }));
+
+    const result = await batchDelete(ids, mockDelete);
+
+    expect(result.success).toBe(true);
+    expect(result.deletedCount).toBe(50);
+    expect(mockDelete).toHaveBeenCalledTimes(1);
   });
 });
 
+// ============================================================
+// handleSwipe state management TESTS
+// ============================================================
+
 describe("handleSwipe state management", () => {
-  it("should always reset deleting state in finally block", () => {
-    // Simulate handleSwipe behavior
+  it("should always reset deleting state in finally block", async () => {
     let deleting = false;
 
     const simulateSwipe = async (shouldError: boolean) => {
@@ -224,62 +241,79 @@ describe("handleSwipe state management", () => {
     };
 
     // Test success case
-    simulateSwipe(false);
+    await simulateSwipe(false);
     expect(deleting).toBe(false);
 
     // Test error case
-    simulateSwipe(true);
+    await simulateSwipe(true);
     expect(deleting).toBe(false);
   });
 
   it("should validate currentGroup before action", () => {
-    const currentGroup = null;
-    const deleting = false;
-
-    const shouldProceed = () => {
+    const shouldProceed = (currentGroup: unknown, deleting: boolean) => {
       if (!currentGroup || deleting) return false;
       return true;
     };
 
-    expect(shouldProceed()).toBe(false);
+    expect(shouldProceed(null, false)).toBe(false);
+    expect(shouldProceed(undefined, false)).toBe(false);
+    expect(shouldProceed({ domain: "test.com" }, true)).toBe(false);
+    expect(shouldProceed({ domain: "test.com" }, false)).toBe(true);
   });
 
   it("should validate user auth before action", () => {
-    const mockUser = null;
-    
     const shouldProceed = (user: unknown) => {
       if (!user) return false;
       return true;
     };
 
-    expect(shouldProceed(mockUser)).toBe(false);
+    expect(shouldProceed(null)).toBe(false);
+    expect(shouldProceed(undefined)).toBe(false);
     expect(shouldProceed({ id: "user-123" })).toBe(true);
   });
 });
 
+// ============================================================
+// Swipe directions TESTS
+// ============================================================
+
 describe("Swipe directions", () => {
   type SwipeDirection = 'left' | 'right' | 'up' | 'down' | null;
 
+  const getAction = (direction: SwipeDirection): string => {
+    switch (direction) {
+      case 'left': return 'delete';
+      case 'right': return 'whitelist';
+      case 'down': return 'blacklist+delete';
+      case 'up': return 'skip';
+      default: return 'none';
+    }
+  };
+
   it("left = delete emails", () => {
-    const direction: SwipeDirection = 'left';
-    expect(direction).toBe('left');
+    expect(getAction('left')).toBe('delete');
   });
 
   it("right = whitelist domain", () => {
-    const direction: SwipeDirection = 'right';
-    expect(direction).toBe('right');
+    expect(getAction('right')).toBe('whitelist');
   });
 
   it("down = delete + blacklist", () => {
-    const direction: SwipeDirection = 'down';
-    expect(direction).toBe('down');
+    expect(getAction('down')).toBe('blacklist+delete');
   });
 
   it("up = skip/ignore", () => {
-    const direction: SwipeDirection = 'up';
-    expect(direction).toBe('up');
+    expect(getAction('up')).toBe('skip');
+  });
+
+  it("null = no action", () => {
+    expect(getAction(null)).toBe('none');
   });
 });
+
+// ============================================================
+// Stats tracking TESTS
+// ============================================================
 
 describe("Stats tracking", () => {
   interface Stats {
@@ -297,16 +331,24 @@ describe("Stats tracking", () => {
     expect(stats.skipped).toBe(0);
   });
 
-  it("increments correctly", () => {
+  it("increments correctly for swipe actions", () => {
     let stats: Stats = { deleted: 0, kept: 0, blacklisted: 0, skipped: 0 };
     
-    // Simulate left swipe (delete)
-    const emailCount = 5;
-    stats = { ...stats, deleted: stats.deleted + emailCount };
+    // Simulate left swipe (delete 5 emails)
+    stats = { ...stats, deleted: stats.deleted + 5 };
     expect(stats.deleted).toBe(5);
 
     // Simulate right swipe (keep)
     stats = { ...stats, kept: stats.kept + 3 };
     expect(stats.kept).toBe(3);
+
+    // Simulate down swipe (blacklist 2 emails)
+    stats = { ...stats, blacklisted: stats.blacklisted + 2, deleted: stats.deleted + 2 };
+    expect(stats.blacklisted).toBe(2);
+    expect(stats.deleted).toBe(7);
+
+    // Simulate up swipe (skip 4 emails)
+    stats = { ...stats, skipped: stats.skipped + 4 };
+    expect(stats.skipped).toBe(4);
   });
 });

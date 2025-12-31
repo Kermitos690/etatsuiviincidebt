@@ -60,8 +60,8 @@ for (let i = 0; i < ids.length; i += BATCH_SIZE) {
 
 | Constante | Valeur | Usage |
 |-----------|--------|-------|
-| `BATCH_SIZE` | 500 | Taille de chaque requête `.range()` |
-| `MAX_ROWS` | 2000 | Maximum absolu de lignes récupérées |
+| `LEGAL_VERIFY_BATCH_SIZE` | 500 | Taille de chaque requête `.range()` |
+| `LEGAL_VERIFY_MAX_ROWS` | 2000 | Maximum absolu de lignes récupérées |
 
 ```typescript
 // Loop pagination
