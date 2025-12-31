@@ -20,6 +20,7 @@ import {
   canModifyIncident 
 } from '@/mappers/incidents';
 import { logIncidentCreation, logIncidentUpdate, logIncidentTransmission, logIncidentLock } from '@/hooks/useIncidentEvents';
+import { sendIncidentPdfByEmail } from '@/services/sendIncidentPdf';
 
 // ============= Types =============
 interface IncidentStore {
@@ -33,8 +34,9 @@ interface IncidentStore {
   addIncident: (incident: Omit<Incident, 'id' | 'numero' | 'score' | 'priorite' | 'dateCreation'>) => Promise<Incident | null>;
   updateIncident: (id: string, updates: Partial<Incident>, modificationReason?: string) => Promise<{ success: boolean; error?: string }>;
   deleteIncident: (id: string) => Promise<void>;
-  markTransmisJP: (id: string) => Promise<{ success: boolean; error?: string }>;
+  markTransmisJP: (id: string) => Promise<{ success: boolean; error?: string; emailError?: string }>;
   lockIncident: (id: string, lock: boolean, reason?: string) => Promise<{ success: boolean; error?: string }>;
+  resendPdf: (id: string) => Promise<{ success: boolean; error?: string }>;
   setFilters: (filters: Partial<FilterState>) => void;
   clearFilters: () => void;
   updateConfig: (config: Partial<AppConfig>) => void;
@@ -204,6 +206,7 @@ export const useIncidentStore = create<IncidentStore>()(
           isLocked: true, // Auto-lock when transmitted
         };
 
+        // 1. Update DB first
         const { error } = await supabase
           .from('incidents')
           .update(mapIncidentToDb(updates as any))
@@ -214,16 +217,47 @@ export const useIncidentStore = create<IncidentStore>()(
           return { success: false, error: 'Erreur lors de la transmission' };
         }
 
-        // Log transmission event
-        await logIncidentTransmission(id, existingIncident.numero);
+        // 2. Log transmission event (non-blocking)
+        logIncidentTransmission(id, existingIncident.numero).catch(console.error);
 
+        // 3. Update local state with new values
+        const updatedIncident = { ...existingIncident, ...updates };
         set({
           incidents: state.incidents.map((inc) => 
-            inc.id === id ? { ...inc, ...updates } : inc
+            inc.id === id ? updatedIncident : inc
           )
         });
 
-        return { success: true };
+        // 4. Generate PDF and send email (non-blocking)
+        let emailError: string | undefined;
+        try {
+          const sendResult = await sendIncidentPdfByEmail(updatedIncident);
+          if (!sendResult.success) {
+            emailError = sendResult.error;
+            console.error('Email send failed:', sendResult.error);
+          }
+        } catch (e: any) {
+          emailError = e.message || 'Erreur lors de l\'envoi email';
+          console.error('Email send error:', e);
+        }
+
+        // Transmission is always successful even if email fails
+        return { success: true, emailError };
+      },
+
+      resendPdf: async (id) => {
+        const state = get();
+        const incident = state.incidents.find(inc => inc.id === id);
+        if (!incident) {
+          return { success: false, error: 'Incident non trouvé' };
+        }
+
+        try {
+          const sendResult = await sendIncidentPdfByEmail(incident);
+          return sendResult;
+        } catch (e: any) {
+          return { success: false, error: e.message || 'Erreur lors de l\'envoi' };
+        }
       },
 
       lockIncident: async (id, lock, reason) => {
