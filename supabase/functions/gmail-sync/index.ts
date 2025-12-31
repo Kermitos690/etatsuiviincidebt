@@ -406,17 +406,27 @@ async function processEmailsInBackground(
   accessToken: string,
   config: any,
   supabase: any,
-  filters: EmailFilters
+  filters: EmailFilters,
+  syncMeta: Record<string, unknown> = {}
 ) {
   console.log(`[Background] Starting processing of ${allMessages.length} emails for sync ${syncId}`);
   console.log(`[Background] Filters: ${filters.domains.length} domains, ${filters.keywords.length} keywords`);
-  
-  const stats = { 
-    received: 0, sent: 0, replied: 0, forwarded: 0, attachments: 0, 
-    spam: 0, trash: 0, drafts: 0, custom_folders: 0,
+
+  const stats = {
+    ...syncMeta,
+    received: 0,
+    sent: 0,
+    replied: 0,
+    forwarded: 0,
+    attachments: 0,
+    spam: 0,
+    trash: 0,
+    drafts: 0,
+    custom_folders: 0,
     skippedByFilter: 0,
-    skippedByBlacklist: 0  // NEW: track blacklisted emails
+    skippedByBlacklist: 0, // NEW: track blacklisted emails
   };
+
   let processedCount = 0;
   let newEmailsCount = 0;
   let attachmentsCount = 0;
@@ -1051,6 +1061,18 @@ serve(async (req) => {
 
     console.log(`Found ${allMessages.length} total messages. Starting background processing...`);
 
+    const syncMeta = {
+      sync_mode: syncMode,
+      totalFetched: allMessages.length,
+      pages: pageCount,
+      stoppedBecause,
+      syncLimit: syncLimit ?? 'unlimited',
+      api_emails_found: allMessages.length,
+      domains_count: domains.length,
+      keywords_count: keywords.length,
+      filters_applied_at_api: syncMode === 'filtered' && hasFilters,
+    };
+
     // Create sync status record with filtering stats
     const { data: syncStatus, error: syncError } = await supabase
       .from("sync_status")
@@ -1061,6 +1083,7 @@ serve(async (req) => {
         processed_emails: 0,
         new_emails: 0,
         stats: {
+          ...syncMeta,
           received: 0,
           sent: 0,
           replied: 0,
@@ -1069,23 +1092,13 @@ serve(async (req) => {
           trash: 0,
           drafts: 0,
           custom_folders: 0,
-          sync_mode: syncMode,
-          // Pagination stats
-          totalFetched: allMessages.length,
-          pages: pageCount,
-          stoppedBecause,
-          syncLimit: syncLimit ?? 'unlimited',
-          // API filtering stats
-          api_emails_found: allMessages.length,
-          domains_count: domains.length,
-          keywords_count: keywords.length,
-          filters_applied_at_api: syncMode === 'filtered' && hasFilters,
           skippedByFilter: 0,
           skippedByBlacklist: 0,
         },
       })
       .select()
       .single();
+
 
     if (syncError) {
       console.error("Failed to create sync status:", syncError);
@@ -1094,7 +1107,25 @@ serve(async (req) => {
 
     // Start background processing with filters
     const filters: EmailFilters = { domains, keywords };
-    EdgeRuntime.waitUntil(processEmailsInBackground(syncStatus.id, user.id, allMessages, accessToken, config, supabase, filters));
+    const bgPromise = processEmailsInBackground(
+      syncStatus.id,
+      user.id,
+      allMessages,
+      accessToken,
+      config,
+      supabase,
+      filters,
+      syncMeta
+    );
+
+    const waitUntil = (globalThis as any).EdgeRuntime?.waitUntil;
+    if (typeof waitUntil === 'function') {
+      waitUntil(bgPromise);
+    } else {
+      console.warn('[gmail-sync] EdgeRuntime.waitUntil unavailable; running sync inline.');
+      await bgPromise;
+    }
+
 
     // Return immediate response
     return new Response(JSON.stringify({ 
