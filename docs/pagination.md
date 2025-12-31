@@ -62,6 +62,46 @@ Les tests simulent queryFactory avec des retours de pages, sans importer de code
 
 ---
 
+## 5) Sécurité / Flags (legal-verify)
+
+L'Edge Function `legal-verify` dispose de flags de contrôle pour activer des fonctionnalités de debug et maintenance.
+
+**Flags disponibles (dans le body JSON):**
+
+| Flag | Type | Défaut | Description |
+|------|------|--------|-------------|
+| `debug_pagination` | boolean | false | Active l'instrumentation pagination (batchSize=1, ranges, rowsFetched, stoppedBecause) |
+| `debug_probes` | boolean | false | Active les probes diagnostiques (probeSansFiltre, probeAvecFiltre). **Requiert** debug_pagination=true |
+| `seed_references` | boolean | false | Autorise le seed de `legal_references` si table vide. **Requiert** debug_pagination=true |
+
+**Règles de sécurité:**
+
+1. Par défaut, **tout est désactivé** (zéro effet de bord)
+2. `debug_probes` et `seed_references` sont **ignorés** si `debug_pagination=false`
+3. Le seed est **idempotent** (upsert avec onConflict sur code_name, article_number)
+4. Les probes sont **read-only** (count exact head:true)
+
+**Exemples de payloads:**
+
+```json
+// Mode normal (production) - aucun debug
+{ "query": "LPD accès données", "mode": "legal" }
+
+// Debug pagination seul (pas de probes, pas de seed)
+{ "query": "LPD accès données", "mode": "legal", "debug_pagination": true }
+
+// Debug avec probes activés
+{ "query": "LPD accès données", "mode": "legal", "debug_pagination": true, "debug_probes": true }
+
+// Debug avec seed activé (write DB autorisé)
+{ "query": "LPD accès données", "mode": "legal", "debug_pagination": true, "seed_references": true }
+
+// Debug complet (probes + seed)
+{ "query": "LPD accès données", "mode": "legal", "debug_pagination": true, "debug_probes": true, "seed_references": true }
+```
+
+---
+
 ## Maintenance
 
 - Ne jamais importer `src/` depuis une Edge Function
