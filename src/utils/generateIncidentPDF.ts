@@ -353,8 +353,11 @@ function drawDeepAnalysisSection(
   analysis: DeepAnalysisResult,
   sectionNumber: number
 ): { y: number; nextSection: number } {
-  const { marginLeft, contentWidth } = PDF_DIMENSIONS;
+  const { marginLeft, contentWidth, safeContentWidth, textInnerMargin } = PDF_DIMENSIONS;
   let currentSection = sectionNumber;
+
+  // Largeur sûre pour le texte
+  const textWidth = safeContentWidth - textInnerMargin;
 
   // ============================================
   // SECTION: ANALYSE CONTEXTUELLE APPROFONDIE
@@ -370,7 +373,7 @@ function drawDeepAnalysisSection(
   doc.setFontSize(9);
   doc.setFont('helvetica', 'italic');
   setColor(doc, PDF_COLORS.muted);
-  doc.text('Analyse narrative et rhétorique par intelligence artificielle', marginLeft, y);
+  doc.text('Analyse narrative et rhetorique par intelligence artificielle', marginLeft, y);
   y += 10;
 
   // A. CHAÎNE DE CAUSALITÉ
@@ -380,19 +383,19 @@ function drawDeepAnalysisSection(
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     setColor(doc, PDF_COLORS.primary);
-    doc.text('A. CHAÎNE DE CAUSALITÉ', marginLeft, y);
+    doc.text('A. CHAINE DE CAUSALITE', marginLeft, y);
     y += 8;
 
     for (const link of analysis.causal_chain) {
       // Normalize all text from AI analysis
-      const cause = normalizeTextForPdf(link.cause || '', { maxLength: 200 });
-      const citation = normalizeTextForPdf(link.citation || '', { maxLength: 300 });
-      const consequence = normalizeTextForPdf(link.consequence || '', { maxLength: 150 });
-      const impact = normalizeTextForPdf(link.impact || '', { maxLength: 150 });
+      const cause = normalizeTextForPdf(link.cause || '', { maxLength: 150 });
+      const citation = normalizeTextForPdf(link.citation || '', { maxLength: 200 });
+      const consequence = normalizeTextForPdf(link.consequence || '', { maxLength: 100 });
+      const impact = normalizeTextForPdf(link.impact || '', { maxLength: 100 });
       
       // Calculate dynamic height based on citation length
       doc.setFontSize(8);
-      const citationLines = doc.splitTextToSize(`"${citation}"`, contentWidth - 10);
+      const citationLines = doc.splitTextToSize(`"${citation}"`, textWidth);
       const displayedCitationLines = citationLines.slice(0, 3);
       const dynamicHeight = 18 + (displayedCitationLines.length * 4);
       
@@ -402,19 +405,21 @@ function drawDeepAnalysisSection(
       setColor(doc, PDF_COLORS.background, 'fill');
       doc.roundedRect(marginLeft, y - 2, contentWidth, dynamicHeight, 2, 2, 'F');
       
+      const textX = marginLeft + textInnerMargin;
+      
       doc.setFontSize(8);
       doc.setFont('helvetica', 'bold');
       setColor(doc, PDF_COLORS.critique);
-      doc.text(`CAUSE: ${cause}`, marginLeft + 3, y + 4);
+      doc.text(`CAUSE: ${cause}`, textX, y + 4);
       
       doc.setFont('helvetica', 'normal');
       setColor(doc, PDF_COLORS.text);
-      doc.text(displayedCitationLines, marginLeft + 3, y + 10);
+      doc.text(displayedCitationLines, textX, y + 10);
       
       const bottomY = y + 10 + (displayedCitationLines.length * 4);
       doc.setFontSize(7);
       setColor(doc, PDF_COLORS.muted);
-       doc.text(`=> ${consequence}`, marginLeft + 3, bottomY);
+       doc.text(`=> ${consequence}`, textX, bottomY);
        doc.text(`Impact: ${impact}`, marginLeft + contentWidth/2, bottomY);
       
       y += dynamicHeight + 4;
@@ -893,7 +898,10 @@ export async function generateIncidentPDF(
   setColor(doc, PDF_COLORS.text);
   
   const faitsText = normalizedFaits || 'Aucun fait renseigne.';
-  const faitsLines = doc.splitTextToSize(faitsText, contentWidth - 10);
+  // Utiliser safeContentWidth pour éviter les débordements
+  const safeWidth = PDF_DIMENSIONS.safeContentWidth;
+  const textMargin = PDF_DIMENSIONS.textInnerMargin;
+  const faitsLines = doc.splitTextToSize(faitsText, safeWidth - textMargin);
   
   const faitsHeight = faitsLines.length * 5 + 10;
   y = checkPageBreak(doc, y, faitsHeight);
@@ -901,7 +909,7 @@ export async function generateIncidentPDF(
   setColor(doc, PDF_COLORS.background, 'fill');
   doc.roundedRect(marginLeft, y - 3, contentWidth, faitsHeight, 2, 2, 'F');
   
-  doc.text(faitsLines, marginLeft + 5, y + 3);
+  doc.text(faitsLines, marginLeft + textMargin, y + 3);
   y += faitsHeight + 5;
 
   // ============================================
@@ -916,7 +924,7 @@ export async function generateIncidentPDF(
   setColor(doc, PDF_COLORS.text);
   
   const dysfText = normalizedDysfonctionnement || 'Aucun dysfonctionnement renseigne.';
-  const dysfLines = doc.splitTextToSize(dysfText, contentWidth - 10);
+  const dysfLines = doc.splitTextToSize(dysfText, safeWidth - textMargin);
   
   const dysfHeight = dysfLines.length * 5 + 10;
   y = checkPageBreak(doc, y, dysfHeight);
@@ -926,7 +934,7 @@ export async function generateIncidentPDF(
   setColor(doc, severityColor, 'fill');
   doc.rect(marginLeft, y - 3, 3, dysfHeight, 'F');
   
-  doc.text(dysfLines, marginLeft + 8, y + 3);
+  doc.text(dysfLines, marginLeft + textMargin, y + 3);
   y += dysfHeight + 5;
 
   // ============================================
