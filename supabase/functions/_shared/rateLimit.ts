@@ -1,3 +1,5 @@
+import { getCorsHeaders, corsHeaders } from "./core.ts";
+
 /**
  * Simple in-memory rate limiter for edge functions
  * Uses a sliding window approach with configurable limits
@@ -78,7 +80,7 @@ export function getClientIdentifier(req: Request, prefix: string = ""): string {
 /**
  * Rate limit response
  */
-export function rateLimitResponse(resetAt: number): Response {
+export function rateLimitResponse(resetAt: number, req?: Request): Response {
   const retryAfter = Math.ceil((resetAt - Date.now()) / 1000);
   
   return new Response(
@@ -91,8 +93,7 @@ export function rateLimitResponse(resetAt: number): Response {
       headers: {
         "Content-Type": "application/json",
         "Retry-After": String(retryAfter),
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
+        ...getCorsHeaders(req)
       }
     }
   );
