@@ -56,43 +56,28 @@ async function refreshAccessToken(supabase: any, config: any, refreshToken: stri
 
   const tokenExpiry = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
   
-  // Store tokens encrypted if encryption is configured
-  if (isEncryptionConfigured()) {
-    try {
-      const encrypted = await encryptGmailTokens(tokenData.access_token, refreshToken);
-      await supabase
-        .from("gmail_config")
-        .update({ 
-          access_token_enc: encrypted.accessTokenEnc,
-          refresh_token_enc: encrypted.refreshTokenEnc,
-          token_nonce: encrypted.nonce,
-          token_key_version: encrypted.keyVersion,
-          access_token: null, // Clear plaintext
-          refresh_token: null, // Clear plaintext
-          token_expiry: tokenExpiry
-        })
-        .eq("id", config.id);
-      console.log("Token refreshed and stored encrypted");
-    } catch (encError) {
-      console.error("Encryption failed, storing plaintext:", encError);
-      await supabase
-        .from("gmail_config")
-        .update({ 
-          access_token: tokenData.access_token,
-          token_expiry: tokenExpiry
-        })
-        .eq("id", config.id);
-    }
-  } else {
-    // Fallback to plaintext storage
+  // Store tokens encrypted (required)
+  if (!isEncryptionConfigured()) {
+    console.error("Encryption key missing - cannot store Gmail tokens");
+    return null;
+  }
+
+  try {
+    const encrypted = await encryptGmailTokens(tokenData.access_token, refreshToken);
     await supabase
       .from("gmail_config")
       .update({ 
-        access_token: tokenData.access_token,
+        access_token_enc: encrypted.accessTokenEnc,
+        refresh_token_enc: encrypted.refreshTokenEnc,
+        token_nonce: encrypted.nonce,
+        token_key_version: encrypted.keyVersion,
         token_expiry: tokenExpiry
       })
       .eq("id", config.id);
-    console.log("Token refreshed (plaintext - encryption not configured)");
+    console.log("Token refreshed and stored encrypted");
+  } catch (encError) {
+    console.error("Encryption failed:", encError);
+    return null;
   }
 
   return tokenData.access_token;

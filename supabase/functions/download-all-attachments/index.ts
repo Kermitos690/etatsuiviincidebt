@@ -57,6 +57,11 @@ async function refreshAccessToken(
     return null;
   }
   
+  if (!isEncryptionConfigured()) {
+    log('error', 'Encryption key missing - cannot store refreshed token');
+    return null;
+  }
+
   try {
     const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -76,45 +81,20 @@ async function refreshAccessToken(
     
     const data = await response.json();
     const tokenExpiry = new Date(Date.now() + data.expires_in * 1000).toISOString();
-    
-    // Store tokens encrypted if encryption is configured
-    if (isEncryptionConfigured()) {
-      try {
-        const encrypted = await encryptGmailTokens(data.access_token, refreshToken);
-        await supabase
-          .from("gmail_config")
-          .update({ 
-            access_token_enc: encrypted.accessTokenEnc,
-            refresh_token_enc: encrypted.refreshTokenEnc,
-            token_nonce: encrypted.nonce,
-            token_key_version: encrypted.keyVersion,
-            access_token: null,
-            refresh_token: null,
-            token_expiry: tokenExpiry
-          })
-          .eq("id", config.id);
-        log('info', 'Token refreshed and stored encrypted');
-      } catch (encError) {
-        log('error', 'Encryption failed, storing plaintext');
-        await supabase
-          .from("gmail_config")
-          .update({ 
-            access_token: data.access_token,
-            token_expiry: tokenExpiry
-          })
-          .eq("id", config.id);
-      }
-    } else {
-      await supabase
-        .from("gmail_config")
-        .update({ 
-          access_token: data.access_token,
-          token_expiry: tokenExpiry
-        })
-        .eq("id", config.id);
-      log('info', 'Token refreshed (plaintext)');
-    }
-    
+
+    const encrypted = await encryptGmailTokens(data.access_token, refreshToken);
+    await supabase
+      .from("gmail_config")
+      .update({ 
+        access_token_enc: encrypted.accessTokenEnc,
+        refresh_token_enc: encrypted.refreshTokenEnc,
+        token_nonce: encrypted.nonce,
+        token_key_version: encrypted.keyVersion,
+        token_expiry: tokenExpiry
+      })
+      .eq("id", config.id);
+
+    log('info', 'Token refreshed and stored encrypted');
     return data.access_token;
   } catch (err) {
     log('error', 'Token refresh exception', { error: String(err) });
@@ -176,8 +156,8 @@ serve(async (req) => {
 
     // Get tokens using encryption-aware helper
     const tokens = await getGmailTokens({
-      access_token: gmailConfig.access_token,
-      refresh_token: gmailConfig.refresh_token,
+      access_token: null,
+      refresh_token: null,
       access_token_enc: gmailConfig.access_token_enc,
       refresh_token_enc: gmailConfig.refresh_token_enc,
       token_nonce: gmailConfig.token_nonce,
