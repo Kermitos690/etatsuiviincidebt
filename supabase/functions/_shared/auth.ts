@@ -1,10 +1,9 @@
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getCorsHeaders, corsHeaders as baseCorsHeaders, log } from "./core.ts";
 
-export const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
+// Re-export corsHeaders for backward compatibility with existing imports
+export const corsHeaders = baseCorsHeaders;
+export { getCorsHeaders };
 export interface AuthResult {
   user: { id: string; email?: string } | null;
   error: string | null;
