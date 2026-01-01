@@ -4,10 +4,15 @@ import { useAuth, AppRole } from '@/hooks/useAuth';
 import { Loader2, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-// Tutorial mode: bypass authentication ONLY via environment variable (not URL parameter)
+// Tutorial mode: bypass authentication ONLY via environment variable in development mode
 // This prevents attackers from bypassing auth by adding ?tutorial=true
-// SECURITY: Only enable in development/staging, NEVER in production
-const TUTORIAL_MODE = import.meta.env.VITE_TUTORIAL_MODE === 'true';
+// SECURITY: Double protection - requires both development mode AND env variable
+const TUTORIAL_MODE = import.meta.env.MODE === 'development' && 
+                      import.meta.env.VITE_TUTORIAL_MODE === 'true';
+
+if (TUTORIAL_MODE && typeof window !== 'undefined') {
+  console.error('⚠️ TUTORIAL MODE ACTIVE - AUTHENTICATION DISABLED - DEVELOPMENT ONLY');
+}
 
 interface AuthGuardProps {
   children: ReactNode;
