@@ -108,7 +108,6 @@ export default function AnalysisPipeline() {
   const [activeTab, setActiveTab] = useState('pipeline');
   const [analysisSteps, setAnalysisSteps] = useState<AnalysisStep[]>([
     { name: 'Synchronisation Gmail', status: 'pending', progress: 0 },
-    { name: 'Resynchronisation emails', status: 'pending', progress: 0 },
     { name: 'Téléchargement pièces jointes', status: 'pending', progress: 0 },
     { name: 'Pass 1: Extraction des faits', status: 'pending', progress: 0 },
     { name: 'Pass 2: Analyse des threads', status: 'pending', progress: 0 },
@@ -348,61 +347,46 @@ export default function AnalysisPipeline() {
         });
       }
 
-      // Step 1: Resync email bodies
+      // Step 1: Download attachments
       updateStep(1, { status: 'running', progress: 10 });
-      toast.info('Étape 2/6: Resynchronisation des emails...');
+      toast.info('Étape 2/5: Téléchargement des pièces jointes...');
       
-      const resyncRes = await supabase.functions.invoke('resync-email-bodies', {
+      const attachRes = await supabase.functions.invoke('download-all-attachments', {
         body: { batchSize: 50 }
       });
       
       updateStep(1, { 
         status: 'completed', 
         progress: 100, 
-        details: `${resyncRes.data?.updated || 0} emails mis à jour`,
-        count: resyncRes.data?.updated || 0
-      });
-
-      // Step 2: Download attachments
-      updateStep(2, { status: 'running', progress: 10 });
-      toast.info('Étape 3/6: Téléchargement des pièces jointes...');
-      
-      const attachRes = await supabase.functions.invoke('download-all-attachments', {
-        body: { batchSize: 50 }
-      });
-      
-      updateStep(2, { 
-        status: 'completed', 
-        progress: 100, 
         details: `${attachRes.data?.downloaded || 0} pièces jointes`,
         count: attachRes.data?.downloaded || 0
       });
 
-      // Step 3: Extract facts (Pass 1) - with filters
-      updateStep(3, { status: 'running', progress: 10 });
-      toast.info('Étape 4/6: Extraction des faits (Pass 1)...');
+      // Step 2: Extract facts (Pass 1) - with filters
+      updateStep(2, { status: 'running', progress: 10 });
+      toast.info('Étape 3/5: Extraction des faits (Pass 1)...');
       
       const factsRes = await supabase.functions.invoke('extract-email-facts', {
         body: { batchSize: 50, ...filterBody }
       });
       
-      updateStep(3, { 
+      updateStep(2, { 
         status: 'completed', 
         progress: 100, 
         details: `${factsRes.data?.results?.processed || 0} emails traités`,
         count: factsRes.data?.results?.processed || 0
       });
 
-      // Step 4: Analyze threads (Pass 2) - with filters
-      updateStep(4, { status: 'running', progress: 10 });
-      toast.info('Étape 5/6: Analyse des threads (Pass 2)...');
+      // Step 3: Analyze threads (Pass 2) - with filters
+      updateStep(3, { status: 'running', progress: 10 });
+      toast.info('Étape 4/5: Analyse des threads (Pass 2)...');
 
       const THREAD_BATCH = 3;
       let totalThreadsAnalyzed = 0;
       let consecutiveZero = 0; // Track when nothing new is analyzed
 
       for (let round = 0; round < 20; round++) {
-        updateStep(4, {
+        updateStep(3, {
           progress: Math.min(10 + round * 4, 90),
           details: `${totalThreadsAnalyzed} threads analysés...`,
         });
@@ -447,16 +431,16 @@ export default function AnalysisPipeline() {
         await new Promise(r => setTimeout(r, 500));
       }
 
-      updateStep(4, {
+      updateStep(3, {
         status: 'completed',
         progress: 100,
         details: `${totalThreadsAnalyzed} threads analysés`,
         count: totalThreadsAnalyzed,
       });
 
-      // Step 5: Cross-reference (Pass 3) - with filters
-      updateStep(5, { status: 'running', progress: 10 });
-      toast.info('Étape 6/6: Corroboration croisée (Pass 3)...');
+      // Step 4: Cross-reference (Pass 3) - with filters
+      updateStep(4, { status: 'running', progress: 10 });
+      toast.info('Étape 5/5: Corroboration croisée (Pass 3)...');
 
       const corrobRes = await supabase.functions.invoke('cross-reference-analysis', {
         body: { ...filterBody },
@@ -464,7 +448,7 @@ export default function AnalysisPipeline() {
 
       if (corrobRes.error) throw new Error(corrobRes.error.message);
 
-      updateStep(5, {
+      updateStep(4, {
         status: 'completed',
         progress: 100,
         details: `${corrobRes.data?.results?.corroborations || 0} corroborations créées`,
