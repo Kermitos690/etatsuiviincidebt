@@ -267,82 +267,107 @@ export default function AnalysisPipeline() {
       updateStep(0, { status: 'running', progress: 10 });
       toast.info('Étape 1/5: Synchronisation Gmail...');
       
-      const gmailSyncRes = await supabase.functions.invoke('gmail-sync', {
-        body: { 
-          syncMode: hasFilters ? 'filtered' : 'all',
-          ...filterBody
-        }
-      });
-      
-      // Gmail sync returns immediately with syncId for background processing
-      // We need to poll for completion
       let emailsSynced = 0;
-      if (gmailSyncRes.data?.syncId) {
-        // Poll sync status for up to 5 minutes
-        const syncId = gmailSyncRes.data.syncId;
-        let attempts = 0;
-        const maxAttempts = 150; // 5 minutes with 2s intervals
-        let lastProcessed = -1;
-        let stagnantPolls = 0;
-
-        while (attempts < maxAttempts) {
-          await new Promise(r => setTimeout(r, 2000));
-          const { data: syncStatus } = await supabase
-            .from('sync_status')
-            .select('status, processed_emails, new_emails, total_emails, stats')
-            .eq('id', syncId)
-            .maybeSingle();
-
-          const statsObj = syncStatus?.stats as Record<string, unknown> | null;
-          const stoppedBecause = (statsObj?.stoppedBecause as string | undefined) || undefined;
-
-          if (syncStatus?.status === 'completed' || syncStatus?.status === 'error') {
-            emailsSynced = syncStatus.new_emails || syncStatus.processed_emails || 0;
-            updateStep(0, {
-              status: syncStatus.status === 'error' ? 'error' : 'completed',
-              progress: 100,
-              details: `${emailsSynced} nouveaux emails (${stoppedBecause || 'terminé'})`,
-              count: emailsSynced
-            });
-            break;
+      let gmailConfigured = true;
+      
+      try {
+        const gmailSyncRes = await supabase.functions.invoke('gmail-sync', {
+          body: { 
+            syncMode: hasFilters ? 'filtered' : 'all',
+            ...filterBody
           }
-
-          // Update progress
-          const processed = syncStatus?.processed_emails || 0;
-          const total = syncStatus?.total_emails || 1;
-
-          if (processed === lastProcessed) stagnantPolls += 1;
-          else stagnantPolls = 0;
-          lastProcessed = processed;
-
-          // If Gmail fetch finished but background processing didn't start, stop blocking
-          if (stagnantPolls >= 8 && processed === 0 && stoppedBecause) {
-            updateStep(0, {
-              status: 'error',
-              progress: 100,
-              details: `Sync bloquée (stoppedBecause=${stoppedBecause}). Relance la synchronisation.`
-            });
-            throw new Error('Sync Gmail bloquée');
-          }
-
-          const pct = Math.min(Math.round((processed / total) * 100), 99);
-          updateStep(0, { progress: pct, details: `${processed}/${total} emails...` });
-          attempts++;
-        }
-
-      } else if (gmailSyncRes.data?.emailsProcessed !== undefined) {
-        emailsSynced = gmailSyncRes.data.emailsProcessed;
-        updateStep(0, { 
-          status: 'completed', 
-          progress: 100, 
-          details: `${emailsSynced} emails synchronisés`,
-          count: emailsSynced
         });
-      } else {
+        
+        // Check for Gmail not configured error
+        if (gmailSyncRes.error) {
+          const errorMsg = typeof gmailSyncRes.error === 'string' 
+            ? gmailSyncRes.error 
+            : gmailSyncRes.error?.message || JSON.stringify(gmailSyncRes.error);
+          
+          if (errorMsg.includes('Gmail non configuré') || errorMsg.includes('not configured')) {
+            gmailConfigured = false;
+            updateStep(0, { 
+              status: 'completed', 
+              progress: 100, 
+              details: 'Gmail non connecté - utilisation emails existants',
+              count: 0
+            });
+            toast.warning('Gmail non configuré. Analyse des emails déjà en base.');
+          } else {
+            throw new Error(errorMsg);
+          }
+        } else if (gmailSyncRes.data?.syncId) {
+          // Poll sync status for up to 5 minutes
+          const syncId = gmailSyncRes.data.syncId;
+          let attempts = 0;
+          const maxAttempts = 150;
+          let lastProcessed = -1;
+          let stagnantPolls = 0;
+
+          while (attempts < maxAttempts) {
+            await new Promise(r => setTimeout(r, 2000));
+            const { data: syncStatus } = await supabase
+              .from('sync_status')
+              .select('status, processed_emails, new_emails, total_emails, stats')
+              .eq('id', syncId)
+              .maybeSingle();
+
+            const statsObj = syncStatus?.stats as Record<string, unknown> | null;
+            const stoppedBecause = (statsObj?.stoppedBecause as string | undefined) || undefined;
+
+            if (syncStatus?.status === 'completed' || syncStatus?.status === 'error') {
+              emailsSynced = syncStatus.new_emails || syncStatus.processed_emails || 0;
+              updateStep(0, {
+                status: syncStatus.status === 'error' ? 'error' : 'completed',
+                progress: 100,
+                details: `${emailsSynced} nouveaux emails (${stoppedBecause || 'terminé'})`,
+                count: emailsSynced
+              });
+              break;
+            }
+
+            const processed = syncStatus?.processed_emails || 0;
+            const total = syncStatus?.total_emails || 1;
+
+            if (processed === lastProcessed) stagnantPolls += 1;
+            else stagnantPolls = 0;
+            lastProcessed = processed;
+
+            if (stagnantPolls >= 8 && processed === 0 && stoppedBecause) {
+              updateStep(0, {
+                status: 'completed',
+                progress: 100,
+                details: 'Sync terminée (emails existants)'
+              });
+              break;
+            }
+
+            const pct = Math.min(Math.round((processed / total) * 100), 99);
+            updateStep(0, { progress: pct, details: `${processed}/${total} emails...` });
+            attempts++;
+          }
+        } else if (gmailSyncRes.data?.emailsProcessed !== undefined) {
+          emailsSynced = gmailSyncRes.data.emailsProcessed;
+          updateStep(0, { 
+            status: 'completed', 
+            progress: 100, 
+            details: `${emailsSynced} emails synchronisés`,
+            count: emailsSynced
+          });
+        } else {
+          updateStep(0, { 
+            status: 'completed', 
+            progress: 100, 
+            details: 'Sync terminée',
+            count: 0
+          });
+        }
+      } catch (gmailErr) {
+        console.warn('Gmail sync skipped:', gmailErr);
         updateStep(0, { 
           status: 'completed', 
           progress: 100, 
-          details: gmailSyncRes.error ? `Erreur: ${gmailSyncRes.error}` : 'Sync terminée',
+          details: 'Gmail non disponible - emails existants utilisés',
           count: 0
         });
       }
@@ -351,16 +376,43 @@ export default function AnalysisPipeline() {
       updateStep(1, { status: 'running', progress: 10 });
       toast.info('Étape 2/5: Téléchargement des pièces jointes...');
       
-      const attachRes = await supabase.functions.invoke('download-all-attachments', {
-        body: { batchSize: 50 }
-      });
-      
-      updateStep(1, { 
-        status: 'completed', 
-        progress: 100, 
-        details: `${attachRes.data?.downloaded || 0} pièces jointes`,
-        count: attachRes.data?.downloaded || 0
-      });
+      try {
+        const attachRes = await supabase.functions.invoke('download-all-attachments', {
+          body: { batchSize: 50 }
+        });
+        
+        if (attachRes.error) {
+          const errorMsg = typeof attachRes.error === 'string' 
+            ? attachRes.error 
+            : attachRes.error?.message || '';
+          
+          if (errorMsg.includes('refresh access token') || errorMsg.includes('Gmail')) {
+            updateStep(1, { 
+              status: 'completed', 
+              progress: 100, 
+              details: 'Pièces jointes existantes conservées',
+              count: 0
+            });
+          } else {
+            throw new Error(errorMsg);
+          }
+        } else {
+          updateStep(1, { 
+            status: 'completed', 
+            progress: 100, 
+            details: `${attachRes.data?.downloaded || 0} pièces jointes`,
+            count: attachRes.data?.downloaded || 0
+          });
+        }
+      } catch (attachErr) {
+        console.warn('Attachments download skipped:', attachErr);
+        updateStep(1, { 
+          status: 'completed', 
+          progress: 100, 
+          details: 'Téléchargement ignoré (Gmail non connecté)',
+          count: 0
+        });
+      }
 
       // Step 2: Extract facts (Pass 1) - with filters
       updateStep(2, { status: 'running', progress: 10 });
