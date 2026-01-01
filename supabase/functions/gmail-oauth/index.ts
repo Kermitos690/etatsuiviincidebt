@@ -1,8 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { verifyAuth, corsHeaders } from "../_shared/auth.ts";
+import { verifyAuth, getCorsHeaders } from "../_shared/auth.ts";
 import { encryptGmailTokens, isEncryptionConfigured, getGmailTokens } from "../_shared/encryption.ts";
-
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID");
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -12,11 +11,12 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const REDIRECT_URI = `${SUPABASE_URL}/functions/v1/gmail-oauth`;
 
 serve(async (req) => {
+  const cors = getCorsHeaders(req);
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: cors });
   }
-
   const url = new URL(req.url);
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -166,7 +166,7 @@ serve(async (req) => {
     if (req.method !== "POST") {
       return new Response(JSON.stringify({ error: "Method not allowed" }), {
         status: 405,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...cors, "Content-Type": "application/json" },
       });
     }
 
@@ -176,7 +176,7 @@ serve(async (req) => {
       console.error("Authentication failed for gmail-oauth POST:", authError);
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...cors, "Content-Type": "application/json" },
       });
     }
 
@@ -184,7 +184,7 @@ serve(async (req) => {
     if (!body) {
       return new Response(JSON.stringify({ error: "Request body is required" }), {
         status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...cors, "Content-Type": "application/json" },
       });
     }
 
@@ -197,12 +197,15 @@ serve(async (req) => {
       ].join(" ");
 
       // Generate state parameter with user ID and timestamp for CSRF protection
-      const state = btoa(JSON.stringify({
-        user_id: user.id,
-        timestamp: Date.now()
-      }));
+      const state = btoa(
+        JSON.stringify({
+          user_id: user.id,
+          timestamp: Date.now(),
+        })
+      );
 
-      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+      const authUrl =
+        `https://accounts.google.com/o/oauth2/v2/auth?` +
         `client_id=${GOOGLE_CLIENT_ID}` +
         `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
         `&response_type=code` +
@@ -213,7 +216,7 @@ serve(async (req) => {
 
       console.log("Generated auth URL for user:", user.id);
       return new Response(JSON.stringify({ url: authUrl }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...cors, "Content-Type": "application/json" },
       });
     }
 
@@ -241,7 +244,7 @@ serve(async (req) => {
           }),
           {
             status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            headers: { ...cors, "Content-Type": "application/json" },
           }
         );
       }
@@ -266,7 +269,7 @@ serve(async (req) => {
           connected,
         }),
         {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { ...cors, "Content-Type": "application/json" },
         }
       );
     }
@@ -285,10 +288,10 @@ serve(async (req) => {
       if (existingConfig) {
         const { error } = await supabase
           .from("gmail_config")
-          .update({ 
+          .update({
             domains: domains || [],
             keywords: keywords || [],
-            sync_enabled: syncEnabled || false
+            sync_enabled: syncEnabled || false,
           })
           .eq("id", existingConfig.id)
           .eq("user_id", user.id); // Extra safety check
@@ -297,13 +300,13 @@ serve(async (req) => {
       } else {
         return new Response(JSON.stringify({ error: "No Gmail config found for this user" }), {
           status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { ...cors, "Content-Type": "application/json" },
         });
       }
 
       console.log("Config updated for user:", user.id);
       return new Response(JSON.stringify({ success: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...cors, "Content-Type": "application/json" },
       });
     }
 
@@ -375,21 +378,21 @@ serve(async (req) => {
           success: true,
         }),
         {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { ...cors, "Content-Type": "application/json" },
         }
       );
     }
 
     return new Response(JSON.stringify({ error: "Invalid action" }), {
       status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...cors, "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error("Gmail OAuth error:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
     return new Response(JSON.stringify({ success: false, error: message, code: "INTERNAL_ERROR" }), {
       status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...cors, "Content-Type": "application/json" },
     });
   }
 });
