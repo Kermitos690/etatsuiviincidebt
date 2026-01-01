@@ -29,7 +29,79 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    // Handle OAuth callback (GET request with code parameter)
+    // Handle OAuth ERROR callback (GET request with error parameter)
+    // Google returns error=access_denied when user denies consent OR app is in "Testing" mode without test user
+    if (req.method === "GET" && url.searchParams.has("error")) {
+      const error = url.searchParams.get("error") || "unknown_error";
+      const errorDescription = url.searchParams.get("error_description") || "";
+      
+      console.error("OAuth callback received error:", error, "description:", errorDescription);
+      
+      // Determine user-friendly message based on error type
+      let userMessage = "Erreur lors de la connexion Gmail";
+      let suggestion = "";
+      
+      if (error === "access_denied") {
+        userMessage = "Accès refusé par Google";
+        suggestion = "Si l'app est 'En test', ajoutez votre email dans les 'Utilisateurs de test' dans Google Cloud Console";
+      } else if (error === "invalid_client") {
+        userMessage = "Client OAuth invalide";
+        suggestion = "Vérifiez la configuration des identifiants dans Google Cloud Console";
+      } else if (error === "redirect_uri_mismatch") {
+        userMessage = "URI de redirection non autorisée";
+        suggestion = "Ajoutez l'URI de redirection dans Google Cloud Console";
+      }
+      
+      // Get the app URL for redirect
+      const appUrl = Deno.env.get("SITE_URL") || "https://68b94080-8702-44ad-92ac-e956f60a1e94.lovableproject.com";
+      const redirectUrl = `${appUrl}/gmail-config?oauth_error=${encodeURIComponent(error)}&error_message=${encodeURIComponent(userMessage)}&error_suggestion=${encodeURIComponent(suggestion)}&error_description=${encodeURIComponent(errorDescription)}`;
+      
+      // Return HTML that redirects back to app with error info
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="refresh" content="0;url=${redirectUrl}">
+  <title>Erreur Gmail OAuth</title>
+  <style>
+    body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #1a1a2e; color: #eee; }
+    .container { text-align: center; padding: 2rem; max-width: 400px; }
+    h1 { color: #ef4444; font-size: 1.5rem; }
+    p { color: #aaa; margin: 1rem 0; }
+    a { color: #60a5fa; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⚠️ ${userMessage}</h1>
+    <p>${suggestion}</p>
+    <p><a href="${redirectUrl}">Retour à l'application →</a></p>
+  </div>
+  <script>
+    if (window.opener) {
+      window.opener.postMessage({
+        type: 'gmail-oauth-callback',
+        success: false,
+        error: '${error}',
+        errorMessage: '${userMessage.replace(/'/g, "\\'")}',
+        errorSuggestion: '${suggestion.replace(/'/g, "\\'")}'
+      }, '*');
+      window.close();
+    } else {
+      window.location.replace('${redirectUrl}');
+    }
+  </script>
+</body>
+</html>`;
+      return new Response(html, {
+        headers: { 
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-cache, no-store, must-revalidate"
+        },
+      });
+    }
+
+    // Handle OAuth SUCCESS callback (GET request with code parameter)
     // Note: OAuth callbacks cannot have auth headers, so we use state parameter for security
     if (req.method === "GET" && url.searchParams.has("code")) {
       const code = url.searchParams.get("code")!;
