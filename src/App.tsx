@@ -10,18 +10,16 @@ import { ErrorBoundary } from "@/components/common";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TutorialProvider, WelcomeTutorialModal } from "@/components/tutorial/GuidedTutorial";
 
-// Lazy loaded pages - simplified to essential pages only
+// Lazy loaded pages - simplified
 const Dashboard = lazy(() => import("./pages/Dashboard"));
-const Journal = lazy(() => import("./pages/Journal"));
 const Incidents = lazy(() => import("./pages/Incidents"));
 const IncidentDetail = lazy(() => import("./pages/IncidentDetail"));
 const EditIncident = lazy(() => import("./pages/EditIncident"));
 const NewIncident = lazy(() => import("./pages/NewIncident"));
 const IAAuditeur = lazy(() => import("./pages/IAAuditeur"));
-const EmailsInbox = lazy(() => import("./pages/EmailsInbox"));
+const Emails = lazy(() => import("./pages/Emails"));
 const Admin = lazy(() => import("./pages/Admin"));
 const GmailConfig = lazy(() => import("./pages/GmailConfig"));
-const EmailsAnalyzed = lazy(() => import("./pages/EmailsAnalyzed"));
 const Attachments = lazy(() => import("./pages/Attachments"));
 const AnalysisPipeline = lazy(() => import("./pages/AnalysisPipeline"));
 const IncidentsTimeline = lazy(() => import("./pages/IncidentsTimeline"));
@@ -78,15 +76,13 @@ const App = () => (
                   <Route path="/" element={<AuthGuard><Dashboard /></AuthGuard>} />
                   <Route path="/control-center" element={<AuthGuard><ControlCenter /></AuthGuard>} />
                   
-                  {/* Emails */}
-                  <Route path="/emails" element={<AuthGuard><EmailsInbox /></AuthGuard>} />
-                  <Route path="/emails-analyzed" element={<AuthGuard><EmailsAnalyzed /></AuthGuard>} />
+                  {/* Emails - Unified */}
+                  <Route path="/emails" element={<AuthGuard><Emails /></AuthGuard>} />
                   <Route path="/email-cleanup" element={<AuthGuard><EmailCleanup /></AuthGuard>} />
                   <Route path="/attachments" element={<AuthGuard><Attachments /></AuthGuard>} />
                   <Route path="/analysis-pipeline" element={<AuthGuard><AnalysisPipeline /></AuthGuard>} />
                   
                   {/* Incidents */}
-                  <Route path="/journal" element={<AuthGuard><Journal /></AuthGuard>} />
                   <Route path="/incidents" element={<AuthGuard><Incidents /></AuthGuard>} />
                   <Route path="/incidents/:id" element={<AuthGuard><IncidentDetail /></AuthGuard>} />
                   <Route path="/incidents/:id/edit" element={<AuthGuard><EditIncident /></AuthGuard>} />

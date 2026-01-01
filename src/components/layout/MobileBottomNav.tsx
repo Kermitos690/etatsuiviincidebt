@@ -26,26 +26,23 @@ const moreNavSections = [
   {
     title: 'Analyse & IA',
     items: [
-      { to: '/analysis-pipeline', label: 'Analyse IA', icon: Sparkles },
-      { to: '/emails-analyzed', label: 'Emails Analysés', icon: Mail },
+      { to: '/analysis-pipeline', label: 'Pipeline IA', icon: Sparkles },
       { to: '/ia-auditeur', label: 'IA Auditeur', icon: Sparkles },
     ]
   },
   {
-    title: 'Incidents',
+    title: 'Dossier',
     items: [
+      { to: '/factual-dossier', label: 'Dossier Factuel', icon: AlertTriangle },
       { to: '/incidents-timeline', label: 'Timeline', icon: AlertTriangle },
-      { to: '/journal', label: 'Journal', icon: AlertTriangle },
-      { to: '/nouveau', label: 'Nouveau', icon: AlertTriangle },
-      { to: '/violations', label: 'Violations', icon: Scale },
+      { to: '/events', label: 'Événements', icon: AlertTriangle },
     ]
   },
   {
     title: 'Outils',
     items: [
       { to: '/attachments', label: 'Pièces Jointes' },
-      { to: '/exports', label: 'Exports' },
-      { to: '/gmail-config', label: 'Intégrations' },
+      { to: '/gmail-config', label: 'Gmail' },
       { to: '/admin', label: 'Paramètres' },
     ]
   },
