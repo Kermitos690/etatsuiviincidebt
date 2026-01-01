@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, createContext, useContext, ReactNode } from 'react';
+import { useState, useEffect, useCallback, createContext, useContext, ReactNode, forwardRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -808,9 +808,9 @@ export function TutorialStartButton() {
   );
 }
 
-// Welcome Modal for New Users
-export function WelcomeTutorialModal() {
-  const { isActive, startTutorial, stopTutorial, isCompleted } = useTutorial();
+// Welcome Modal for New Users - wrapped in forwardRef to prevent React warnings
+export const WelcomeTutorialModal = forwardRef<HTMLDivElement>(function WelcomeTutorialModal(_, ref) {
+  const { isActive, startTutorial, isCompleted } = useTutorial();
   const [showWelcome, setShowWelcome] = useState(false);
   
   useEffect(() => {
@@ -837,7 +837,7 @@ export function WelcomeTutorialModal() {
   if (!showWelcome || isActive) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70">
+    <div ref={ref} className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70">
       <Card className="w-[500px] max-w-[calc(100vw-32px)] shadow-2xl border-primary/50 animate-scale-in">
         <CardHeader className="text-center pb-2">
           <div className="flex justify-center mb-4">
@@ -895,4 +895,5 @@ export function WelcomeTutorialModal() {
       </Card>
     </div>
   );
-}
+});
+WelcomeTutorialModal.displayName = 'WelcomeTutorialModal';
