@@ -92,39 +92,28 @@ serve(async (req) => {
       // Calculate token expiry
       const tokenExpiry = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
 
-      // Store tokens - encrypted if encryption is configured, otherwise plaintext
-      let upsertData: any = {
+      // Store tokens encrypted (required)
+      if (!isEncryptionConfigured()) {
+        console.error("Encryption key missing - cannot store Gmail tokens");
+        throw new Error("Configuration serveur incomplète (clé de chiffrement manquante)");
+      }
+
+      const encrypted = await encryptGmailTokens(
+        tokenData.access_token,
+        tokenData.refresh_token || null
+      );
+
+      const upsertData: any = {
         user_id: stateData.user_id,
         user_email: userEmail,
         token_expiry: tokenExpiry,
+        access_token_enc: encrypted.accessTokenEnc,
+        refresh_token_enc: encrypted.refreshTokenEnc,
+        token_nonce: encrypted.nonce,
+        token_key_version: encrypted.keyVersion,
       };
 
-      if (isEncryptionConfigured()) {
-        // SECURITY: do not fall back to plaintext if encryption is configured.
-        // If encryption fails, we fail the request to avoid storing secrets in cleartext.
-        const encrypted = await encryptGmailTokens(
-          tokenData.access_token,
-          tokenData.refresh_token || null
-        );
-        upsertData = {
-          ...upsertData,
-          access_token_enc: encrypted.accessTokenEnc,
-          refresh_token_enc: encrypted.refreshTokenEnc,
-          token_nonce: encrypted.nonce,
-          token_key_version: encrypted.keyVersion,
-          access_token: null, // Clear plaintext
-          refresh_token: null, // Clear plaintext
-        };
-        console.log("Tokens will be stored encrypted (key version", encrypted.keyVersion, ")");
-      } else {
-        // Fallback to plaintext storage (only when encryption is NOT configured)
-        upsertData = {
-          ...upsertData,
-          access_token: tokenData.access_token,
-          refresh_token: tokenData.refresh_token || null,
-        };
-        console.log("Encryption not configured - storing tokens in plaintext");
-      }
+      console.log("Tokens will be stored encrypted (key version", encrypted.keyVersion, ")");
 
       const { error: upsertError } = await supabase
         .from("gmail_config")
@@ -235,63 +224,29 @@ serve(async (req) => {
       const { data: configDataRaw, error: configError } = await supabase
         .from("gmail_config")
         .select(
-          "id,user_email,last_sync,sync_enabled,domains,keywords,token_expiry,access_token,refresh_token,access_token_enc,refresh_token_enc,token_nonce,token_key_version"
+          "id,user_email,last_sync,sync_enabled,domains,keywords,token_expiry,access_token_enc,token_nonce,token_key_version"
         )
         .eq("user_id", user.id)
         .maybeSingle();
 
       if (configError) {
         console.error("Failed to fetch config for user:", user.id, configError);
-        throw new Error("Failed to fetch config");
+        return new Response(
+          JSON.stringify({
+            config: null,
+            connected: false,
+            success: false,
+            code: "CONFIG_ERROR",
+            error: "Failed to fetch config",
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
       }
 
-      // If encryption is configured and we still have legacy plaintext tokens, migrate them.
-      // Note: We require an access token to encrypt (refresh-only legacy rows should be reconnected).
-      if (
-        configDataRaw &&
-        isEncryptionConfigured() &&
-        !!configDataRaw.access_token &&
-        (!configDataRaw.access_token_enc || !configDataRaw.token_nonce)
-      ) {
-        try {
-          const encrypted = await encryptGmailTokens(
-            configDataRaw.access_token!,
-            configDataRaw.refresh_token || null
-          );
-
-          const { error: migError } = await supabase
-            .from("gmail_config")
-            .update({
-              access_token_enc: encrypted.accessTokenEnc,
-              refresh_token_enc: encrypted.refreshTokenEnc,
-              token_nonce: encrypted.nonce,
-              token_key_version: encrypted.keyVersion,
-              access_token: null,
-              refresh_token: null,
-            })
-            .eq("id", configDataRaw.id)
-            .eq("user_id", user.id);
-
-          if (migError) throw migError;
-
-          // Reflect migration in local object (still not returned to client)
-          configDataRaw.access_token_enc = encrypted.accessTokenEnc;
-          configDataRaw.refresh_token_enc = encrypted.refreshTokenEnc;
-          configDataRaw.token_nonce = encrypted.nonce;
-          configDataRaw.token_key_version = encrypted.keyVersion;
-          configDataRaw.access_token = null;
-          configDataRaw.refresh_token = null;
-
-          console.log("Migrated legacy plaintext Gmail tokens for user:", user.id);
-        } catch (e) {
-          console.error("Token migration failed for user:", user.id, e);
-          // Do not fail the whole request; user can reconnect if needed.
-        }
-      }
-
-      const connected =
-        !!(configDataRaw?.access_token_enc && configDataRaw?.token_nonce) ||
-        !!configDataRaw?.access_token;
+      const connected = !!(configDataRaw?.access_token_enc && configDataRaw?.token_nonce);
 
       const safeConfig = configDataRaw
         ? {
@@ -391,39 +346,28 @@ serve(async (req) => {
       // Update stored token - encrypted if encryption is configured
       const tokenExpiry = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
 
-      if (isEncryptionConfigured()) {
-        // SECURITY: If encryption is configured, never fall back to plaintext storage.
-        const encrypted = await encryptGmailTokens(tokenData.access_token, tokens.refreshToken);
-
-        const { error: updateError } = await supabase
-          .from("gmail_config")
-          .update({
-            access_token_enc: encrypted.accessTokenEnc,
-            refresh_token_enc: encrypted.refreshTokenEnc,
-            token_nonce: encrypted.nonce,
-            token_key_version: encrypted.keyVersion,
-            access_token: null,
-            refresh_token: null,
-            token_expiry: tokenExpiry,
-          })
-          .eq("id", config.id)
-          .eq("user_id", user.id);
-
-        if (updateError) throw updateError;
-
-        console.log("Token refreshed and stored encrypted");
-      } else {
-        const { error: updateError } = await supabase
-          .from("gmail_config")
-          .update({
-            access_token: tokenData.access_token,
-            token_expiry: tokenExpiry,
-          })
-          .eq("id", config.id)
-          .eq("user_id", user.id);
-
-        if (updateError) throw updateError;
+      if (!isEncryptionConfigured()) {
+        throw new Error("Configuration serveur incomplète (clé de chiffrement manquante)");
       }
+
+      // SECURITY: If encryption is configured, never fall back to plaintext storage.
+      const encrypted = await encryptGmailTokens(tokenData.access_token, tokens.refreshToken);
+
+      const { error: updateError } = await supabase
+        .from("gmail_config")
+        .update({
+          access_token_enc: encrypted.accessTokenEnc,
+          refresh_token_enc: encrypted.refreshTokenEnc,
+          token_nonce: encrypted.nonce,
+          token_key_version: encrypted.keyVersion,
+          token_expiry: tokenExpiry,
+        })
+        .eq("id", config.id)
+        .eq("user_id", user.id);
+
+      if (updateError) throw updateError;
+
+      console.log("Token refreshed and stored encrypted");
 
       console.log("Token refreshed for user:", user.id);
       return new Response(
@@ -443,8 +387,8 @@ serve(async (req) => {
   } catch (error) {
     console.error("Gmail OAuth error:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
+    return new Response(JSON.stringify({ success: false, error: message, code: "INTERNAL_ERROR" }), {
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
