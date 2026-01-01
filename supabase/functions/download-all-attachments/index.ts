@@ -91,11 +91,12 @@ serve(async (req) => {
 
     console.log('Starting bulk attachment download...');
 
-    // Get Gmail config
+    // Get Gmail config - scoped to authenticated user
     const { data: gmailConfig, error: configError } = await supabase
       .from('gmail_config')
       .select('*')
-      .single();
+      .eq('user_id', user.id)
+      .maybeSingle();
 
     if (configError || !gmailConfig) {
       throw new Error('Gmail config not found');

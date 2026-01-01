@@ -86,13 +86,13 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // 1) Load thread analyses
+    // 1) Load thread analyses - increased limit for comprehensive cross-referencing
     const { data: threadAnalyses, error: taErr } = await supabase
       .from("thread_analyses")
       .select("id, thread_id, chronological_summary, detected_issues, citations, participants, timeline, severity")
       .eq("user_id", user.id)
       .order("analyzed_at", { ascending: false })
-      .limit(30);
+      .limit(100);
 
     if (taErr) throw taErr;
 

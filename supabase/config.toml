@@ -59,3 +59,9 @@ verify_jwt = false
 
 [functions.hard-data-reset]
 verify_jwt = false
+
+[functions.cross-reference-analysis]
+verify_jwt = false
+
+[functions.analyze-import-incident]
+verify_jwt = false
