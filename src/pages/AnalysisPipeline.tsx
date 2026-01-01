@@ -278,24 +278,36 @@ export default function AnalysisPipeline() {
           }
         });
         
-        // Check for Gmail not configured error
-        if (gmailSyncRes.error) {
+        // Handle structured success:false response (HTTP 200 but not successful)
+        if (gmailSyncRes.data?.success === false) {
+          const code = gmailSyncRes.data.code;
+          gmailConfigured = false;
+          updateStep(0, { 
+            status: 'completed', 
+            progress: 100, 
+            details: 'Gmail non connecté - utilisation emails existants',
+            count: 0
+          });
+          if (code === 'GMAIL_RECONNECT_REQUIRED') {
+            toast.warning('Session Gmail expirée. Analyse des emails existants.');
+          } else {
+            toast.warning('Gmail non configuré. Analyse des emails déjà en base.');
+          }
+        } else if (gmailSyncRes.error) {
+          // Handle actual network/invoke errors
           const errorMsg = typeof gmailSyncRes.error === 'string' 
             ? gmailSyncRes.error 
             : gmailSyncRes.error?.message || JSON.stringify(gmailSyncRes.error);
           
-          if (errorMsg.includes('Gmail non configuré') || errorMsg.includes('not configured')) {
-            gmailConfigured = false;
-            updateStep(0, { 
-              status: 'completed', 
-              progress: 100, 
-              details: 'Gmail non connecté - utilisation emails existants',
-              count: 0
-            });
-            toast.warning('Gmail non configuré. Analyse des emails déjà en base.');
-          } else {
-            throw new Error(errorMsg);
-          }
+          console.warn('Gmail sync error:', errorMsg);
+          gmailConfigured = false;
+          updateStep(0, { 
+            status: 'completed', 
+            progress: 100, 
+            details: 'Gmail non disponible - emails existants utilisés',
+            count: 0
+          });
+          toast.warning('Erreur Gmail. Analyse des emails existants.');
         } else if (gmailSyncRes.data?.syncId) {
           // Poll sync status for up to 5 minutes
           const syncId = gmailSyncRes.data.syncId;
@@ -381,27 +393,31 @@ export default function AnalysisPipeline() {
           body: { batchSize: 50 }
         });
         
-        if (attachRes.error) {
-          const errorMsg = typeof attachRes.error === 'string' 
-            ? attachRes.error 
-            : attachRes.error?.message || '';
-          
-          if (errorMsg.includes('refresh access token') || errorMsg.includes('Gmail')) {
-            updateStep(1, { 
-              status: 'completed', 
-              progress: 100, 
-              details: 'Pièces jointes existantes conservées',
-              count: 0
-            });
-          } else {
-            throw new Error(errorMsg);
-          }
+        // Handle structured success:false response
+        if (attachRes.data?.success === false) {
+          const code = attachRes.data.code;
+          updateStep(1, { 
+            status: 'completed', 
+            progress: 100, 
+            details: code === 'GMAIL_NOT_CONFIGURED' 
+              ? 'Gmail non connecté - ignoré'
+              : 'Pièces jointes existantes conservées',
+            count: 0
+          });
+        } else if (attachRes.error) {
+          console.warn('Attachments error:', attachRes.error);
+          updateStep(1, { 
+            status: 'completed', 
+            progress: 100, 
+            details: 'Téléchargement ignoré',
+            count: 0
+          });
         } else {
           updateStep(1, { 
             status: 'completed', 
             progress: 100, 
-            details: `${attachRes.data?.downloaded || 0} pièces jointes`,
-            count: attachRes.data?.downloaded || 0
+            details: `${attachRes.data?.downloaded || attachRes.data?.results?.attachmentsDownloaded || 0} pièces jointes`,
+            count: attachRes.data?.downloaded || attachRes.data?.results?.attachmentsDownloaded || 0
           });
         }
       } catch (attachErr) {

@@ -772,9 +772,14 @@ serve(async (req) => {
     if (configError || !config) {
       console.error("No Gmail config found for user", user.id, configError);
       return new Response(
-        JSON.stringify({ error: "Gmail non configuré. Connecte ton compte Gmail d'abord." }),
+        JSON.stringify({ 
+          success: false,
+          code: "GMAIL_NOT_CONFIGURED",
+          error: "Gmail non configuré. Connecte ton compte Gmail d'abord.",
+          action: "connect_gmail"
+        }),
         {
-          status: 400,
+          status: 200, // Return 200 to prevent frontend crash
           headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
         }
       );
@@ -788,9 +793,12 @@ serve(async (req) => {
     if (!accessToken) {
       console.error("No access token available for user", user.id);
       return new Response(JSON.stringify({ 
-        error: "Gmail non configuré. Connecte ton compte Gmail d'abord." 
+        success: false,
+        code: "GMAIL_NOT_CONFIGURED",
+        error: "Gmail non configuré. Connecte ton compte Gmail d'abord.",
+        action: "connect_gmail"
       }), {
-        status: 400,
+        status: 200,
         headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
       });
     }
@@ -810,9 +818,12 @@ serve(async (req) => {
       accessToken = await refreshAccessToken(supabase, config, refreshToken!);
       if (!accessToken) {
         return new Response(JSON.stringify({ 
-          error: "Token expired and refresh failed. Please reconnect Gmail." 
+          success: false,
+          code: "GMAIL_RECONNECT_REQUIRED",
+          error: "Session Gmail expirée. Reconnexion nécessaire.",
+          action: "reconnect_gmail"
         }), {
-          status: 401,
+          status: 200, // Return 200 to prevent frontend crash
           headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
         });
       }
