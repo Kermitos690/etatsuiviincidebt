@@ -50,7 +50,7 @@ interface NavCategory {
   items: NavItem[];
 }
 
-// Simplified navigation structure - 5 categories only
+// Simplified navigation structure - 4 categories
 const navCategories: NavCategory[] = [
   {
     id: 'dashboard',
@@ -67,7 +67,6 @@ const navCategories: NavCategory[] = [
     icon: Mail,
     items: [
       { to: '/emails', icon: Inbox, label: 'Boîte de réception' },
-      { to: '/emails-analyzed', icon: BarChart3, label: 'Analysés' },
       { to: '/email-cleanup', icon: Layers, label: 'Nettoyage' },
       { to: '/attachments', icon: Paperclip, label: 'Pièces Jointes' },
     ]
@@ -77,28 +76,20 @@ const navCategories: NavCategory[] = [
     label: 'Incidents',
     icon: AlertTriangle,
     items: [
-      { to: '/journal', icon: BookOpen, label: 'Journal' },
       { to: '/incidents', icon: AlertTriangle, label: 'Liste' },
       { to: '/incidents-timeline', icon: Activity, label: 'Timeline' },
       { to: '/nouveau', icon: Plus, label: 'Nouveau' },
-    ]
-  },
-  {
-    id: 'factual',
-    label: 'Dossier Factuel',
-    icon: FolderOpen,
-    items: [
-      { to: '/factual-dossier', icon: FileText, label: 'Chronologie' },
+      { to: '/factual-dossier', icon: FileText, label: 'Dossier Factuel' },
       { to: '/events', icon: CalendarPlus, label: 'Événements' },
-      { to: '/ia-auditeur', icon: Brain, label: 'Analyse IA' },
-      { to: '/analysis-pipeline', icon: Brain, label: 'Pipeline' },
     ]
   },
   {
-    id: 'settings',
-    label: 'Paramètres',
+    id: 'tools',
+    label: 'Outils',
     icon: Cog,
     items: [
+      { to: '/analysis-pipeline', icon: Brain, label: 'Pipeline IA' },
+      { to: '/ia-auditeur', icon: Brain, label: 'IA Auditeur' },
       { to: '/gmail-config', icon: Mail, label: 'Gmail' },
       { to: '/admin', icon: Settings, label: 'Admin' },
       { to: '/tutorial', icon: HelpCircle, label: 'Aide' },

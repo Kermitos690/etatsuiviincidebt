@@ -1,10 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getCorsHeaders, corsHeaders, log } from "../_shared/core.ts";
+import { getCorsHeaders, log } from "../_shared/core.ts";
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: getCorsHeaders(req) });
   }
 
   try {
@@ -13,7 +13,7 @@ serve(async (req) => {
     if (!emailId) {
       return new Response(JSON.stringify({ error: 'emailId required' }), {
         status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' }
       });
     }
 
@@ -31,7 +31,7 @@ serve(async (req) => {
     if (emailError || !email) {
       return new Response(JSON.stringify({ error: 'Email not found' }), {
         status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' }
       });
     }
 
@@ -42,7 +42,7 @@ serve(async (req) => {
         analysis: email.ai_analysis,
         alreadyProcessed: true 
       }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' }
       });
     }
 
@@ -51,7 +51,7 @@ serve(async (req) => {
     if (!LOVABLE_API_KEY) {
       return new Response(JSON.stringify({ error: 'AI not configured' }), {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' }
       });
     }
 
@@ -98,7 +98,7 @@ ${email.body?.slice(0, 4000) || 'Corps vide'}`;
       console.error('AI error:', errorText);
       return new Response(JSON.stringify({ error: 'AI analysis failed' }), {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' }
       });
     }
 
@@ -182,7 +182,7 @@ ${email.body?.slice(0, 4000) || 'Corps vide'}`;
       incidentCreated,
       incident
     }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' }
     });
 
   } catch (error: unknown) {
@@ -190,7 +190,7 @@ ${email.body?.slice(0, 4000) || 'Corps vide'}`;
     const message = error instanceof Error ? error.message : 'Unknown error';
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' }
     });
   }
 });
