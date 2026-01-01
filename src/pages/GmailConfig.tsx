@@ -223,8 +223,10 @@ export default function GmailConfig() {
       });
       if (error) throw error;
       
+      // Handle new response format: { success: true, data: {...} }
+      const diagData = data?.data || data;
       setDiagnosticInfo({
-        ...data,
+        ...diagData,
         current_origin: window.location.origin,
         current_url: window.location.href,
       });
