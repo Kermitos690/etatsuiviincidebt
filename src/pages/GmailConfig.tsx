@@ -17,7 +17,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { 
   Mail, Settings, Check, X, RefreshCw, Plus, 
   ExternalLink, Shield, Clock, CalendarIcon, ChevronLeft, ChevronRight,
-  Loader2, CheckCircle2, AlertCircle
+  Loader2, CheckCircle2, AlertCircle, Bug, Copy, Info
 } from 'lucide-react';
 import { INSTITUTIONAL_DOMAINS, SYNC_KEYWORDS, FILTER_PRESETS, type FilterPreset } from '@/config/appConfig';
 import { format, setMonth, setYear } from 'date-fns';
@@ -89,6 +89,9 @@ export default function GmailConfig() {
   const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
   const [configId, setConfigId] = useState<string | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const [showDiagnostic, setShowDiagnostic] = useState(false);
+  const [diagnosticInfo, setDiagnosticInfo] = useState<any>(null);
+  const [diagnosing, setDiagnosing] = useState(false);
 
   // Save config to database
   const saveConfigToDb = useCallback(async (domains: string[], keywords: string[], syncEnabled: boolean) => {
@@ -120,14 +123,23 @@ export default function GmailConfig() {
     };
   }, []);
 
-  // Handle OAuth callback from mobile redirect
+  // Handle OAuth callback from mobile redirect (success or error)
   useEffect(() => {
     const connected = searchParams.get('connected');
     const email = searchParams.get('email');
+    const error = searchParams.get('error');
+    const reason = searchParams.get('reason');
     
     if (connected === 'true' && email) {
       setConfig(prev => ({ ...prev, connected: true, email: decodeURIComponent(email) }));
       toast.success('Connexion Gmail réussie');
+      setSearchParams({});
+    } else if (connected === 'false' || error) {
+      const errorMessage = reason ? decodeURIComponent(reason) : 'Connexion refusée par Google';
+      toast.error(`Erreur OAuth: ${errorMessage}`, {
+        description: 'Vérifiez la configuration Google Cloud Console',
+        duration: 10000,
+      });
       setSearchParams({});
     }
   }, [searchParams, setSearchParams]);
@@ -201,6 +213,33 @@ export default function GmailConfig() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDiagnose = async () => {
+    setDiagnosing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('gmail-oauth', {
+        body: { action: 'diagnose' }
+      });
+      if (error) throw error;
+      
+      setDiagnosticInfo({
+        ...data,
+        current_origin: window.location.origin,
+        current_url: window.location.href,
+      });
+      setShowDiagnostic(true);
+    } catch (error) {
+      console.error('Diagnostic error:', error);
+      toast.error('Erreur lors du diagnostic');
+    } finally {
+      setDiagnosing(false);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success('Copié dans le presse-papiers');
   };
 
   const pollSyncStatus = useCallback(async (syncId: string) => {
@@ -533,11 +572,98 @@ export default function GmailConfig() {
                     {config.email && <p className="text-sm text-muted-foreground truncate">{config.email}</p>}
                   </div>
                 </div>
-                <Button onClick={handleGoogleAuth} disabled={loading} variant={config.connected ? 'outline' : 'default'} className="w-full sm:w-auto flex-shrink-0">
-                  {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <ExternalLink className="h-4 w-4 mr-2" />}
-                  {config.connected ? 'Reconnecter' : 'Connecter Gmail'}
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                  <Button onClick={handleGoogleAuth} disabled={loading} variant={config.connected ? 'outline' : 'default'} className="flex-1 sm:flex-initial">
+                    {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <ExternalLink className="h-4 w-4 mr-2" />}
+                    {config.connected ? 'Reconnecter' : 'Connecter Gmail'}
+                  </Button>
+                  <Button onClick={handleDiagnose} disabled={diagnosing} variant="outline" size="icon" className="flex-shrink-0" title="Diagnostiquer la connexion">
+                    {diagnosing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bug className="h-4 w-4" />}
+                  </Button>
+                </div>
               </div>
+              
+              {/* Diagnostic Panel */}
+              {showDiagnostic && diagnosticInfo && (
+                <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-medium text-amber-800 dark:text-amber-200 flex items-center gap-2">
+                      <Info className="h-4 w-4" />
+                      Diagnostic OAuth Gmail
+                    </h4>
+                    <Button variant="ghost" size="sm" onClick={() => setShowDiagnostic(false)}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between gap-2 p-2 bg-white dark:bg-gray-800 rounded">
+                      <span className="text-muted-foreground">Origine actuelle:</span>
+                      <div className="flex items-center gap-2">
+                        <code className="text-xs bg-muted px-2 py-1 rounded truncate max-w-[200px]">{diagnosticInfo.current_origin}</code>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copyToClipboard(diagnosticInfo.current_origin)}>
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between gap-2 p-2 bg-white dark:bg-gray-800 rounded">
+                      <span className="text-muted-foreground">URI de redirection:</span>
+                      <div className="flex items-center gap-2">
+                        <code className="text-xs bg-muted px-2 py-1 rounded truncate max-w-[200px]">{diagnosticInfo.redirect_uri}</code>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copyToClipboard(diagnosticInfo.redirect_uri)}>
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between gap-2 p-2 bg-white dark:bg-gray-800 rounded">
+                      <span className="text-muted-foreground">Client ID:</span>
+                      <code className="text-xs bg-muted px-2 py-1 rounded">{diagnosticInfo.client_id_prefix || 'Non configuré'}</code>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 p-2 bg-white dark:bg-gray-800 rounded">
+                      <span className="text-muted-foreground">Chiffrement:</span>
+                      {diagnosticInfo.encryption_configured ? (
+                        <Badge variant="outline" className="bg-green-100 text-green-700">Configuré</Badge>
+                      ) : (
+                        <Badge variant="outline" className="bg-red-100 text-red-700">Manquant</Badge>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="pt-2 border-t border-amber-200 dark:border-amber-700">
+                    <p className="text-xs font-medium text-amber-800 dark:text-amber-200 mb-2">Instructions (si erreur 403):</p>
+                    <ol className="text-xs text-amber-700 dark:text-amber-300 space-y-1 list-decimal list-inside">
+                      {diagnosticInfo.instructions?.map((instruction: string, i: number) => (
+                        <li key={i}>{instruction}</li>
+                      ))}
+                    </ol>
+                  </div>
+                  
+                  <div className="flex gap-2 pt-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="text-xs"
+                      onClick={() => window.open('https://console.cloud.google.com/apis/credentials', '_blank')}
+                    >
+                      <ExternalLink className="h-3 w-3 mr-1" />
+                      Google Cloud Console
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="text-xs"
+                      onClick={() => copyToClipboard(diagnosticInfo.current_origin)}
+                    >
+                      <Copy className="h-3 w-3 mr-1" />
+                      Copier l'origine
+                    </Button>
+                  </div>
+                </div>
+              )}
+              
               <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300">
                 <Shield className="h-4 w-4 flex-shrink-0 mt-0.5" />
                 <p className="text-sm">Accès en lecture seule. Les tokens sont stockés de manière sécurisée.</p>
