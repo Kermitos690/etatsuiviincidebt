@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { verifyAuth } from "../_shared/auth.ts";
 import { checkRateLimit, getClientIdentifier, rateLimitResponse, RATE_LIMITS } from "../_shared/rateLimit.ts";
 import { getGmailTokens, encryptGmailTokens, isEncryptionConfigured } from "../_shared/encryption.ts";
-import { getCorsHeaders, corsHeaders, log } from "../_shared/core.ts";
+import { getCorsHeaders, log } from "../_shared/core.ts";
 
 declare const EdgeRuntime: {
   waitUntil: (promise: Promise<any>) => void;
@@ -731,7 +731,7 @@ addEventListener('beforeunload', (ev) => {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: getCorsHeaders(req) });
   }
 
   // Rate limiting for heavy operations
@@ -739,7 +739,7 @@ serve(async (req) => {
   const rateCheck = checkRateLimit(clientId, RATE_LIMITS.heavy);
   if (!rateCheck.allowed) {
     console.log(`[RateLimit] Request blocked for ${clientId}`);
-    return rateLimitResponse(rateCheck.resetAt);
+    return rateLimitResponse(rateCheck.resetAt, req);
   }
 
   try {
@@ -748,7 +748,7 @@ serve(async (req) => {
       console.error("[Auth] gmail-sync unauthorized:", authError);
       return new Response(JSON.stringify({ error: "Non autorisé" }), {
         status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
       });
     }
 
@@ -775,7 +775,7 @@ serve(async (req) => {
         JSON.stringify({ error: "Gmail non configuré. Connecte ton compte Gmail d'abord." }),
         {
           status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
         }
       );
     }
@@ -791,7 +791,7 @@ serve(async (req) => {
         error: "Gmail non configuré. Connecte ton compte Gmail d'abord." 
       }), {
         status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
       });
     }
     
@@ -813,7 +813,7 @@ serve(async (req) => {
           error: "Token expired and refresh failed. Please reconnect Gmail." 
         }), {
           status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
         });
       }
     }
@@ -970,7 +970,7 @@ serve(async (req) => {
               error: "Gmail authentication failed. Please reconnect." 
             }), {
               status: 401,
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
+              headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
             });
           }
           continue;
@@ -1034,7 +1034,7 @@ serve(async (req) => {
           ? "Aucun email ne correspond à vos filtres" 
           : `${allMessages.length} emails correspondent à vos filtres`
       }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
       });
     }
 
@@ -1051,7 +1051,7 @@ serve(async (req) => {
         emailsProcessed: 0, 
         stats: { received: 0, sent: 0, replied: 0, forwarded: 0, spam: 0, trash: 0 }
       }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
       });
     }
 
@@ -1138,7 +1138,7 @@ serve(async (req) => {
       },
       message: `Synchronisation exhaustive de ${allMessages.length} emails en arrière-plan (incluant spam, corbeille, dossiers personnalisés)...`
     }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
     });
 
   } catch (error) {
@@ -1146,7 +1146,7 @@ serve(async (req) => {
     const message = error instanceof Error ? error.message : "Unknown error";
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
     });
   }
 });
