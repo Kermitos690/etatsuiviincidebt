@@ -17,8 +17,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { 
   Mail, Settings, Check, X, RefreshCw, Plus, 
   ExternalLink, Shield, Clock, CalendarIcon, ChevronLeft, ChevronRight,
-  Loader2, CheckCircle2, AlertCircle
+  Loader2, CheckCircle2, AlertCircle, AlertTriangle, Copy
 } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { INSTITUTIONAL_DOMAINS, SYNC_KEYWORDS, FILTER_PRESETS, type FilterPreset } from '@/config/appConfig';
 import { format, setMonth, setYear } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -121,14 +122,37 @@ export default function GmailConfig() {
     };
   }, []);
 
-  // Handle OAuth callback from mobile redirect
+  // State for OAuth error display
+  const [oauthError, setOauthError] = useState<{
+    error: string;
+    message: string;
+    suggestion: string;
+    description?: string;
+  } | null>(null);
+
+  // Handle OAuth callback from mobile redirect (success or error)
   useEffect(() => {
     const connected = searchParams.get('connected');
     const email = searchParams.get('email');
+    const oauthErrorParam = searchParams.get('oauth_error');
+    const errorMessage = searchParams.get('error_message');
+    const errorSuggestion = searchParams.get('error_suggestion');
+    const errorDescription = searchParams.get('error_description');
     
     if (connected === 'true' && email) {
       setConfig(prev => ({ ...prev, connected: true, email: decodeURIComponent(email) }));
       toast.success('Connexion Gmail réussie');
+      setSearchParams({});
+    } else if (oauthErrorParam) {
+      // Handle OAuth error from redirect
+      setOauthError({
+        error: oauthErrorParam,
+        message: errorMessage ? decodeURIComponent(errorMessage) : 'Erreur lors de la connexion Gmail',
+        suggestion: errorSuggestion ? decodeURIComponent(errorSuggestion) : '',
+        description: errorDescription ? decodeURIComponent(errorDescription) : undefined
+      });
+      toast.error(errorMessage ? decodeURIComponent(errorMessage) : 'Erreur lors de la connexion Gmail');
+      // Clear URL params but keep error state for display
       setSearchParams({});
     }
   }, [searchParams, setSearchParams]);
@@ -383,6 +407,50 @@ export default function GmailConfig() {
               Connectez votre compte Gmail pour analyser automatiquement les emails
             </p>
           </div>
+
+          {/* OAuth Error Alert */}
+          {oauthError && (
+            <Alert variant="destructive" className="border-destructive/50 bg-destructive/10">
+              <AlertTriangle className="h-5 w-5" />
+              <AlertTitle className="font-semibold">{oauthError.message}</AlertTitle>
+              <AlertDescription className="space-y-3">
+                {oauthError.suggestion && (
+                  <p className="text-sm">{oauthError.suggestion}</p>
+                )}
+                {oauthError.error === 'access_denied' && (
+                  <div className="space-y-2 pt-2">
+                    <p className="text-sm font-medium">Pour corriger cette erreur :</p>
+                    <ol className="text-sm list-decimal list-inside space-y-1 text-muted-foreground">
+                      <li>Ouvrez <a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Google Cloud Console → Écran de consentement</a></li>
+                      <li>Si le statut est "En test", cliquez sur "Ajouter des utilisateurs"</li>
+                      <li>Ajoutez votre email : <code className="bg-background/50 px-1 py-0.5 rounded text-xs">Teba.gaetan@gmail.com</code></li>
+                      <li>Enregistrez et réessayez "Connecter Gmail"</li>
+                    </ol>
+                  </div>
+                )}
+                <div className="flex gap-2 pt-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setOauthError(null)}
+                  >
+                    Fermer
+                  </Button>
+                  <Button 
+                    variant="default" 
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText('Teba.gaetan@gmail.com');
+                      toast.success('Email copié !');
+                    }}
+                  >
+                    <Copy className="h-3 w-3 mr-1" />
+                    Copier l'email
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
 
           {/* Sync Progress Card */}
           {syncStatus && (
