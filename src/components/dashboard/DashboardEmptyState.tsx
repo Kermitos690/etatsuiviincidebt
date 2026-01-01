@@ -1,11 +1,15 @@
 import React, { forwardRef } from 'react';
-import { AlertTriangle, Sparkles } from 'lucide-react';
+import { AlertTriangle, Sparkles, Mail, Brain, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { useNavigate } from 'react-router-dom';
 
 export const DashboardEmptyState = forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => {
+  const navigate = useNavigate();
+  
   return (
     <div
       ref={ref}
@@ -20,12 +24,43 @@ export const DashboardEmptyState = forwardRef<
           <Sparkles className="h-5 w-5 text-white" />
         </div>
       </div>
+      
       <h3 className="text-xl md:text-2xl font-semibold mb-3 gradient-text">
-        Aucun incident enregistré
+        Bienvenue dans votre Registre
       </h3>
-      <p className="text-muted-foreground max-w-md mx-auto">
-        Commencez par créer votre premier incident pour voir les statistiques apparaître ici.
+      <p className="text-muted-foreground max-w-md mx-auto mb-8">
+        Pour commencer, synchronisez vos emails ou créez manuellement votre premier incident.
       </p>
+      
+      {/* Quick start actions */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-xl mx-auto">
+        <Button
+          variant="outline"
+          className="flex flex-col items-center gap-2 h-auto py-4 hover:bg-primary/5 hover:border-primary/50"
+          onClick={() => navigate('/gmail-config')}
+        >
+          <Mail className="h-6 w-6 text-primary" />
+          <span className="text-sm font-medium">Connecter Gmail</span>
+        </Button>
+        
+        <Button
+          variant="outline"
+          className="flex flex-col items-center gap-2 h-auto py-4 hover:bg-primary/5 hover:border-primary/50"
+          onClick={() => navigate('/analysis-pipeline')}
+        >
+          <Brain className="h-6 w-6 text-primary" />
+          <span className="text-sm font-medium">Lancer une analyse</span>
+        </Button>
+        
+        <Button
+          variant="outline"
+          className="flex flex-col items-center gap-2 h-auto py-4 hover:bg-primary/5 hover:border-primary/50"
+          onClick={() => navigate('/nouveau')}
+        >
+          <Plus className="h-6 w-6 text-primary" />
+          <span className="text-sm font-medium">Créer un incident</span>
+        </Button>
+      </div>
     </div>
   );
 });
