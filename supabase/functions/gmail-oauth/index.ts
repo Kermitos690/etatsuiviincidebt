@@ -220,20 +220,10 @@ serve(async (req) => {
       });
     }
 
-    // Handle POST requests for actions - REQUIRE AUTHENTICATION
+    // Handle POST requests for actions
     if (req.method !== "POST") {
       return new Response(JSON.stringify({ error: "Method not allowed" }), {
         status: 405,
-        headers: { ...cors, "Content-Type": "application/json" },
-      });
-    }
-
-    // Verify user authentication for all POST actions
-    const { user, error: authError } = await verifyAuth(req);
-    if (authError || !user) {
-      console.error("Authentication failed for gmail-oauth POST:", authError);
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
         headers: { ...cors, "Content-Type": "application/json" },
       });
     }
@@ -247,6 +237,38 @@ serve(async (req) => {
     }
 
     const { action } = JSON.parse(body);
+    
+    // Diagnostic action - NO AUTH REQUIRED (only returns public config info)
+    if (action === "diagnose") {
+      const diagnosticInfo = {
+        redirect_uri: REDIRECT_URI,
+        client_id_configured: !!GOOGLE_CLIENT_ID,
+        client_id_prefix: GOOGLE_CLIENT_ID ? GOOGLE_CLIENT_ID.substring(0, 20) + "..." : null,
+        client_secret_configured: !!GOOGLE_CLIENT_SECRET,
+        supabase_url: SUPABASE_URL,
+        encryption_configured: isEncryptionConfigured(),
+        instructions: [
+          "1. Vérifiez que votre app OAuth est en mode 'Externe' (pas 'Interne')",
+          "2. Si en mode 'Test', ajoutez votre email dans 'Utilisateurs test'",
+          "3. Ajoutez l'origine JavaScript autorisée dans Google Cloud Console",
+          "4. Vérifiez que l'URI de redirection est correct: " + REDIRECT_URI,
+        ],
+      };
+      console.log("[Diagnose] Returning diagnostic info");
+      return new Response(JSON.stringify({ success: true, data: diagnosticInfo }), {
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
+
+    // All other actions REQUIRE AUTHENTICATION
+    const { user, error: authError } = await verifyAuth(req);
+    if (authError || !user) {
+      console.error("Authentication failed for gmail-oauth POST:", authError);
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
 
     if (action === "get-auth-url") {
       // Use openid + email + profile scopes for better Google compatibility
@@ -277,29 +299,6 @@ serve(async (req) => {
 
       console.log("Generated auth URL for user:", user.id);
       return new Response(JSON.stringify({ url: authUrl }), {
-        headers: { ...cors, "Content-Type": "application/json" },
-      });
-    }
-    
-    // Diagnostic action - returns info to help debug OAuth issues
-    if (action === "diagnose") {
-      const diagnosticInfo = {
-        redirect_uri: REDIRECT_URI,
-        client_id_configured: !!GOOGLE_CLIENT_ID,
-        client_id_prefix: GOOGLE_CLIENT_ID ? GOOGLE_CLIENT_ID.substring(0, 20) + "..." : null,
-        client_secret_configured: !!GOOGLE_CLIENT_SECRET,
-        supabase_url: SUPABASE_URL,
-        encryption_configured: isEncryptionConfigured(),
-        instructions: [
-          "1. Vérifiez que votre app OAuth est en mode 'Externe' (pas 'Interne')",
-          "2. Si en mode 'Test', ajoutez votre email dans 'Utilisateurs test'",
-          "3. Ajoutez l'origine JavaScript autorisée dans Google Cloud Console",
-          "4. Vérifiez que l'URI de redirection est correct: " + REDIRECT_URI,
-        ],
-      };
-      
-      console.log("Diagnostic requested by user:", user.id);
-      return new Response(JSON.stringify(diagnosticInfo), {
         headers: { ...cors, "Content-Type": "application/json" },
       });
     }
