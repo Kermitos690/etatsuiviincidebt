@@ -1,7 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { verifyAuth, getCorsHeaders } from "../_shared/auth.ts";
+import { verifyAuth, corsHeaders } from "../_shared/auth.ts";
 import { encryptGmailTokens, isEncryptionConfigured, getGmailTokens } from "../_shared/encryption.ts";
+
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID");
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -11,12 +12,14 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const REDIRECT_URI = `${SUPABASE_URL}/functions/v1/gmail-oauth`;
 
 serve(async (req) => {
-  const cors = getCorsHeaders(req);
+  // Use permissive CORS for browser compatibility; auth is enforced via JWT on POST actions.
+  const cors = corsHeaders;
 
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: cors });
   }
+
   const url = new URL(req.url);
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
