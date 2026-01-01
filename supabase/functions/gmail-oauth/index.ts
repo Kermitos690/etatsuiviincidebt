@@ -12,12 +12,17 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const REDIRECT_URI = `${SUPABASE_URL}/functions/v1/gmail-oauth`;
 
 serve(async (req) => {
-  // Use permissive CORS for browser compatibility; auth is enforced via JWT on POST actions.
-  const cors = corsHeaders;
+  // Fully permissive CORS headers to avoid browser preflight issues
+  const cors = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret, Accept",
+    "Access-Control-Max-Age": "86400",
+  };
 
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: cors });
+    return new Response(null, { status: 204, headers: cors });
   }
 
   const url = new URL(req.url);
