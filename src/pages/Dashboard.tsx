@@ -1,4 +1,4 @@
-import { useMemo, useEffect } from 'react';
+import { useMemo } from 'react';
 import { TrendingUp, Sparkles, FileText, Loader2, Mail, AlertTriangle, Brain, Activity, Filter } from 'lucide-react';
 import { AppLayout } from '@/components/layout';
 import { Button } from '@/components/ui/button';
@@ -6,10 +6,11 @@ import { Badge } from '@/components/ui/badge';
 import { useIncidentStore } from '@/stores/incidentStore';
 import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { QuickActions, LoadingState, SafeDataBoundary, SupabaseStatusBanner, useSupabaseStatus } from '@/components/common';
+import { QuickActions, SupabaseStatusBanner, useSupabaseStatus } from '@/components/common';
 import { getTutorialProps } from '@/hooks/useTutorialHighlight';
 import { useRealtimeIncidents } from '@/hooks/useRealtimeIncidents';
 import { getRelevantIncidents, getExcludedCount, normalizeInstitutionName } from '@/utils/dashboardFilters';
+import { AuroraHeader } from '@/components/ui/aurora-header';
 
 import {
   DashboardKPIs,
@@ -161,58 +162,47 @@ export default function Dashboard() {
 
   return (
     <AppLayout>
-      <div className="p-4 md:p-8">
+      <div className="p-4 md:p-8 space-y-6">
         {/* Supabase status banner */}
         <SupabaseStatusBanner isConfigured={isConfigured} className="mb-4" />
         
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-glow animate-float">
-                <TrendingUp className="h-8 w-8 text-white" />
-              </div>
-              <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-gradient-secondary flex items-center justify-center animate-pulse-glow">
-                <Sparkles className="h-3 w-3 text-white" />
-              </div>
-            </div>
-            <div>
-              <h1 className="text-3xl md:text-4xl font-bold gradient-text animate-scale-in">
-                Dashboard
-              </h1>
-              <p className="text-muted-foreground animate-slide-up" style={{ animationDelay: '100ms' }}>
-                Vue d'ensemble des incidents et statistiques
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            {excludedCount > 0 && (
-              <Badge variant="secondary" className="flex items-center gap-1.5">
-                <Filter className="h-3 w-3" />
-                {excludedCount} exclus
-              </Badge>
-            )}
-            <Button 
-              onClick={exportDashboardPDF} 
-              disabled={exportingPdf || relevantIncidents.length === 0}
-              className="animate-scale-in"
-              style={{ animationDelay: '200ms' }}
-            >
-              {exportingPdf ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <FileText className="h-4 w-4 mr-2" />
+        {/* Header avec Aurora effect */}
+        <AuroraHeader
+          title="Dashboard"
+          subtitle="Vue d'ensemble des incidents et statistiques"
+          icon={<TrendingUp className="h-8 w-8 text-white" />}
+          particles
+          sparkle
+          actions={
+            <div className="flex items-center gap-3">
+              {excludedCount > 0 && (
+                <Badge variant="secondary" className="flex items-center gap-1.5 glass-card">
+                  <Filter className="h-3 w-3" />
+                  {excludedCount} exclus
+                </Badge>
               )}
-              Exporter en PDF
-            </Button>
-          </div>
-        </div>
+              <Button 
+                onClick={exportDashboardPDF} 
+                disabled={exportingPdf || relevantIncidents.length === 0}
+                className="glow-button"
+              >
+                {exportingPdf ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <FileText className="h-4 w-4 mr-2" />
+                )}
+                Exporter en PDF
+              </Button>
+            </div>
+          }
+        />
 
         <div {...getTutorialProps('dashboard-kpis')}>
           <DashboardKPIs kpis={kpis} />
         </div>
 
         {/* Quick Actions - Always visible */}
-        <div className="mb-8" {...getTutorialProps('quick-actions')}>
+        <div {...getTutorialProps('quick-actions')}>
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
             Actions Rapides

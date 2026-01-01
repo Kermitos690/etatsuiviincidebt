@@ -46,6 +46,10 @@ export const PDF_DIMENSIONS = {
   marginBottom: 25,
   contentWidth: 170, // 210 - 20 - 20
   
+  // Largeur sûre pour le texte (avec marges intérieures de 8mm de chaque côté)
+  safeContentWidth: 154, // contentWidth - 16
+  textInnerMargin: 8, // Marge intérieure pour le texte dans les blocs
+  
   // Espacements
   lineHeight: 5,
   paragraphGap: 8,
@@ -508,18 +512,19 @@ export function drawLegalBox(
     contextExplanation?: string;
   }
 ): number {
-  const { marginLeft, contentWidth } = PDF_DIMENSIONS;
+  const { marginLeft, contentWidth, safeContentWidth, textInnerMargin } = PDF_DIMENSIONS;
   
-  // Calcul de la hauteur nécessaire
-  const articleText = normalizeTextForPdf(legalRef.text, { maxLength: 2000 });
+  // Calcul de la hauteur nécessaire - utiliser largeur sûre
+  const textWidth = safeContentWidth - textInnerMargin * 2;
+  const articleText = normalizeTextForPdf(legalRef.text, { maxLength: 1500 });
   const contextExplanation = legalRef.contextExplanation
-    ? normalizeTextForPdf(legalRef.contextExplanation, { maxLength: 1200 })
+    ? normalizeTextForPdf(legalRef.contextExplanation, { maxLength: 800 })
     : '';
 
   doc.setFontSize(9);
-  const textLines = doc.splitTextToSize(articleText, contentWidth - 15);
+  const textLines = doc.splitTextToSize(articleText, textWidth);
   const explanationLines = contextExplanation
-    ? doc.splitTextToSize(contextExplanation, contentWidth - 15)
+    ? doc.splitTextToSize(contextExplanation, textWidth)
     : [];
 
   const boxHeight = 20 + (textLines.length * 4) + (explanationLines.length > 0 ? 15 + (explanationLines.length * 4) : 0);
@@ -538,21 +543,23 @@ export function drawLegalBox(
   setColor(doc, PDF_COLORS.legal, 'fill');
   doc.rect(marginLeft, y, 3, boxHeight, 'F');
   
+  const textX = marginLeft + textInnerMargin;
+  
   // En-tête de l'article
   let currentY = y + 6;
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   setColor(doc, PDF_COLORS.legal);
   const headerTextRaw = `${legalRef.code} art. ${legalRef.article}${legalRef.title ? ` - ${legalRef.title}` : ''}`;
-  const headerText = normalizeTextForPdf(headerTextRaw, { maxLength: 180 });
-  doc.text(headerText, marginLeft + 8, currentY);
+  const headerText = normalizeTextForPdf(headerTextRaw, { maxLength: 120 });
+  doc.text(headerText, textX, currentY);
   
   // Texte de l'article
   currentY += 8;
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   setColor(doc, PDF_COLORS.text);
-  doc.text(textLines, marginLeft + 8, currentY);
+  doc.text(textLines, textX, currentY);
   currentY += textLines.length * 4 + 2;
   
   // Explication contextuelle
@@ -560,11 +567,11 @@ export function drawLegalBox(
     currentY += 3;
     doc.setFont('helvetica', 'bolditalic');
     setColor(doc, PDF_COLORS.secondary);
-    doc.text('Application au cas present :', marginLeft + 8, currentY);
+    doc.text('Application au cas present :', textX, currentY);
     currentY += 5;
     
     doc.setFont('helvetica', 'italic');
-    doc.text(explanationLines, marginLeft + 8, currentY);
+    doc.text(explanationLines, textX, currentY);
     currentY += explanationLines.length * 4;
   }
   
@@ -579,8 +586,12 @@ export function drawInfoTable(
   y: number,
   data: Array<{ label: string; value: string; highlight?: boolean }>
 ): number {
-  const { marginLeft } = PDF_DIMENSIONS;
+  const { marginLeft, safeContentWidth } = PDF_DIMENSIONS;
   let currentY = y;
+  
+  // Largeur max pour les valeurs (avec marge pour le label)
+  const labelWidth = 45;
+  const valueMaxWidth = safeContentWidth - labelWidth - 10;
   
   for (const item of data) {
     doc.setFontSize(10);
@@ -595,8 +606,10 @@ export function drawInfoTable(
       setColor(doc, PDF_COLORS.text);
     }
     
-    const valueLines = doc.splitTextToSize(item.value, 120);
-    doc.text(valueLines, marginLeft + 50, currentY);
+    // Limiter la valeur à la largeur disponible
+    const normalizedValue = normalizeTextForPdf(item.value, { maxLength: 200 });
+    const valueLines = doc.splitTextToSize(normalizedValue, valueMaxWidth);
+    doc.text(valueLines, marginLeft + labelWidth + 5, currentY);
     currentY += valueLines.length * 5 + 2;
   }
   
@@ -778,20 +791,23 @@ export function drawEmailBlock(
     citationNumber?: number;
   }
 ): number {
-  const { marginLeft, contentWidth } = PDF_DIMENSIONS;
+  const { marginLeft, contentWidth, safeContentWidth, textInnerMargin } = PDF_DIMENSIONS;
   
   // Normalize critical fields (jsPDF default font has limitations)
-  const sender = normalizeTextForPdf(email.sender, { maxLength: 120 });
-  const recipient = email.recipient ? normalizeTextForPdf(email.recipient, { maxLength: 120 }) : undefined;
-  const subject = normalizeTextForPdf(email.subject, { maxLength: 200 });
+  const sender = normalizeTextForPdf(email.sender, { maxLength: 80 });
+  const recipient = email.recipient ? normalizeTextForPdf(email.recipient, { maxLength: 80 }) : undefined;
+  const subject = normalizeTextForPdf(email.subject, { maxLength: 150 });
 
   // Normalize email body first
   const normalizedBody = normalizeEmailBodyForPdf(email.body);
   
+  // Largeur du texte dans le bloc (avec marges intérieures)
+  const textWidth = safeContentWidth - textInnerMargin * 2;
+  
   // Calculate heights precisely
   doc.setFontSize(9);
-  const bodyLines = doc.splitTextToSize(normalizedBody, contentWidth - 20);
-  const subjectLines = doc.splitTextToSize(subject, contentWidth - 80);
+  const bodyLines = doc.splitTextToSize(normalizedBody, textWidth);
+  const subjectLines = doc.splitTextToSize(subject, textWidth - 40);
   
   // Calculate exact displayed lines
   const maxBodyLines = 15;
@@ -822,13 +838,14 @@ export function drawEmailBlock(
   doc.rect(marginLeft, y, 3, blockHeight, 'F');
   
   let currentY = y + 5;
+  const textX = marginLeft + textInnerMargin;
   
   // Citation number if present
   if (email.citationNumber) {
     doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     setColor(doc, PDF_COLORS.evidence);
-    doc.text(`[Email ${email.citationNumber}]`, marginLeft + 8, currentY);
+    doc.text(`[Email ${email.citationNumber}]`, textX, currentY);
     currentY += 4;
   }
   
@@ -836,18 +853,18 @@ export function drawEmailBlock(
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   setColor(doc, PDF_COLORS.text);
-  doc.text(`De: ${sender}`, marginLeft + 8, currentY);
+  doc.text(`De: ${sender}`, textX, currentY);
   
   doc.setFont('helvetica', 'normal');
   setColor(doc, PDF_COLORS.muted);
-  doc.text(email.date, marginLeft + contentWidth - 5, currentY, { align: 'right' });
+  doc.text(email.date, marginLeft + contentWidth - textInnerMargin, currentY, { align: 'right' });
   currentY += 5;
   
   // Recipient if present
   if (recipient) {
     doc.setFontSize(8);
     setColor(doc, PDF_COLORS.muted);
-    doc.text(`A: ${recipient}`, marginLeft + 8, currentY);
+    doc.text(`A: ${recipient}`, textX, currentY);
     currentY += 4;
   }
   
@@ -855,21 +872,21 @@ export function drawEmailBlock(
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   setColor(doc, PDF_COLORS.secondary);
-  doc.text(subjectLines, marginLeft + 8, currentY);
+  doc.text(subjectLines, textX, currentY);
   currentY += subjectLines.length * 4 + 3;
   
   // Body (truncated if too long)
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   setColor(doc, PDF_COLORS.text);
-  doc.text(displayedBodyLines, marginLeft + 8, currentY);
+  doc.text(displayedBodyLines, textX, currentY);
   currentY += displayedBodyLines.length * 3.5;
   
   // "More lines" indicator
   if (hasMoreLines) {
     doc.setFont('helvetica', 'italic');
     setColor(doc, PDF_COLORS.muted);
-    doc.text(`[...${bodyLines.length - maxBodyLines} lignes supplementaires]`, marginLeft + 8, currentY + 2);
+    doc.text(`[...${bodyLines.length - maxBodyLines} lignes supplementaires]`, textX, currentY + 2);
   }
   
   return y + blockHeight + 5;
