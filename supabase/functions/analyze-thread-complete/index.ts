@@ -460,7 +460,13 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { threadId, batchSize = 10, domains, keywords } = await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => ({} as any));
+    const threadId = body?.threadId;
+    const batchSizeRaw = body?.batchSize;
+    const domains = body?.domains;
+    const keywords = body?.keywords;
+
+    const safeBatchSize = Math.min(Math.max(Number(batchSizeRaw) || 10, 1), 25);
 
     let threadsToAnalyze: string[] = [];
 
@@ -471,41 +477,86 @@ serve(async (req) => {
         .from('thread_analyses')
         .select('thread_id')
         .eq('user_id', user.id);
-      
+
       const analyzedThreads = new Set(existingAnalyses?.map(a => a.thread_id) || []);
 
-      // Fetch emails with sender/recipient for filtering
-      const { data: emails } = await supabase
-        .from('emails')
-        .select('gmail_thread_id, sender, recipient, subject, body')
-        .eq('user_id', user.id)
-        .not('gmail_thread_id', 'is', null)
-        .not('body', 'is', null)
-        .not('body', 'eq', '');
+      // Avoid scanning ALL emails at once (can time out on large inboxes).
+      // We page through emails and stop as soon as we have enough new thread IDs.
+      const PAGE_SIZE = 500;
+      const MAX_PAGES = 20; // hard stop: 10k emails max scanned per call
 
-      // Apply domain and keyword filters
-      let filteredEmails = emails || [];
-      
-      if (domains && domains.length > 0) {
-        filteredEmails = filteredEmails.filter(email => {
-          const sender = email.sender?.toLowerCase() || '';
-          const recipient = email.recipient?.toLowerCase() || '';
-          return domains.some((d: string) => sender.includes(d.toLowerCase()) || recipient.includes(d.toLowerCase()));
-        });
-        console.log(`After domain filter (${domains.join(', ')}): ${filteredEmails.length} emails`);
-      }
-      
-      if (keywords && keywords.length > 0) {
-        filteredEmails = filteredEmails.filter(email => {
-          const subject = email.subject?.toLowerCase() || '';
-          const body = email.body?.toLowerCase() || '';
-          return keywords.some((k: string) => subject.includes(k.toLowerCase()) || body.includes(k.toLowerCase()));
-        });
-        console.log(`After keyword filter (${keywords.join(', ')}): ${filteredEmails.length} emails`);
+      const wantedThreads: string[] = [];
+      const wantedSet = new Set<string>();
+
+      const domainList: string[] = Array.isArray(domains) ? domains : [];
+      const keywordList: string[] = Array.isArray(keywords) ? keywords : [];
+
+      let scannedEmails = 0;
+
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const from = page * PAGE_SIZE;
+        const to = from + PAGE_SIZE - 1;
+
+        const { data: emails, error: emailsErr } = await supabase
+          .from('emails')
+          .select('gmail_thread_id, sender, recipient, subject, body, received_at')
+          .eq('user_id', user.id)
+          .not('gmail_thread_id', 'is', null)
+          .not('body', 'is', null)
+          .not('body', 'eq', '')
+          .order('received_at', { ascending: false })
+          .range(from, to);
+
+        if (emailsErr) {
+          console.error('Failed to page emails for thread detection:', emailsErr);
+          break;
+        }
+
+        const rows = Array.isArray(emails) ? emails : [];
+        if (rows.length === 0) break;
+
+        scannedEmails += rows.length;
+
+        for (const email of rows) {
+          const t = (email as any)?.gmail_thread_id as string | null;
+          if (!t) continue;
+          if (analyzedThreads.has(t)) continue;
+          if (wantedSet.has(t)) continue;
+
+          // Domain filter (sender or recipient contains domain token)
+          if (domainList.length > 0) {
+            const sender = ((email as any)?.sender || '').toLowerCase();
+            const recipient = ((email as any)?.recipient || '').toLowerCase();
+            const ok = domainList.some((d: string) => {
+              const needle = String(d || '').toLowerCase();
+              return needle && (sender.includes(needle) || recipient.includes(needle));
+            });
+            if (!ok) continue;
+          }
+
+          // Keyword filter (subject or body contains keyword token)
+          if (keywordList.length > 0) {
+            const subject = ((email as any)?.subject || '').toLowerCase();
+            const bodyText = ((email as any)?.body || '').toLowerCase();
+            const ok = keywordList.some((k: string) => {
+              const needle = String(k || '').toLowerCase();
+              return needle && (subject.includes(needle) || bodyText.includes(needle));
+            });
+            if (!ok) continue;
+          }
+
+          wantedSet.add(t);
+          wantedThreads.push(t);
+
+          if (wantedThreads.length >= safeBatchSize) break;
+        }
+
+        if (wantedThreads.length >= safeBatchSize) break;
       }
 
-      const uniqueThreads = [...new Set(filteredEmails.map(e => e.gmail_thread_id).filter(Boolean))];
-      threadsToAnalyze = uniqueThreads.filter(t => !analyzedThreads.has(t!)).slice(0, batchSize) as string[];
+      console.log(`Thread discovery scanned ${scannedEmails} emails, selected ${wantedThreads.length} threads (batchSize=${safeBatchSize})`);
+
+      threadsToAnalyze = wantedThreads;
     }
 
     console.log(`Analyzing ${threadsToAnalyze.length} threads with exhaustive Swiss legal bases`);
