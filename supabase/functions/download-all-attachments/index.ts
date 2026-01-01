@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, verifyAuth, unauthorizedResponse } from "../_shared/auth.ts";
+import { verifyAuth } from "../_shared/auth.ts";
+import { getCorsHeaders, log } from "../_shared/core.ts";
+import { getGmailTokens, encryptGmailTokens, isEncryptionConfigured } from "../_shared/encryption.ts";
 
 interface AttachmentInfo {
   attachmentId: string;
@@ -42,11 +44,18 @@ function findAttachments(parts: GmailPart[]): AttachmentInfo[] {
   return attachments;
 }
 
-async function refreshAccessToken(refreshToken: string): Promise<string | null> {
+async function refreshAccessToken(
+  supabase: any, 
+  config: any, 
+  refreshToken: string
+): Promise<string | null> {
   const clientId = Deno.env.get('GOOGLE_CLIENT_ID');
   const clientSecret = Deno.env.get('GOOGLE_CLIENT_SECRET');
   
-  if (!clientId || !clientSecret) return null;
+  if (!clientId || !clientSecret || !refreshToken) {
+    log('error', 'Missing credentials for token refresh');
+    return null;
+  }
   
   try {
     const response = await fetch('https://oauth2.googleapis.com/token', {
@@ -60,15 +69,62 @@ async function refreshAccessToken(refreshToken: string): Promise<string | null> 
       }),
     });
     
-    if (!response.ok) return null;
+    if (!response.ok) {
+      log('error', 'Token refresh failed', { status: response.status });
+      return null;
+    }
+    
     const data = await response.json();
+    const tokenExpiry = new Date(Date.now() + data.expires_in * 1000).toISOString();
+    
+    // Store tokens encrypted if encryption is configured
+    if (isEncryptionConfigured()) {
+      try {
+        const encrypted = await encryptGmailTokens(data.access_token, refreshToken);
+        await supabase
+          .from("gmail_config")
+          .update({ 
+            access_token_enc: encrypted.accessTokenEnc,
+            refresh_token_enc: encrypted.refreshTokenEnc,
+            token_nonce: encrypted.nonce,
+            token_key_version: encrypted.keyVersion,
+            access_token: null,
+            refresh_token: null,
+            token_expiry: tokenExpiry
+          })
+          .eq("id", config.id);
+        log('info', 'Token refreshed and stored encrypted');
+      } catch (encError) {
+        log('error', 'Encryption failed, storing plaintext');
+        await supabase
+          .from("gmail_config")
+          .update({ 
+            access_token: data.access_token,
+            token_expiry: tokenExpiry
+          })
+          .eq("id", config.id);
+      }
+    } else {
+      await supabase
+        .from("gmail_config")
+        .update({ 
+          access_token: data.access_token,
+          token_expiry: tokenExpiry
+        })
+        .eq("id", config.id);
+      log('info', 'Token refreshed (plaintext)');
+    }
+    
     return data.access_token;
-  } catch {
+  } catch (err) {
+    log('error', 'Token refresh exception', { error: String(err) });
     return null;
   }
 }
 
 serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req);
+  
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -77,11 +133,18 @@ serve(async (req) => {
     // Verify user authentication
     const { user, error: authError } = await verifyAuth(req);
     if (authError || !user) {
-      console.error('Auth error:', authError);
-      return unauthorizedResponse(authError || 'Non autorisé');
+      log('error', 'Auth error', { error: authError });
+      return new Response(JSON.stringify({ 
+        success: false, 
+        code: 'UNAUTHORIZED', 
+        error: authError || 'Non autorisé' 
+      }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    console.log(`User ${user.email} executing download-all-attachments`);
+    log('info', `User ${user.email} executing download-all-attachments`);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -89,7 +152,7 @@ serve(async (req) => {
 
     const { batchSize = 20 } = await req.json().catch(() => ({}));
 
-    console.log('Starting bulk attachment download...');
+    log('info', 'Starting bulk attachment download...');
 
     // Get Gmail config - scoped to authenticated user
     const { data: gmailConfig, error: configError } = await supabase
@@ -99,26 +162,79 @@ serve(async (req) => {
       .maybeSingle();
 
     if (configError || !gmailConfig) {
-      throw new Error('Gmail config not found');
+      log('warn', 'Gmail not configured for user');
+      return new Response(JSON.stringify({
+        success: false,
+        code: 'GMAIL_NOT_CONFIGURED',
+        error: 'Gmail non configuré. Connecte ton compte Gmail d\'abord.',
+        action: 'connect_gmail'
+      }), {
+        status: 200, // Return 200 to avoid frontend crash
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Get tokens using encryption-aware helper
+    const tokens = await getGmailTokens({
+      access_token: gmailConfig.access_token,
+      refresh_token: gmailConfig.refresh_token,
+      access_token_enc: gmailConfig.access_token_enc,
+      refresh_token_enc: gmailConfig.refresh_token_enc,
+      token_nonce: gmailConfig.token_nonce,
+      token_key_version: gmailConfig.token_key_version,
+    });
+
+    log('info', 'Tokens retrieved', { 
+      wasEncrypted: tokens.wasEncrypted, 
+      hasAccessToken: !!tokens.accessToken,
+      hasRefreshToken: !!tokens.refreshToken
+    });
+
+    if (!tokens.accessToken && !tokens.refreshToken) {
+      log('warn', 'No access token available for user', { userId: user.id });
+      return new Response(JSON.stringify({
+        success: false,
+        code: 'GMAIL_RECONNECT_REQUIRED',
+        error: 'Session Gmail expirée. Reconnexion nécessaire.',
+        action: 'reconnect_gmail'
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Refresh token if needed
-    let accessToken = gmailConfig.access_token;
+    let accessToken = tokens.accessToken;
     const tokenExpiry = gmailConfig.token_expiry ? new Date(gmailConfig.token_expiry) : null;
     
-    if (!tokenExpiry || tokenExpiry < new Date()) {
-      const newToken = await refreshAccessToken(gmailConfig.refresh_token);
+    if (!accessToken || !tokenExpiry || tokenExpiry < new Date()) {
+      if (!tokens.refreshToken) {
+        log('warn', 'Token expired and no refresh token');
+        return new Response(JSON.stringify({
+          success: false,
+          code: 'TOKEN_REFRESH_FAILED',
+          error: 'Impossible de rafraîchir le token. Reconnexion Gmail nécessaire.',
+          action: 'reconnect_gmail'
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      
+      const newToken = await refreshAccessToken(supabase, gmailConfig, tokens.refreshToken);
       if (newToken) {
         accessToken = newToken;
-        await supabase
-          .from('gmail_config')
-          .update({
-            access_token: newToken,
-            token_expiry: new Date(Date.now() + 3600 * 1000).toISOString(),
-          })
-          .eq('id', gmailConfig.id);
       } else {
-        throw new Error('Failed to refresh access token');
+        log('warn', 'Failed to refresh access token');
+        return new Response(JSON.stringify({
+          success: false,
+          code: 'TOKEN_REFRESH_FAILED',
+          error: 'Échec du rafraîchissement du token. Reconnexion Gmail nécessaire.',
+          action: 'reconnect_gmail'
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
       }
     }
 
@@ -132,14 +248,15 @@ serve(async (req) => {
     const { data: emails, error: emailsError } = await supabase
       .from('emails')
       .select('id, gmail_message_id, subject')
+      .eq('user_id', user.id)
       .not('gmail_message_id', 'is', null)
-      .limit(batchSize * 5); // Get more to filter
+      .limit(batchSize * 5);
 
     if (emailsError) throw emailsError;
 
     const emailsToProcess = (emails || []).filter(e => !emailsWithAttachments.has(e.id)).slice(0, batchSize);
 
-    console.log(`Processing ${emailsToProcess.length} emails for attachments`);
+    log('info', `Processing ${emailsToProcess.length} emails for attachments`);
 
     const results = {
       emailsProcessed: 0,
@@ -152,7 +269,6 @@ serve(async (req) => {
       if (!email.gmail_message_id) continue;
 
       try {
-        // Fetch message to get attachment info
         const msgResponse = await fetch(
           `https://gmail.googleapis.com/gmail/v1/users/me/messages/${email.gmail_message_id}?format=full`,
           { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -171,20 +287,18 @@ serve(async (req) => {
 
         for (const attachment of attachments) {
           try {
-            // Download attachment
             const attachmentResponse = await fetch(
               `https://gmail.googleapis.com/gmail/v1/users/me/messages/${email.gmail_message_id}/attachments/${attachment.attachmentId}`,
               { headers: { Authorization: `Bearer ${accessToken}` } }
             );
 
             if (!attachmentResponse.ok) {
-              console.error(`Failed to download attachment ${attachment.filename}`);
+              log('error', `Failed to download attachment ${attachment.filename}`);
               continue;
             }
 
             const attachmentData = await attachmentResponse.json();
             
-            // Decode base64
             const base64Data = attachmentData.data.replace(/-/g, '+').replace(/_/g, '/');
             const binaryString = atob(base64Data);
             const bytes = new Uint8Array(binaryString.length);
@@ -192,12 +306,10 @@ serve(async (req) => {
               bytes[i] = binaryString.charCodeAt(i);
             }
 
-            // Generate unique filename
             const timestamp = Date.now();
             const safeFilename = attachment.filename.replace(/[^a-zA-Z0-9.-]/g, '_');
             const storagePath = `${email.id}/${timestamp}_${safeFilename}`;
 
-            // Upload to Supabase Storage
             const { error: uploadError } = await supabase.storage
               .from('email-attachments')
               .upload(storagePath, bytes, {
@@ -206,11 +318,10 @@ serve(async (req) => {
               });
 
             if (uploadError) {
-              console.error(`Upload error for ${attachment.filename}:`, uploadError);
+              log('error', `Upload error for ${attachment.filename}`, { error: uploadError });
               continue;
             }
 
-            // Save to database
             const { error: dbError } = await supabase
               .from('email_attachments')
               .insert({
@@ -223,39 +334,41 @@ serve(async (req) => {
               });
 
             if (dbError) {
-              console.error(`DB error for ${attachment.filename}:`, dbError);
+              log('error', `DB error for ${attachment.filename}`, { error: dbError });
             } else {
               results.attachmentsDownloaded++;
-              console.log(`Downloaded: ${attachment.filename} for email ${email.subject}`);
+              log('info', `Downloaded: ${attachment.filename}`);
             }
           } catch (attachError) {
-            console.error(`Error processing attachment ${attachment.filename}:`, attachError);
+            log('error', `Error processing attachment ${attachment.filename}`, { error: String(attachError) });
           }
         }
 
-        // Rate limiting
         await new Promise(resolve => setTimeout(resolve, 200));
       } catch (error) {
-        console.error(`Error processing email ${email.id}:`, error);
+        log('error', `Error processing email ${email.id}`, { error: String(error) });
         results.errors.push(`${email.subject}: ${error}`);
       }
     }
 
-    console.log('Bulk download completed:', results);
+    log('info', 'Bulk download completed', { results });
 
     return new Response(JSON.stringify({
       success: true,
+      downloaded: results.attachmentsDownloaded,
       results,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error('Bulk download error:', error);
+    log('error', 'Bulk download error', { error: String(error) });
     return new Response(JSON.stringify({
+      success: false,
+      code: 'INTERNAL_ERROR',
       error: error instanceof Error ? error.message : 'Unknown error',
     }), {
-      status: 500,
+      status: 200, // Return 200 to prevent frontend crash
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
