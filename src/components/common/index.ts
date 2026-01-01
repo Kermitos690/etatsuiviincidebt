@@ -18,3 +18,4 @@ export { QuickActions } from './QuickActions';
 export { ErrorBoundary } from './ErrorBoundary';
 export { SafeDataBoundary } from './SafeDataBoundary';
 export { SupabaseStatusBanner, useSupabaseStatus, DemoModeWrapper } from './SupabaseStatusBanner';
+export { ProgressIndicator } from './ProgressIndicator';

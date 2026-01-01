@@ -2,6 +2,7 @@ import React, { memo } from 'react';
 import { Mail, AlertTriangle, Clock, Check, Building2, ChevronRight, Brain, Eye, Paperclip, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { EmailThread } from './types';
 
@@ -160,47 +161,72 @@ function EmailCardInner({
           )}
         </div>
 
-        {/* Quick Actions - Mobile optimized */}
-        <div className="flex gap-2 mt-3 pt-3 border-t border-border/50">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAnalyze();
-            }}
-            disabled={isProcessing}
-            className="flex-1 h-9 text-xs hover:bg-primary/10 hover:text-primary"
-          >
-            <Brain className={cn("h-4 w-4 mr-1.5", isProcessing && "animate-spin")} />
-            <span className="hidden xs:inline">Analyser</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              onView();
-            }}
-            className="flex-1 h-9 text-xs hover:bg-primary/10 hover:text-primary"
-          >
-            <Eye className="h-4 w-4 mr-1.5" />
-            <span className="hidden xs:inline">Détails</span>
-          </Button>
-          {onDelete && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-              className="h-9 text-xs hover:bg-destructive/10 hover:text-destructive"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
+        {/* Quick Actions - Mobile optimized with tooltips */}
+        <TooltipProvider delayDuration={300}>
+          <div className="flex gap-2 mt-3 pt-3 border-t border-border/50">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAnalyze();
+                  }}
+                  disabled={isProcessing}
+                  className="flex-1 h-9 text-xs hover:bg-primary/10 hover:text-primary"
+                >
+                  <Brain className={cn("h-4 w-4 mr-1.5", isProcessing && "animate-spin")} />
+                  <span className="hidden xs:inline">Analyser</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>Analyser avec l'IA</p>
+              </TooltipContent>
+            </Tooltip>
+            
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onView();
+                  }}
+                  className="flex-1 h-9 text-xs hover:bg-primary/10 hover:text-primary"
+                >
+                  <Eye className="h-4 w-4 mr-1.5" />
+                  <span className="hidden xs:inline">Détails</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>Voir les détails</p>
+              </TooltipContent>
+            </Tooltip>
+            
+            {onDelete && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete();
+                    }}
+                    className="h-9 text-xs hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p>Supprimer</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+        </TooltipProvider>
       </div>
 
       {/* Expanded emails list */}

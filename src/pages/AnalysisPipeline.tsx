@@ -265,7 +265,7 @@ export default function AnalysisPipeline() {
     try {
       // Step 0: Gmail Sync (NEW - fetch emails from Gmail)
       updateStep(0, { status: 'running', progress: 10 });
-      toast.info('Étape 1/6: Synchronisation Gmail...');
+      toast.info('Étape 1/5: Synchronisation Gmail...');
       
       const gmailSyncRes = await supabase.functions.invoke('gmail-sync', {
         body: { 
