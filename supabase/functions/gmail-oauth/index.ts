@@ -170,20 +170,10 @@ serve(async (req) => {
       });
     }
 
-    // Handle POST requests for actions - REQUIRE AUTHENTICATION
+    // Handle POST requests for actions
     if (req.method !== "POST") {
       return new Response(JSON.stringify({ error: "Method not allowed" }), {
         status: 405,
-        headers: { ...cors, "Content-Type": "application/json" },
-      });
-    }
-
-    // Verify user authentication for all POST actions
-    const { user, error: authError } = await verifyAuth(req);
-    if (authError || !user) {
-      console.error("Authentication failed for gmail-oauth POST:", authError);
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
         headers: { ...cors, "Content-Type": "application/json" },
       });
     }
@@ -197,6 +187,52 @@ serve(async (req) => {
     }
 
     const { action } = JSON.parse(body);
+
+    // PUBLIC ACTION: diagnose - check configuration without authentication
+    if (action === "diagnose") {
+      const clientIdConfigured = !!GOOGLE_CLIENT_ID && GOOGLE_CLIENT_ID.length > 10;
+      const clientSecretConfigured = !!GOOGLE_CLIENT_SECRET && GOOGLE_CLIENT_SECRET.length > 10;
+      const encryptionKeyConfigured = isEncryptionConfigured();
+      
+      const diagnosticResult = {
+        success: true,
+        redirectUri: REDIRECT_URI,
+        supabaseUrl: SUPABASE_URL,
+        secrets: {
+          GOOGLE_CLIENT_ID: clientIdConfigured ? "✅ Configuré" : "❌ Manquant",
+          GOOGLE_CLIENT_SECRET: clientSecretConfigured ? "✅ Configuré" : "❌ Manquant",
+          GMAIL_TOKEN_ENCRYPTION_KEY: encryptionKeyConfigured ? "✅ Configuré" : "❌ Manquant",
+        },
+        allSecretsOk: clientIdConfigured && clientSecretConfigured && encryptionKeyConfigured,
+        instructions: {
+          step1: "Aller dans Google Cloud Console → API & Services → Identifiants",
+          step2: "Sélectionner ton Client OAuth 2.0 (type: Application Web)",
+          step3_origins: "Ajouter l'origine JavaScript autorisée (voir 'requiredOrigin' ci-dessous)",
+          step4_redirect: `Ajouter l'URI de redirection: ${REDIRECT_URI}`,
+          step5_test_users: "Si l'app est 'En test', ajouter ton email dans 'Utilisateurs de test' (Écran de consentement OAuth)",
+        },
+        googleCloudLinks: {
+          credentials: "https://console.cloud.google.com/apis/credentials",
+          consentScreen: "https://console.cloud.google.com/apis/credentials/consent",
+        },
+      };
+
+      console.log("Diagnostic check performed - secrets status:", diagnosticResult.secrets);
+      
+      return new Response(JSON.stringify(diagnosticResult), {
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
+
+    // All other actions REQUIRE AUTHENTICATION
+    const { user, error: authError } = await verifyAuth(req);
+    if (authError || !user) {
+      console.error("Authentication failed for gmail-oauth POST:", authError);
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
 
     if (action === "get-auth-url") {
       const scopes = [
