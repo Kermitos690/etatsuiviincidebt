@@ -37,9 +37,9 @@ export function getCorsHeaders(req?: Request): Record<string, string> {
   };
 }
 
-// Legacy corsHeaders for backward compatibility (uses first allowed origin)
+// Legacy corsHeaders for backward compatibility (permissive; auth is still enforced via JWT)
 export const corsHeaders = {
-  "Access-Control-Allow-Origin": ALLOWED_ORIGINS[0],
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   ...SECURITY_HEADERS,
