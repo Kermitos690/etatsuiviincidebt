@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, forwardRef } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -33,6 +33,7 @@ const FactualDossier = lazy(() => import("./pages/FactualDossier"));
 const Events = lazy(() => import("./pages/Events"));
 const Auth = lazy(() => import("./pages/Auth"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const ImportIncident = lazy(() => import("./pages/ImportIncident"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,8 +45,8 @@ const queryClient = new QueryClient({
   },
 });
 
-const PageLoader = () => (
-  <div className="flex items-center justify-center min-h-screen bg-background">
+const PageLoader = forwardRef<HTMLDivElement>((_, ref) => (
+  <div ref={ref} className="flex items-center justify-center min-h-screen bg-background">
     <div className="space-y-4 w-full max-w-md px-4">
       <Skeleton className="h-8 w-3/4 mx-auto" />
       <Skeleton className="h-4 w-1/2 mx-auto" />
@@ -55,7 +56,8 @@ const PageLoader = () => (
       </div>
     </div>
   </div>
-);
+));
+PageLoader.displayName = 'PageLoader';
 
 const App = () => (
   <ErrorBoundary>
