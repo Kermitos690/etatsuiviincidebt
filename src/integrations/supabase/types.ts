@@ -1417,14 +1417,12 @@ export type Database = {
       }
       gmail_config: {
         Row: {
-          access_token: string | null
           access_token_enc: string | null
           created_at: string | null
           domains: string[] | null
           id: string
           keywords: string[] | null
           last_sync: string | null
-          refresh_token: string | null
           refresh_token_enc: string | null
           sync_enabled: boolean | null
           token_expiry: string | null
@@ -1435,14 +1433,12 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
-          access_token?: string | null
           access_token_enc?: string | null
           created_at?: string | null
           domains?: string[] | null
           id?: string
           keywords?: string[] | null
           last_sync?: string | null
-          refresh_token?: string | null
           refresh_token_enc?: string | null
           sync_enabled?: boolean | null
           token_expiry?: string | null
@@ -1453,14 +1449,12 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
-          access_token?: string | null
           access_token_enc?: string | null
           created_at?: string | null
           domains?: string[] | null
           id?: string
           keywords?: string[] | null
           last_sync?: string | null
-          refresh_token?: string | null
           refresh_token_enc?: string | null
           sync_enabled?: boolean | null
           token_expiry?: string | null
