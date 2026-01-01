@@ -65,3 +65,12 @@ verify_jwt = false
 
 [functions.analyze-import-incident]
 verify_jwt = false
+
+[functions.auto-process-email]
+verify_jwt = false
+
+[functions.analyze-email-advanced]
+verify_jwt = false
+
+[functions.send-email]
+verify_jwt = false
