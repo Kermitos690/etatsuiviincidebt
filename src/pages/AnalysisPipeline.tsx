@@ -397,42 +397,54 @@ export default function AnalysisPipeline() {
       updateStep(4, { status: 'running', progress: 10 });
       toast.info('Étape 5/6: Analyse des threads (Pass 2)...');
 
-      const THREAD_BATCH = 3; // small batches to avoid request cancellation
+      const THREAD_BATCH = 3;
       let totalThreadsAnalyzed = 0;
+      let consecutiveZero = 0; // Track when nothing new is analyzed
 
       for (let round = 0; round < 20; round++) {
-        try {
-          updateStep(4, {
-            progress: Math.min(10 + round * 4, 90),
-            details: `${totalThreadsAnalyzed} threads analysés...`,
-          });
+        updateStep(4, {
+          progress: Math.min(10 + round * 4, 90),
+          details: `${totalThreadsAnalyzed} threads analysés...`,
+        });
 
+        let analyzedNow = 0;
+
+        try {
           const threadRes = await supabase.functions.invoke('analyze-thread-complete', {
             body: { batchSize: THREAD_BATCH, ...filterBody },
           });
 
           if (threadRes.error) throw new Error(threadRes.error.message);
-
-          const analyzedNow = threadRes.data?.results?.analyzed || 0;
-          totalThreadsAnalyzed += analyzedNow;
-
-          if (analyzedNow === 0) break;
+          analyzedNow = threadRes.data?.results?.analyzed || 0;
         } catch (e) {
-          // Typical mobile/network symptom: "Load failed" (request canceled). Retry with an even smaller batch.
           console.error('analyze-thread-complete failed:', e);
-
           await new Promise(r => setTimeout(r, 1200));
-          const retryRes = await supabase.functions.invoke('analyze-thread-complete', {
-            body: { batchSize: 1, ...filterBody },
-          });
 
-          if (retryRes.error) throw new Error(retryRes.error.message);
-
-          const analyzedNow = retryRes.data?.results?.analyzed || 0;
-          totalThreadsAnalyzed += analyzedNow;
-
-          if (analyzedNow === 0) break;
+          try {
+            const retryRes = await supabase.functions.invoke('analyze-thread-complete', {
+              body: { batchSize: 1, ...filterBody },
+            });
+            if (retryRes.error) throw new Error(retryRes.error.message);
+            analyzedNow = retryRes.data?.results?.analyzed || 0;
+          } catch (retryErr) {
+            console.error('Retry also failed:', retryErr);
+            // Don't throw, just break out
+            break;
+          }
         }
+
+        totalThreadsAnalyzed += analyzedNow;
+
+        // Stop if nothing was analyzed
+        if (analyzedNow === 0) {
+          consecutiveZero++;
+          if (consecutiveZero >= 2) break; // 2 consecutive zeros = done
+        } else {
+          consecutiveZero = 0;
+        }
+
+        // Small delay between batches
+        await new Promise(r => setTimeout(r, 500));
       }
 
       updateStep(4, {
