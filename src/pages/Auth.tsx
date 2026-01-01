@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, type Location as RouterLocation } from 'react-router-dom';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,8 +16,9 @@ const passwordSchema = z.string().min(6, 'Mot de passe minimum 6 caractères');
 
 export default function Auth() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { session, signIn, signUp, loading: authLoading } = useAuth();
-  
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,10 +27,13 @@ export default function Auth() {
 
   // Redirect if already authenticated
   useEffect(() => {
-    if (session) {
-      navigate('/');
-    }
-  }, [session, navigate]);
+    if (!session) return;
+
+    const from = (location.state as { from?: RouterLocation } | null)?.from;
+    const target = from ? `${from.pathname}${from.search ?? ''}${from.hash ?? ''}` : '/';
+
+    navigate(target, { replace: true });
+  }, [session, navigate, location.state]);
 
   const validateInputs = (): boolean => {
     try {
