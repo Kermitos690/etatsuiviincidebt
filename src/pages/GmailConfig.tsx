@@ -24,6 +24,7 @@ import { format, setMonth, setYear } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { GmailDiagnosticPanel } from '@/components/gmail/GmailDiagnosticPanel';
 
 interface GmailConfig {
   connected: boolean;
@@ -541,6 +542,11 @@ export default function GmailConfig() {
               <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300">
                 <Shield className="h-4 w-4 flex-shrink-0 mt-0.5" />
                 <p className="text-sm">Accès en lecture seule. Les tokens sont stockés de manière sécurisée.</p>
+              </div>
+              
+              {/* Diagnostic Panel */}
+              <div className="pt-2">
+                <GmailDiagnosticPanel />
               </div>
             </CardContent>
           </Card>
