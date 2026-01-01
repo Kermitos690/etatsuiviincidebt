@@ -21,66 +21,8 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    // Handle OAuth callback (GET request with code or error parameter)
+    // Handle OAuth callback (GET request with code parameter)
     // Note: OAuth callbacks cannot have auth headers, so we use state parameter for security
-    
-    // Handle OAuth errors (user denied, access_denied, etc.)
-    if (req.method === "GET" && url.searchParams.has("error")) {
-      const errorCode = url.searchParams.get("error") || "unknown_error";
-      const errorDescription = url.searchParams.get("error_description") || "Google a refusé l'accès";
-      console.error("OAuth error callback:", errorCode, errorDescription);
-      
-      const appUrl = Deno.env.get("SITE_URL") || "https://68b94080-8702-44ad-92ac-e956f60a1e94.lovableproject.com";
-      const redirectUrl = `${appUrl}/gmail-config?connected=false&error=${encodeURIComponent(errorCode)}&reason=${encodeURIComponent(errorDescription)}`;
-      
-      const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta http-equiv="refresh" content="2;url=${redirectUrl}">
-  <title>Erreur de connexion Gmail</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f5f5f5; }
-    .container { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-width: 400px; text-align: center; }
-    .error { color: #dc2626; font-size: 1.25rem; margin-bottom: 1rem; }
-    .details { color: #666; margin-bottom: 1.5rem; font-size: 0.9rem; }
-    .hint { background: #fef3c7; padding: 1rem; border-radius: 8px; font-size: 0.85rem; color: #92400e; }
-    a { color: #2563eb; text-decoration: none; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <p class="error">❌ Connexion refusée</p>
-    <p class="details">${errorDescription}</p>
-    <div class="hint">
-      <strong>Causes possibles:</strong><br>
-      • Vous avez annulé l'autorisation<br>
-      • L'application n'est pas encore approuvée par Google<br>
-      • Votre compte n'est pas dans les "Utilisateurs test"
-    </div>
-    <p style="margin-top: 1rem;"><a href="${redirectUrl}">Retourner à la configuration</a></p>
-  </div>
-  <script>
-    if (window.opener) {
-      window.opener.postMessage({
-        type: 'gmail-oauth-callback',
-        success: false,
-        error: '${errorCode}',
-        errorDescription: '${errorDescription}'
-      }, '*');
-      window.close();
-    }
-  </script>
-</body>
-</html>`;
-      return new Response(html, {
-        headers: { 
-          "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "no-cache, no-store, must-revalidate"
-        },
-      });
-    }
-    
     if (req.method === "GET" && url.searchParams.has("code")) {
       const code = url.searchParams.get("code")!;
       const state = url.searchParams.get("state");
@@ -220,10 +162,20 @@ serve(async (req) => {
       });
     }
 
-    // Handle POST requests for actions
+    // Handle POST requests for actions - REQUIRE AUTHENTICATION
     if (req.method !== "POST") {
       return new Response(JSON.stringify({ error: "Method not allowed" }), {
         status: 405,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
+
+    // Verify user authentication for all POST actions
+    const { user, error: authError } = await verifyAuth(req);
+    if (authError || !user) {
+      console.error("Authentication failed for gmail-oauth POST:", authError);
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
         headers: { ...cors, "Content-Type": "application/json" },
       });
     }
@@ -237,46 +189,11 @@ serve(async (req) => {
     }
 
     const { action } = JSON.parse(body);
-    
-    // Diagnostic action - NO AUTH REQUIRED (only returns public config info)
-    if (action === "diagnose") {
-      const diagnosticInfo = {
-        redirect_uri: REDIRECT_URI,
-        client_id_configured: !!GOOGLE_CLIENT_ID,
-        client_id_prefix: GOOGLE_CLIENT_ID ? GOOGLE_CLIENT_ID.substring(0, 20) + "..." : null,
-        client_secret_configured: !!GOOGLE_CLIENT_SECRET,
-        supabase_url: SUPABASE_URL,
-        encryption_configured: isEncryptionConfigured(),
-        instructions: [
-          "1. Vérifiez que votre app OAuth est en mode 'Externe' (pas 'Interne')",
-          "2. Si en mode 'Test', ajoutez votre email dans 'Utilisateurs test'",
-          "3. Ajoutez l'origine JavaScript autorisée dans Google Cloud Console",
-          "4. Vérifiez que l'URI de redirection est correct: " + REDIRECT_URI,
-        ],
-      };
-      console.log("[Diagnose] Returning diagnostic info");
-      return new Response(JSON.stringify({ success: true, data: diagnosticInfo }), {
-        headers: { ...cors, "Content-Type": "application/json" },
-      });
-    }
-
-    // All other actions REQUIRE AUTHENTICATION
-    const { user, error: authError } = await verifyAuth(req);
-    if (authError || !user) {
-      console.error("Authentication failed for gmail-oauth POST:", authError);
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...cors, "Content-Type": "application/json" },
-      });
-    }
 
     if (action === "get-auth-url") {
-      // Use openid + email + profile scopes for better Google compatibility
       const scopes = [
-        "openid",
-        "email",
-        "profile",
         "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/userinfo.email",
       ].join(" ");
 
       // Generate state parameter with user ID and timestamp for CSRF protection
