@@ -40,7 +40,7 @@ export default function EmailsInbox() {
   const [selectedThread, setSelectedThread] = useState<EmailThread | null>(null);
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
-  const [alertEmail, setAlertEmail] = useState(() => localStorage.getItem('alertEmail') || '');
+  const [alertEmail, setAlertEmail] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [showResponseDialog, setShowResponseDialog] = useState(false);
   const [generatingResponse, setGeneratingResponse] = useState(false);
@@ -147,6 +147,19 @@ export default function EmailsInbox() {
       setLoading(false);
     }
   }, [user, gmailFilters, showAllEmails]);
+
+  // Load alertEmail from user profile preferences
+  useEffect(() => {
+    const loadAlertEmail = async () => {
+      if (!user) return;
+      const { data } = await supabase.from('profiles').select('preferences').eq('id', user.id).single();
+      const prefs = data?.preferences as { alertEmail?: string } | null;
+      if (prefs?.alertEmail) {
+        setAlertEmail(prefs.alertEmail);
+      }
+    };
+    loadAlertEmail();
+  }, [user]);
 
   useEffect(() => {
     if (user) fetchEmails();
@@ -299,7 +312,23 @@ export default function EmailsInbox() {
     return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
   };
 
-  const saveAlertEmail = () => { localStorage.setItem('alertEmail', alertEmail); setShowSettings(false); toast.success('Email d\'alerte enregistré'); };
+  const saveAlertEmail = async () => {
+    if (!user) return;
+    try {
+      // Get current preferences and merge
+      const { data: profile } = await supabase.from('profiles').select('preferences').eq('id', user.id).single();
+      const currentPrefs = (profile?.preferences as Record<string, unknown>) || {};
+      const newPrefs = { ...currentPrefs, alertEmail };
+      
+      const { error } = await supabase.from('profiles').update({ preferences: newPrefs }).eq('id', user.id);
+      if (error) throw error;
+      setShowSettings(false);
+      toast.success('Email d\'alerte enregistré');
+    } catch (error) {
+      console.error('Error saving alertEmail:', error);
+      toast.error('Erreur lors de la sauvegarde');
+    }
+  };
 
   return (
     <AppLayout>
