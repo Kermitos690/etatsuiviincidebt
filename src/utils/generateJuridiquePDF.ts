@@ -17,6 +17,8 @@ import {
   checkPageBreak,
   formatPDFDate,
   formatPDFDateTime,
+  normalizeTextForPdf,
+  drawJustifiedText,
 } from './pdfStyles';
 import {
   extractLegalReferences,
@@ -278,12 +280,13 @@ export async function generateJuridiquePDF(options: GenerateJuridiquePDFOptions)
     doc.text(`Date: ${formatPDFDate(incident.dateIncident)} | Institution: ${incident.institution} | Réf: INC-${incident.numero}`, marginLeft + 5, y);
     y += 6;
 
-    // Faits
+    // Faits - texte justifié avec largeur sûre
     doc.setFontSize(10);
     setColor(doc, PDF_COLORS.text);
-    const faitsLines = doc.splitTextToSize(incident.faits || 'Faits non renseignés.', contentWidth - 10);
-    doc.text(faitsLines, marginLeft + 5, y);
-    y += faitsLines.length * 4 + 8;
+    const faitsText = normalizeTextForPdf(incident.faits || 'Faits non renseignés.', { maxLength: 1500 });
+    const safeWidth = PDF_DIMENSIONS.safeContentWidth - PDF_DIMENSIONS.textInnerMargin;
+    y = drawJustifiedText(doc, faitsText, marginLeft + 5, y, safeWidth, 4.5);
+    y += 8;
   }
 
   // ============================================

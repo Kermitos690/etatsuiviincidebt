@@ -35,20 +35,20 @@ export const PDF_COLORS = {
 } as const;
 
 // ============================================
-// DIMENSIONS ET MARGES (en mm)
+// DIMENSIONS ET MARGES (en mm) - Marges professionnelles 1.5cm
 // ============================================
 export const PDF_DIMENSIONS = {
   pageWidth: 210,
   pageHeight: 297,
-  marginLeft: 20,
-  marginRight: 20,
-  marginTop: 20,
-  marginBottom: 25,
-  contentWidth: 170, // 210 - 20 - 20
+  marginLeft: 15,      // 1.5cm margin
+  marginRight: 15,     // 1.5cm margin
+  marginTop: 15,       // 1.5cm margin
+  marginBottom: 15,    // 1.5cm margin
+  contentWidth: 180,   // 210 - 15 - 15
   
-  // Largeur sûre pour le texte (avec marges intérieures de 8mm de chaque côté)
-  safeContentWidth: 154, // contentWidth - 16
-  textInnerMargin: 8, // Marge intérieure pour le texte dans les blocs
+  // Largeur sûre pour le texte (avec marges intérieures de 6mm de chaque côté)
+  safeContentWidth: 168, // contentWidth - 12
+  textInnerMargin: 6, // Marge intérieure pour le texte dans les blocs
   
   // Espacements
   lineHeight: 5,
@@ -58,6 +58,9 @@ export const PDF_DIMENSIONS = {
   // En-têtes/pieds de page
   headerHeight: 35,
   footerHeight: 15,
+  
+  // Zone de contenu sécurisée (évite footer)
+  maxContentY: 270, // 297 - 15 (marginBottom) - footerHeight - buffer
 } as const;
 
 // ============================================
@@ -732,13 +735,136 @@ export function addFootersToAllPages(
 
 /**
  * Vérifie si on a besoin d'une nouvelle page et l'ajoute si nécessaire
+ * Utilise maxContentY pour respecter les marges de 1.5cm
  */
 export function checkPageBreak(doc: jsPDF, currentY: number, requiredSpace: number = 40): number {
-  if (currentY + requiredSpace > 270) {
+  const { maxContentY, marginTop } = PDF_DIMENSIONS;
+  if (currentY + requiredSpace > maxContentY) {
     doc.addPage();
-    return 25;
+    return marginTop + 10; // Start after top margin
   }
   return currentY;
+}
+
+/**
+ * Dessine du texte justifié dans une zone définie
+ * @param doc - Instance jsPDF
+ * @param text - Texte à justifier
+ * @param x - Position X de départ
+ * @param y - Position Y de départ
+ * @param maxWidth - Largeur maximale du texte
+ * @param lineHeight - Hauteur de ligne (défaut: 4.5)
+ * @returns Position Y après le texte
+ */
+export function drawJustifiedText(
+  doc: jsPDF,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number = 4.5
+): number {
+  if (!text || text.trim() === '') return y;
+  
+  const normalizedText = normalizeTextForPdf(text);
+  const lines = doc.splitTextToSize(normalizedText, maxWidth);
+  let currentY = y;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) {
+      currentY += lineHeight;
+      continue;
+    }
+    
+    // Check for page break before each line
+    currentY = checkPageBreak(doc, currentY, lineHeight + 5);
+    
+    // Last line or short line: left-align instead of justify
+    const isLastLine = i === lines.length - 1;
+    const words = line.split(/\s+/).filter(w => w.length > 0);
+    
+    if (isLastLine || words.length <= 2) {
+      doc.text(line, x, currentY);
+    } else {
+      // Justify the line by distributing space between words
+      const textWidth = doc.getTextWidth(line.replace(/\s+/g, ' '));
+      const wordsWidth = words.reduce((sum, word) => sum + doc.getTextWidth(word), 0);
+      const totalSpaceNeeded = maxWidth - wordsWidth;
+      const spacePerGap = totalSpaceNeeded / (words.length - 1);
+      
+      let currentX = x;
+      for (let j = 0; j < words.length; j++) {
+        doc.text(words[j], currentX, currentY);
+        currentX += doc.getTextWidth(words[j]) + spacePerGap;
+      }
+    }
+    
+    currentY += lineHeight;
+  }
+  
+  return currentY;
+}
+
+/**
+ * Dessine un bloc de texte avec fond et justification
+ * @param doc - Instance jsPDF
+ * @param text - Texte à afficher
+ * @param y - Position Y de départ
+ * @param options - Options de style
+ * @returns Position Y après le bloc
+ */
+export function drawJustifiedTextBlock(
+  doc: jsPDF,
+  text: string,
+  y: number,
+  options: {
+    backgroundColor?: typeof PDF_COLORS[keyof typeof PDF_COLORS];
+    borderColor?: typeof PDF_COLORS[keyof typeof PDF_COLORS];
+    textColor?: typeof PDF_COLORS[keyof typeof PDF_COLORS];
+    fontSize?: number;
+    padding?: number;
+  } = {}
+): number {
+  const { marginLeft, contentWidth, safeContentWidth, textInnerMargin } = PDF_DIMENSIONS;
+  const {
+    backgroundColor = PDF_COLORS.background,
+    borderColor,
+    textColor = PDF_COLORS.text,
+    fontSize = 10,
+    padding = 6
+  } = options;
+  
+  const normalizedText = normalizeTextForPdf(text);
+  if (!normalizedText) return y;
+  
+  // Calculate text dimensions
+  doc.setFontSize(fontSize);
+  const textWidth = safeContentWidth - textInnerMargin - padding;
+  const lines = doc.splitTextToSize(normalizedText, textWidth);
+  const lineHeight = fontSize * 0.45;
+  const blockHeight = lines.length * lineHeight + padding * 2;
+  
+  // Check for page break
+  y = checkPageBreak(doc, y, blockHeight + 5);
+  
+  // Draw background
+  setColor(doc, backgroundColor, 'fill');
+  doc.roundedRect(marginLeft, y - 3, contentWidth, blockHeight, 2, 2, 'F');
+  
+  // Draw left border if specified
+  if (borderColor) {
+    setColor(doc, borderColor, 'fill');
+    doc.rect(marginLeft, y - 3, 3, blockHeight, 'F');
+  }
+  
+  // Draw justified text
+  doc.setFont('helvetica', 'normal');
+  setColor(doc, textColor);
+  const textStartY = y + padding - 1;
+  const textX = marginLeft + textInnerMargin;
+  
+  return drawJustifiedText(doc, normalizedText, textX, textStartY, textWidth, lineHeight) + padding;
 }
 
 /**

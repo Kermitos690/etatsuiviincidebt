@@ -17,6 +17,8 @@ import {
   checkPageBreak,
   formatPDFDate,
   formatPDFDateTime,
+  drawJustifiedTextBlock,
+  normalizeTextForPdf,
 } from './pdfStyles';
 
 interface DossierData {
@@ -162,19 +164,15 @@ export async function generateDossierPDF(
     y = drawSectionTitle(doc, 'SYNTHÈSE DE LA SITUATION', y, { numbered: true, number: 2 });
 
     doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    setColor(doc, PDF_COLORS.text);
-
-    const summaryLines = doc.splitTextToSize(folder.summary, contentWidth - 10);
-    const summaryHeight = summaryLines.length * 5 + 10;
-
-    y = checkPageBreak(doc, y, summaryHeight);
-
-    setColor(doc, PDF_COLORS.background, 'fill');
-    doc.roundedRect(marginLeft, y - 3, contentWidth, summaryHeight, 2, 2, 'F');
-
-    doc.text(summaryLines, marginLeft + 5, y + 3);
-    y += summaryHeight + 5;
+    const summaryText = normalizeTextForPdf(folder.summary, { maxLength: 2000 });
+    
+    y = drawJustifiedTextBlock(doc, summaryText, y, {
+      backgroundColor: PDF_COLORS.background,
+      textColor: PDF_COLORS.text,
+      fontSize: 10,
+      padding: 8
+    });
+    y += 5;
   }
 
   // ============================================
