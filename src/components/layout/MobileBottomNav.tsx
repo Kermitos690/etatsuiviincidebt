@@ -28,6 +28,8 @@ const moreNavSections = [
     items: [
       { to: '/analysis-pipeline', label: 'Pipeline IA', icon: Sparkles },
       { to: '/ia-auditeur', label: 'IA Auditeur', icon: Sparkles },
+      { to: '/ia-training', label: 'Entraînement IA', icon: Sparkles },
+      { to: '/swipe-training', label: 'Swipe Training', icon: Sparkles },
     ]
   },
   {

@@ -90,6 +90,8 @@ const navCategories: NavCategory[] = [
     items: [
       { to: '/analysis-pipeline', icon: Brain, label: 'Pipeline IA' },
       { to: '/ia-auditeur', icon: Brain, label: 'IA Auditeur' },
+      { to: '/ia-training', icon: Brain, label: 'Entraînement IA' },
+      { to: '/swipe-training', icon: Activity, label: 'Swipe Training' },
       { to: '/gmail-config', icon: Mail, label: 'Gmail' },
       { to: '/admin', icon: Settings, label: 'Admin' },
       { to: '/tutorial', icon: HelpCircle, label: 'Aide' },

@@ -32,6 +32,8 @@ const Events = lazy(() => import("./pages/Events"));
 const Auth = lazy(() => import("./pages/Auth"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const ImportIncident = lazy(() => import("./pages/ImportIncident"));
+const IATraining = lazy(() => import("./pages/IATraining"));
+const SwipeTraining = lazy(() => import("./pages/SwipeTraining"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -100,6 +102,8 @@ const App = () => (
                   <Route path="/profile" element={<AuthGuard><Profile /></AuthGuard>} />
                   <Route path="/tutorial" element={<AuthGuard><Tutorial /></AuthGuard>} />
                   <Route path="/import-incident" element={<AuthGuard><ImportIncident /></AuthGuard>} />
+                  <Route path="/ia-training" element={<AuthGuard><IATraining /></AuthGuard>} />
+                  <Route path="/swipe-training" element={<AuthGuard><SwipeTraining /></AuthGuard>} />
                   
                   <Route path="*" element={<NotFound />} />
                 </Routes>

@@ -40,6 +40,8 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { generateIncidentPDF } from '@/utils/generateIncidentPDF';
+import { generateAndStoreIncidentPDF, generateAdvancedFilename } from '@/utils/generateAndStorePDF';
+import { ExportedDocuments } from '@/components/incident/ExportedDocuments';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -376,7 +378,8 @@ export default function IncidentDetail() {
         includeLegalExplanations: true,
       };
 
-      await generateIncidentPDF({
+      // Générer et stocker automatiquement le PDF
+      const incidentData = {
         id: incident.id,
         numero: incident.numero,
         titre: incident.titre,
@@ -398,13 +401,25 @@ export default function IncidentDetail() {
           label: p.label,
           url: p.url,
         })),
-      }, opts);
+      };
+
+      const { blob, fileName } = await generateAndStoreIncidentPDF(incidentData, opts, withOptions);
+      
+      // Téléchargement local
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
       
       const features: string[] = [];
       if (withOptions && exportOptions.includeEmails) features.push('emails');
       if (withOptions && exportOptions.includeLegalSearch) features.push('recherche juridique');
       
-      toast.success(`PDF généré${features.length > 0 ? ` avec ${features.join(', ')}` : ''}`);
+      toast.success(`PDF généré et sauvegardé${features.length > 0 ? ` avec ${features.join(', ')}` : ''}`);
     } catch (error) {
       console.error('Erreur export PDF:', error);
       toast.error('Erreur lors de la génération du PDF');
@@ -647,6 +662,10 @@ export default function IncidentDetail() {
             <TabsTrigger value="attachments" className="flex-1 md:flex-none">
               <Paperclip className="h-4 w-4 mr-1" />
               Pièces jointes ({attachments.length})
+            </TabsTrigger>
+            <TabsTrigger value="documents" className="flex-1 md:flex-none">
+              <FileText className="h-4 w-4 mr-1" />
+              Rapports PDF
             </TabsTrigger>
             {relatedEmails.length > 0 && (
               <TabsTrigger value="emails" className="flex-1 md:flex-none">
@@ -896,6 +915,11 @@ export default function IncidentDetail() {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Documents Tab - Exported PDFs */}
+          <TabsContent value="documents">
+            <ExportedDocuments incidentId={id} />
           </TabsContent>
 
           {relatedEmails.length > 0 && (
