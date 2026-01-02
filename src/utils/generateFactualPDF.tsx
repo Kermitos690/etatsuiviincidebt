@@ -8,7 +8,8 @@ import {
   drawPremiumHeader, 
   drawPremiumFooter,
   drawSectionTitle,
-  normalizeTextForPdf
+  normalizeTextForPdf,
+  drawJustifiedText,
 } from './pdfStyles';
 
 export interface EmailFact {
@@ -77,11 +78,12 @@ export async function generateFactualPDF(data: FactualPDFData): Promise<void> {
   let totalPages = 1; // Will be updated
 
   const checkPageBreak = (neededSpace: number, currentY: number): number => {
-    if (currentY + neededSpace > pageHeight - 30) {
+    const { maxContentY, marginTop } = PDF_DIMENSIONS;
+    if (currentY + neededSpace > maxContentY) {
       doc.addPage();
       currentPage++;
       totalPages = Math.max(totalPages, currentPage);
-      return 25;
+      return marginTop + 10;
     }
     return currentY;
   };

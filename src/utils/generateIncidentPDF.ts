@@ -21,6 +21,8 @@ import {
   formatPDFDate,
   formatPDFDateTime,
   normalizeTextForPdf,
+  drawJustifiedText,
+  drawJustifiedTextBlock,
 } from './pdfStyles';
 import {
   extractLegalReferences,
@@ -893,24 +895,17 @@ export async function generateIncidentPDF(
   y = checkPageBreak(doc, y, 60);
   y = drawSectionTitle(doc, 'EXPOSE DES FAITS', y, { numbered: true, number: sectionNumber++ });
 
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  setColor(doc, PDF_COLORS.text);
-  
   const faitsText = normalizedFaits || 'Aucun fait renseigne.';
-  // Utiliser safeContentWidth pour éviter les débordements
-  const safeWidth = PDF_DIMENSIONS.safeContentWidth;
-  const textMargin = PDF_DIMENSIONS.textInnerMargin;
-  const faitsLines = doc.splitTextToSize(faitsText, safeWidth - textMargin);
+  doc.setFontSize(10);
   
-  const faitsHeight = faitsLines.length * 5 + 10;
-  y = checkPageBreak(doc, y, faitsHeight);
-  
-  setColor(doc, PDF_COLORS.background, 'fill');
-  doc.roundedRect(marginLeft, y - 3, contentWidth, faitsHeight, 2, 2, 'F');
-  
-  doc.text(faitsLines, marginLeft + textMargin, y + 3);
-  y += faitsHeight + 5;
+  // Utiliser le bloc justifié pour les faits
+  y = drawJustifiedTextBlock(doc, faitsText, y, {
+    backgroundColor: PDF_COLORS.background,
+    textColor: PDF_COLORS.text,
+    fontSize: 10,
+    padding: 8
+  });
+  y += 5;
 
   // ============================================
   // SECTION 3: DYSFONCTIONNEMENT IDENTIFIE
@@ -919,23 +914,18 @@ export async function generateIncidentPDF(
   y = checkPageBreak(doc, y, 60);
   y = drawSectionTitle(doc, 'DYSFONCTIONNEMENT IDENTIFIE', y, { numbered: true, number: sectionNumber++ });
 
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  setColor(doc, PDF_COLORS.text);
-  
   const dysfText = normalizedDysfonctionnement || 'Aucun dysfonctionnement renseigne.';
-  const dysfLines = doc.splitTextToSize(dysfText, safeWidth - textMargin);
+  doc.setFontSize(10);
   
-  const dysfHeight = dysfLines.length * 5 + 10;
-  y = checkPageBreak(doc, y, dysfHeight);
-  
-  setColor(doc, PDF_COLORS.background, 'fill');
-  doc.roundedRect(marginLeft, y - 3, contentWidth, dysfHeight, 2, 2, 'F');
-  setColor(doc, severityColor, 'fill');
-  doc.rect(marginLeft, y - 3, 3, dysfHeight, 'F');
-  
-  doc.text(dysfLines, marginLeft + textMargin, y + 3);
-  y += dysfHeight + 5;
+  // Utiliser le bloc justifié avec bordure colorée pour le dysfonctionnement
+  y = drawJustifiedTextBlock(doc, dysfText, y, {
+    backgroundColor: PDF_COLORS.background,
+    borderColor: severityColor,
+    textColor: PDF_COLORS.text,
+    fontSize: 10,
+    padding: 8
+  });
+  y += 5;
 
   // ============================================
   // SECTION 4: BASES LEGALES APPLICABLES

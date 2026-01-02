@@ -17,6 +17,7 @@ import {
   formatPDFDate,
   formatPDFDateTime,
   normalizeTextForPdf,
+  drawJustifiedTextBlock,
 } from '@/utils/pdfStyles';
 import type { Incident } from '@/types/incident';
 
@@ -107,26 +108,17 @@ export async function buildIncidentPdfBlob(
   doc.text('Éléments factuels, objectifs et vérifiables : dates, actions, documents.', marginLeft, y);
   y += 6;
 
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  setColor(doc, PDF_COLORS.text);
-
   const faitsText = normalizeTextForPdf(incident.faits, { maxLength: 2000 });
-  const faitsLines = doc.splitTextToSize(faitsText, contentWidth - 10);
-  const faitsHeight = faitsLines.length * 5 + 10;
-
-  y = checkPageBreak(doc, y, faitsHeight);
-
-  setColor(doc, PDF_COLORS.background, 'fill');
-  doc.roundedRect(marginLeft, y - 3, contentWidth, faitsHeight, 2, 2, 'F');
-
-  // Barre latérale probatoire
-  setColor(doc, PDF_COLORS.evidence, 'fill');
-  doc.rect(marginLeft, y - 3, 3, faitsHeight, 'F');
-
-  setColor(doc, PDF_COLORS.text);
-  doc.text(faitsLines, marginLeft + 8, y + 3);
-  y += faitsHeight + 10;
+  doc.setFontSize(10);
+  
+  y = drawJustifiedTextBlock(doc, faitsText, y, {
+    backgroundColor: PDF_COLORS.background,
+    borderColor: PDF_COLORS.evidence,
+    textColor: PDF_COLORS.text,
+    fontSize: 10,
+    padding: 8
+  });
+  y += 10;
 
   // ============================================
   // SECTION 3: ANALYSE & QUALIFICATION JURIDIQUE
@@ -145,26 +137,17 @@ export async function buildIncidentPdfBlob(
   doc.text('Interprétation juridique distincte des faits bruts.', marginLeft, y);
   y += 6;
 
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  setColor(doc, PDF_COLORS.text);
-
   const dysfText = normalizeTextForPdf(incident.dysfonctionnement, { maxLength: 2000 });
-  const dysfLines = doc.splitTextToSize(dysfText, contentWidth - 10);
-  const dysfHeight = dysfLines.length * 5 + 10;
-
-  y = checkPageBreak(doc, y, dysfHeight);
-
-  setColor(doc, PDF_COLORS.background, 'fill');
-  doc.roundedRect(marginLeft, y - 3, contentWidth, dysfHeight, 2, 2, 'F');
-
-  // Barre latérale analyse
-  setColor(doc, PDF_COLORS.legal, 'fill');
-  doc.rect(marginLeft, y - 3, 3, dysfHeight, 'F');
-
-  setColor(doc, PDF_COLORS.text);
-  doc.text(dysfLines, marginLeft + 8, y + 3);
-  y += dysfHeight + 10;
+  doc.setFontSize(10);
+  
+  y = drawJustifiedTextBlock(doc, dysfText, y, {
+    backgroundColor: PDF_COLORS.background,
+    borderColor: PDF_COLORS.legal,
+    textColor: PDF_COLORS.text,
+    fontSize: 10,
+    padding: 8
+  });
+  y += 10;
 
   // ============================================
   // SECTION 4: NOTES D'ANALYSE (si présentes)
