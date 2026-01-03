@@ -1669,14 +1669,17 @@ export type Database = {
           article_number: string
           article_text: string
           article_title: string | null
+          canton: string | null
           code_name: string
           content_hash: string
           created_at: string
           domain: string | null
+          domain_type: string | null
           id: string
           is_current: boolean | null
           keywords: string[] | null
           previous_version_id: string | null
+          scope: string | null
           source_document: string | null
           source_url: string | null
           updated_at: string
@@ -1688,14 +1691,17 @@ export type Database = {
           article_number: string
           article_text: string
           article_title?: string | null
+          canton?: string | null
           code_name: string
           content_hash: string
           created_at?: string
           domain?: string | null
+          domain_type?: string | null
           id?: string
           is_current?: boolean | null
           keywords?: string[] | null
           previous_version_id?: string | null
+          scope?: string | null
           source_document?: string | null
           source_url?: string | null
           updated_at?: string
@@ -1707,14 +1713,17 @@ export type Database = {
           article_number?: string
           article_text?: string
           article_title?: string | null
+          canton?: string | null
           code_name?: string
           content_hash?: string
           created_at?: string
           domain?: string | null
+          domain_type?: string | null
           id?: string
           is_current?: boolean | null
           keywords?: string[] | null
           previous_version_id?: string | null
+          scope?: string | null
           source_document?: string | null
           source_url?: string | null
           updated_at?: string
@@ -1787,13 +1796,16 @@ export type Database = {
         Row: {
           article_number: string
           article_text: string | null
+          canton: string | null
           code_name: string
           created_at: string
           domain: string | null
+          domain_type: string | null
           id: string
           is_verified: boolean | null
           keywords: string[] | null
           notes: string | null
+          scope: string | null
           source_url: string | null
           updated_at: string
           user_id: string | null
@@ -1802,13 +1814,16 @@ export type Database = {
         Insert: {
           article_number: string
           article_text?: string | null
+          canton?: string | null
           code_name: string
           created_at?: string
           domain?: string | null
+          domain_type?: string | null
           id?: string
           is_verified?: boolean | null
           keywords?: string[] | null
           notes?: string | null
+          scope?: string | null
           source_url?: string | null
           updated_at?: string
           user_id?: string | null
@@ -1817,13 +1832,16 @@ export type Database = {
         Update: {
           article_number?: string
           article_text?: string | null
+          canton?: string | null
           code_name?: string
           created_at?: string
           domain?: string | null
+          domain_type?: string | null
           id?: string
           is_verified?: boolean | null
           keywords?: string[] | null
           notes?: string | null
+          scope?: string | null
           source_url?: string | null
           updated_at?: string
           user_id?: string | null
@@ -2953,6 +2971,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_legal_preferences: {
+        Row: {
+          auto_verify_legal: boolean | null
+          created_at: string | null
+          id: string
+          preferred_canton: string | null
+          preferred_domains: string[] | null
+          preferred_scope: string | null
+          surveillance_topics: string[] | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          auto_verify_legal?: boolean | null
+          created_at?: string | null
+          id?: string
+          preferred_canton?: string | null
+          preferred_domains?: string[] | null
+          preferred_scope?: string | null
+          surveillance_topics?: string[] | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          auto_verify_legal?: boolean | null
+          created_at?: string | null
+          id?: string
+          preferred_canton?: string | null
+          preferred_domains?: string[] | null
+          preferred_scope?: string | null
+          surveillance_topics?: string[] | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
