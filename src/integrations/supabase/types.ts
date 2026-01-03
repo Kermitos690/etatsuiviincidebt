@@ -1030,6 +1030,76 @@ export type Database = {
           },
         ]
       }
+      email_legal_mentions: {
+        Row: {
+          candidate_instruments: Json | null
+          confidence: number | null
+          created_at: string | null
+          email_id: string
+          id: string
+          instrument_id: string | null
+          match_position: number | null
+          match_text: string
+          match_type: string
+          resolution_method: string | null
+          resolved: boolean | null
+          unit_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          candidate_instruments?: Json | null
+          confidence?: number | null
+          created_at?: string | null
+          email_id: string
+          id?: string
+          instrument_id?: string | null
+          match_position?: number | null
+          match_text: string
+          match_type: string
+          resolution_method?: string | null
+          resolved?: boolean | null
+          unit_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          candidate_instruments?: Json | null
+          confidence?: number | null
+          created_at?: string | null
+          email_id?: string
+          id?: string
+          instrument_id?: string | null
+          match_position?: number | null
+          match_text?: string
+          match_type?: string
+          resolution_method?: string | null
+          resolved?: boolean | null
+          unit_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_legal_mentions_email_id_fkey"
+            columns: ["email_id"]
+            isOneToOne: false
+            referencedRelation: "emails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_legal_mentions_instrument_id_fkey"
+            columns: ["instrument_id"]
+            isOneToOne: false
+            referencedRelation: "legal_instruments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_legal_mentions_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "legal_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_relations: {
         Row: {
           created_at: string
@@ -1664,6 +1734,152 @@ export type Database = {
           },
         ]
       }
+      ingestion_errors: {
+        Row: {
+          created_at: string | null
+          error_details: Json | null
+          error_message: string
+          error_type: string
+          id: string
+          item_id: string | null
+          recoverable: boolean | null
+          run_id: string | null
+          source_url: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          error_details?: Json | null
+          error_message: string
+          error_type: string
+          id?: string
+          item_id?: string | null
+          recoverable?: boolean | null
+          run_id?: string | null
+          source_url?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          error_details?: Json | null
+          error_message?: string
+          error_type?: string
+          id?: string
+          item_id?: string | null
+          recoverable?: boolean | null
+          run_id?: string | null
+          source_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ingestion_errors_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "ingestion_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingestion_errors_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "ingestion_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ingestion_items: {
+        Row: {
+          created_at: string | null
+          error_message: string | null
+          id: string
+          instrument_uid: string | null
+          processing_time_ms: number | null
+          raw_content_hash: string | null
+          run_id: string
+          source_url: string
+          status: string | null
+          units_created: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          instrument_uid?: string | null
+          processing_time_ms?: number | null
+          raw_content_hash?: string | null
+          run_id: string
+          source_url: string
+          status?: string | null
+          units_created?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          instrument_uid?: string | null
+          processing_time_ms?: number | null
+          raw_content_hash?: string | null
+          run_id?: string
+          source_url?: string
+          status?: string | null
+          units_created?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ingestion_items_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "ingestion_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ingestion_runs: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          error_summary: Json | null
+          id: string
+          items_failed: number | null
+          items_skipped: number | null
+          items_success: number | null
+          items_total: number | null
+          jurisdiction_scope: string | null
+          run_type: string
+          started_at: string | null
+          status: string | null
+          user_id: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          error_summary?: Json | null
+          id?: string
+          items_failed?: number | null
+          items_skipped?: number | null
+          items_success?: number | null
+          items_total?: number | null
+          jurisdiction_scope?: string | null
+          run_type?: string
+          started_at?: string | null
+          status?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          error_summary?: Json | null
+          id?: string
+          items_failed?: number | null
+          items_skipped?: number | null
+          items_success?: number | null
+          items_total?: number | null
+          jurisdiction_scope?: string | null
+          run_type?: string
+          started_at?: string | null
+          status?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       legal_articles: {
         Row: {
           alinea: string | null
@@ -1861,6 +2077,66 @@ export type Database = {
           },
         ]
       }
+      legal_instruments: {
+        Row: {
+          abbreviation: string | null
+          adoption_date: string | null
+          authority: string | null
+          blv_or_rs_id: string | null
+          created_at: string | null
+          current_status: string | null
+          domain_tags: string[] | null
+          entry_into_force: string | null
+          id: string
+          instrument_type: string | null
+          instrument_uid: string
+          jurisdiction: string
+          notes: string | null
+          repealed_by_instrument_uid: string | null
+          short_title: string | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          abbreviation?: string | null
+          adoption_date?: string | null
+          authority?: string | null
+          blv_or_rs_id?: string | null
+          created_at?: string | null
+          current_status?: string | null
+          domain_tags?: string[] | null
+          entry_into_force?: string | null
+          id?: string
+          instrument_type?: string | null
+          instrument_uid: string
+          jurisdiction?: string
+          notes?: string | null
+          repealed_by_instrument_uid?: string | null
+          short_title?: string | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          abbreviation?: string | null
+          adoption_date?: string | null
+          authority?: string | null
+          blv_or_rs_id?: string | null
+          created_at?: string | null
+          current_status?: string | null
+          domain_tags?: string[] | null
+          entry_into_force?: string | null
+          id?: string
+          instrument_type?: string | null
+          instrument_uid?: string
+          jurisdiction?: string
+          notes?: string | null
+          repealed_by_instrument_uid?: string | null
+          short_title?: string | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       legal_laws: {
         Row: {
           abbreviation: string | null
@@ -2028,6 +2304,77 @@ export type Database = {
           },
         ]
       }
+      legal_relations: {
+        Row: {
+          confidence: number | null
+          created_at: string | null
+          effective_date: string | null
+          from_instrument_id: string
+          from_unit_id: string | null
+          id: string
+          is_verified: boolean | null
+          note: string | null
+          relation_type: string
+          to_instrument_id: string
+          to_unit_id: string | null
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string | null
+          effective_date?: string | null
+          from_instrument_id: string
+          from_unit_id?: string | null
+          id?: string
+          is_verified?: boolean | null
+          note?: string | null
+          relation_type: string
+          to_instrument_id: string
+          to_unit_id?: string | null
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string | null
+          effective_date?: string | null
+          from_instrument_id?: string
+          from_unit_id?: string | null
+          id?: string
+          is_verified?: boolean | null
+          note?: string | null
+          relation_type?: string
+          to_instrument_id?: string
+          to_unit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_relations_from_instrument_id_fkey"
+            columns: ["from_instrument_id"]
+            isOneToOne: false
+            referencedRelation: "legal_instruments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "legal_relations_from_unit_id_fkey"
+            columns: ["from_unit_id"]
+            isOneToOne: false
+            referencedRelation: "legal_units"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "legal_relations_to_instrument_id_fkey"
+            columns: ["to_instrument_id"]
+            isOneToOne: false
+            referencedRelation: "legal_instruments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "legal_relations_to_unit_id_fkey"
+            columns: ["to_unit_id"]
+            isOneToOne: false
+            referencedRelation: "legal_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       legal_search_results: {
         Row: {
           created_at: string | null
@@ -2090,6 +2437,182 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      legal_sources: {
+        Row: {
+          authority: string | null
+          checksum: string | null
+          created_at: string | null
+          format: string | null
+          id: string
+          is_primary: boolean | null
+          retrieved_at: string | null
+          source_type: string | null
+          source_url: string
+          version_id: string
+        }
+        Insert: {
+          authority?: string | null
+          checksum?: string | null
+          created_at?: string | null
+          format?: string | null
+          id?: string
+          is_primary?: boolean | null
+          retrieved_at?: string | null
+          source_type?: string | null
+          source_url: string
+          version_id: string
+        }
+        Update: {
+          authority?: string | null
+          checksum?: string | null
+          created_at?: string | null
+          format?: string | null
+          id?: string
+          is_primary?: boolean | null
+          retrieved_at?: string | null
+          source_type?: string | null
+          source_url?: string
+          version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_sources_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "legal_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      legal_units: {
+        Row: {
+          article_number: string | null
+          cite_key: string
+          content_text: string
+          created_at: string | null
+          hash_sha256: string
+          id: string
+          instrument_id: string
+          is_key_unit: boolean | null
+          keywords: string[] | null
+          letter: string | null
+          order_index: number | null
+          paragraph_number: string | null
+          parent_unit_id: string | null
+          title: string | null
+          unit_type: string
+          updated_at: string | null
+          version_id: string
+        }
+        Insert: {
+          article_number?: string | null
+          cite_key: string
+          content_text: string
+          created_at?: string | null
+          hash_sha256: string
+          id?: string
+          instrument_id: string
+          is_key_unit?: boolean | null
+          keywords?: string[] | null
+          letter?: string | null
+          order_index?: number | null
+          paragraph_number?: string | null
+          parent_unit_id?: string | null
+          title?: string | null
+          unit_type?: string
+          updated_at?: string | null
+          version_id: string
+        }
+        Update: {
+          article_number?: string | null
+          cite_key?: string
+          content_text?: string
+          created_at?: string | null
+          hash_sha256?: string
+          id?: string
+          instrument_id?: string
+          is_key_unit?: boolean | null
+          keywords?: string[] | null
+          letter?: string | null
+          order_index?: number | null
+          paragraph_number?: string | null
+          parent_unit_id?: string | null
+          title?: string | null
+          unit_type?: string
+          updated_at?: string | null
+          version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_units_instrument_id_fkey"
+            columns: ["instrument_id"]
+            isOneToOne: false
+            referencedRelation: "legal_instruments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "legal_units_parent_unit_id_fkey"
+            columns: ["parent_unit_id"]
+            isOneToOne: false
+            referencedRelation: "legal_units"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "legal_units_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "legal_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      legal_versions: {
+        Row: {
+          consolidated_at: string | null
+          created_at: string | null
+          id: string
+          instrument_id: string
+          modification_summary: string | null
+          source_set_hash: string | null
+          status: string
+          valid_from: string | null
+          valid_to: string | null
+          version_number: number
+        }
+        Insert: {
+          consolidated_at?: string | null
+          created_at?: string | null
+          id?: string
+          instrument_id: string
+          modification_summary?: string | null
+          source_set_hash?: string | null
+          status?: string
+          valid_from?: string | null
+          valid_to?: string | null
+          version_number?: number
+        }
+        Update: {
+          consolidated_at?: string | null
+          created_at?: string | null
+          id?: string
+          instrument_id?: string
+          modification_summary?: string | null
+          source_set_hash?: string | null
+          status?: string
+          valid_from?: string | null
+          valid_to?: string | null
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_versions_instrument_id_fkey"
+            columns: ["instrument_id"]
+            isOneToOne: false
+            referencedRelation: "legal_instruments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       monthly_reports: {
         Row: {
@@ -2825,6 +3348,57 @@ export type Database = {
           },
         ]
       }
+      source_catalog: {
+        Row: {
+          authority: string
+          created_at: string | null
+          domain_tags: string[] | null
+          fetch_frequency: string | null
+          id: string
+          is_active: boolean | null
+          jurisdiction: string
+          last_fetched_at: string | null
+          next_fetch_at: string | null
+          notes: string | null
+          priority: number | null
+          source_type: string
+          source_url: string
+          updated_at: string | null
+        }
+        Insert: {
+          authority: string
+          created_at?: string | null
+          domain_tags?: string[] | null
+          fetch_frequency?: string | null
+          id?: string
+          is_active?: boolean | null
+          jurisdiction?: string
+          last_fetched_at?: string | null
+          next_fetch_at?: string | null
+          notes?: string | null
+          priority?: number | null
+          source_type?: string
+          source_url: string
+          updated_at?: string | null
+        }
+        Update: {
+          authority?: string
+          created_at?: string | null
+          domain_tags?: string[] | null
+          fetch_frequency?: string | null
+          id?: string
+          is_active?: boolean | null
+          jurisdiction?: string
+          last_fetched_at?: string | null
+          next_fetch_at?: string | null
+          notes?: string | null
+          priority?: number | null
+          source_type?: string
+          source_url?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       swipe_training_pairs: {
         Row: {
           actors_overlap: string[] | null
@@ -3219,6 +3793,116 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      verification_claims: {
+        Row: {
+          claim_text: string
+          claim_type: string | null
+          created_at: string | null
+          email_id: string | null
+          expected_citations: Json | null
+          id: string
+          incident_id: string | null
+          risk_level: string | null
+          source_basis: string | null
+          status: string | null
+          unit_ids: string[] | null
+          user_id: string | null
+        }
+        Insert: {
+          claim_text: string
+          claim_type?: string | null
+          created_at?: string | null
+          email_id?: string | null
+          expected_citations?: Json | null
+          id?: string
+          incident_id?: string | null
+          risk_level?: string | null
+          source_basis?: string | null
+          status?: string | null
+          unit_ids?: string[] | null
+          user_id?: string | null
+        }
+        Update: {
+          claim_text?: string
+          claim_type?: string | null
+          created_at?: string | null
+          email_id?: string | null
+          expected_citations?: Json | null
+          id?: string
+          incident_id?: string | null
+          risk_level?: string | null
+          source_basis?: string | null
+          status?: string | null
+          unit_ids?: string[] | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "verification_claims_email_id_fkey"
+            columns: ["email_id"]
+            isOneToOne: false
+            referencedRelation: "emails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "verification_claims_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "incidents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      verification_reports: {
+        Row: {
+          claim_id: string
+          confidence: number | null
+          created_at: string | null
+          diff_summary: string | null
+          evidence_urls: string[] | null
+          id: string
+          perplexity_response: Json | null
+          severity: string | null
+          user_id: string | null
+          verdict: string
+          verified_at: string | null
+        }
+        Insert: {
+          claim_id: string
+          confidence?: number | null
+          created_at?: string | null
+          diff_summary?: string | null
+          evidence_urls?: string[] | null
+          id?: string
+          perplexity_response?: Json | null
+          severity?: string | null
+          user_id?: string | null
+          verdict: string
+          verified_at?: string | null
+        }
+        Update: {
+          claim_id?: string
+          confidence?: number | null
+          created_at?: string | null
+          diff_summary?: string | null
+          evidence_urls?: string[] | null
+          id?: string
+          perplexity_response?: Json | null
+          severity?: string | null
+          user_id?: string | null
+          verdict?: string
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "verification_reports_claim_id_fkey"
+            columns: ["claim_id"]
+            isOneToOne: false
+            referencedRelation: "verification_claims"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
