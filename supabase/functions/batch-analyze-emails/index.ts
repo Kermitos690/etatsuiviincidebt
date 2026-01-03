@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkRateLimit, getClientIdentifier, rateLimitResponse, RATE_LIMITS } from "../_shared/rateLimit.ts";
 import { getCorsHeaders, corsHeaders, log } from "../_shared/core.ts";
+import { verifyAuth, unauthorizedResponse, createServiceClient } from "../_shared/auth.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -140,6 +141,16 @@ serve(async (req) => {
   const INTERNAL_CRON_SECRET = Deno.env.get("INTERNAL_CRON_SECRET");
   const isInternalCall = cronSecret && INTERNAL_CRON_SECRET && cronSecret === `Bearer ${INTERNAL_CRON_SECRET}`;
 
+  // Verify authentication for non-internal calls
+  let authenticatedUserId: string | null = null;
+  if (!isInternalCall) {
+    const { user, error: authError } = await verifyAuth(req);
+    if (authError || !user) {
+      return unauthorizedResponse(authError || 'Authentication required');
+    }
+    authenticatedUserId = user.id;
+  }
+
   // Rate limiting for AI operations (skip for internal calls)
   if (!isInternalCall) {
     const clientId = getClientIdentifier(req, "batch-analyze");
@@ -152,7 +163,17 @@ serve(async (req) => {
 
   try {
     const { syncId, batchSize = 50, autoCreateIncidents = true, confidenceThreshold = 75, userId } = await req.json();
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    
+    // For authenticated users, only allow processing their own emails
+    const effectiveUserId = isInternalCall ? userId : authenticatedUserId;
+    
+    const supabase = createServiceClient();
+    if (!supabase) {
+      return new Response(JSON.stringify({ error: 'Server configuration error' }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Build query for unanalyzed emails
     let query = supabase
@@ -163,9 +184,9 @@ serve(async (req) => {
       .order("received_at", { ascending: false })
       .limit(batchSize);
 
-    // Filter by user_id if provided
-    if (userId) {
-      query = query.eq("user_id", userId);
+    // Filter by user_id - required for authenticated users
+    if (effectiveUserId) {
+      query = query.eq("user_id", effectiveUserId);
     }
 
     const { data: emails, error: fetchError } = await query;

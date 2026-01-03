@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, corsHeaders, log } from "../_shared/core.ts";
+import { verifyAuth, unauthorizedResponse, createServiceClient } from "../_shared/auth.ts";
 
 // Prompt OCR ultra-précis pour documents juridiques suisses
 const OCR_SYSTEM_PROMPT = `Tu es un EXPERT OCR JURIDIQUE spécialisé dans l'extraction exhaustive de texte depuis des documents.
@@ -359,15 +360,39 @@ serve(async (req) => {
   }
 
   try {
+    // Verify authentication
+    const { user, error: authError } = await verifyAuth(req);
+    if (authError || !user) {
+      return unauthorizedResponse(authError || 'Authentication required');
+    }
+
     const { attachmentId } = await req.json();
     
     console.log(`=== ANALYZING ATTACHMENT: ${attachmentId} ===`);
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
     
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createServiceClient();
+    if (!supabase) {
+      return new Response(JSON.stringify({ error: 'Server configuration error' }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    // Verify attachment ownership through email
+    const { data: attachmentCheck } = await supabase
+      .from("email_attachments")
+      .select("id, email_id, emails!inner(user_id)")
+      .eq("id", attachmentId)
+      .single();
+
+    if (!attachmentCheck || (attachmentCheck.emails as any)?.user_id !== user.id) {
+      return new Response(JSON.stringify({ error: 'Attachment not found or access denied' }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
 
     // Get attachment metadata
     const { data: attachment, error: attachmentError } = await supabase
