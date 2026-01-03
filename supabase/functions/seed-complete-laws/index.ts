@@ -88,9 +88,10 @@ serve(async (req) => {
       errors: results.errors.slice(0, 10)
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Seed error:', error);
-    return new Response(JSON.stringify({ success: false, error: error.message }), {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return new Response(JSON.stringify({ success: false, error: message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
