@@ -1,10 +1,11 @@
 /**
  * Legal Configuration Page
  * Allows users to configure their legal preferences for AI analysis
+ * Now integrated with LKB (Legal Knowledge Base)
  */
 
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -15,7 +16,8 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { ArrowLeft, Scale, MapPin, Bookmark, Eye, Save, Plus, X } from 'lucide-react';
+import { ArrowLeft, Scale, MapPin, Bookmark, Eye, Save, Plus, X, Library, Database, FileText, Settings } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 
 interface LegalPreferences {
   id?: string;
@@ -24,6 +26,12 @@ interface LegalPreferences {
   preferred_domains: string[];
   surveillance_topics: string[];
   auto_verify_legal: boolean;
+}
+
+interface LKBStats {
+  domains: number;
+  instruments: number;
+  units: number;
 }
 
 const CANTONS = [
@@ -38,12 +46,20 @@ const CANTONS = [
   { value: 'CH', label: 'Federal (Suisse)' },
 ];
 
-const DOMAINS = [
-  { value: 'civil', label: 'Civil', description: 'Droit des personnes, famille, successions' },
-  { value: 'penal', label: 'Penal', description: 'Infractions, sanctions, procedure penale' },
-  { value: 'administratif', label: 'Administratif', description: 'Procedure administrative, autorites' },
-  { value: 'social', label: 'Social', description: 'Protection, aide sociale, assurances' },
-  { value: 'fiscal', label: 'Fiscal', description: 'Impots, taxes, contributions' },
+// 12 domaines VD complets
+const VD_DOMAINS = [
+  { code: 'CONSTITUTION', name: 'Constitution', description: 'Droits fondamentaux, organisation de l\'Etat' },
+  { code: 'INSTITUTIONS', name: 'Institutions', description: 'Organisation des pouvoirs, communes, administration' },
+  { code: 'FINANCES', name: 'Finances', description: 'Budget, impots, comptabilite publique' },
+  { code: 'EDUCATION', name: 'Education', description: 'Enseignement obligatoire, formation professionnelle, hautes ecoles' },
+  { code: 'SOCIAL', name: 'Social', description: 'Aide sociale, protection de l\'enfant et de l\'adulte' },
+  { code: 'SANTE', name: 'Sante', description: 'Sante publique, etablissements medicaux, professions' },
+  { code: 'JUSTICE', name: 'Justice', description: 'Organisation judiciaire, procedure, police' },
+  { code: 'CULTURE', name: 'Culture', description: 'Patrimoine, archives, bibliotheques' },
+  { code: 'TERRITOIRE', name: 'Territoire', description: 'Amenagement, construction, environnement' },
+  { code: 'TRANSPORTS', name: 'Transports', description: 'Routes, transports publics, mobilite' },
+  { code: 'ECONOMIE', name: 'Economie', description: 'Agriculture, tourisme, emploi' },
+  { code: 'PROTECTION', name: 'Protection adultes', description: 'Curatelle, APEA, mesures de protection' },
 ];
 
 const SUGGESTED_TOPICS = [
@@ -65,6 +81,7 @@ export default function LegalConfig() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [newTopic, setNewTopic] = useState('');
+  const [lkbStats, setLkbStats] = useState<LKBStats>({ domains: 0, instruments: 0, units: 0 });
   const [preferences, setPreferences] = useState<LegalPreferences>({
     preferred_canton: 'VD',
     preferred_scope: 'all',
@@ -76,8 +93,26 @@ export default function LegalConfig() {
   useEffect(() => {
     if (user) {
       loadPreferences();
+      loadLKBStats();
     }
   }, [user]);
+
+  const loadLKBStats = async () => {
+    try {
+      const [domainsRes, instrumentsRes, unitsRes] = await Promise.all([
+        supabase.from('legal_domains').select('id', { count: 'exact', head: true }),
+        supabase.from('legal_instruments').select('id', { count: 'exact', head: true }),
+        supabase.from('legal_units').select('id', { count: 'exact', head: true }),
+      ]);
+      setLkbStats({
+        domains: domainsRes.count || 0,
+        instruments: instrumentsRes.count || 0,
+        units: unitsRes.count || 0,
+      });
+    } catch (e) {
+      console.error('Failed to load LKB stats:', e);
+    }
+  };
 
   const loadPreferences = async () => {
     try {
@@ -182,24 +217,103 @@ export default function LegalConfig() {
     );
   }
 
+  const lkbCompleteness = Math.min(100, Math.round((lkbStats.units / 500) * 100));
+
   return (
     <div className="container mx-auto py-6 px-4 max-w-4xl">
-      <div className="flex items-center gap-4 mb-6">
-        <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Scale className="h-6 w-6" />
-            Configuration juridique
-          </h1>
-          <p className="text-muted-foreground">
-            Personnalisez les analyses IA selon votre contexte legal
-          </p>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <Scale className="h-6 w-6" />
+              Configuration juridique
+            </h1>
+            <p className="text-muted-foreground">
+              Personnalisez les analyses IA selon votre contexte legal
+            </p>
+          </div>
         </div>
+        <Link to="/legal-admin">
+          <Button variant="outline" className="gap-2">
+            <Settings className="h-4 w-4" />
+            Administration LKB
+          </Button>
+        </Link>
       </div>
 
       <div className="space-y-6">
+        {/* LKB Stats */}
+        <Card className="bg-muted/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Library className="h-4 w-4" />
+              Legal Knowledge Base
+            </CardTitle>
+            <CardDescription>Base de donnees juridiques locale</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-4 mb-3">
+              <div className="text-center">
+                <div className="flex items-center justify-center gap-1">
+                  <Database className="h-4 w-4 text-primary" />
+                  <span className="text-xl font-bold">{lkbStats.domains}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Domaines</p>
+              </div>
+              <div className="text-center">
+                <div className="flex items-center justify-center gap-1">
+                  <Scale className="h-4 w-4 text-blue-500" />
+                  <span className="text-xl font-bold">{lkbStats.instruments}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Lois</p>
+              </div>
+              <div className="text-center">
+                <div className="flex items-center justify-center gap-1">
+                  <FileText className="h-4 w-4 text-green-500" />
+                  <span className="text-xl font-bold">{lkbStats.units}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Articles</p>
+              </div>
+            </div>
+            <Progress value={lkbCompleteness} className="h-1.5" />
+            <p className="text-xs text-muted-foreground mt-1">
+              Completude: {lkbCompleteness}%
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* 12 VD Domains */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Bookmark className="h-5 w-5" />
+              12 Domaines juridiques VD
+            </CardTitle>
+            <CardDescription>
+              Couverture legale complete du canton de Vaud
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+              {VD_DOMAINS.map(domain => (
+                <div
+                  key={domain.code}
+                  className="p-2 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
+                  title={domain.description}
+                >
+                  <Badge variant="outline" className="mb-1 text-xs">
+                    {domain.code}
+                  </Badge>
+                  <p className="text-sm font-medium">{domain.name}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Canton Selection */}
         <Card>
           <CardHeader>
@@ -255,12 +369,12 @@ export default function LegalConfig() {
           </CardContent>
         </Card>
 
-        {/* Domain Selection */}
+        {/* Domain Selection (using VD_DOMAINS) */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Bookmark className="h-5 w-5" />
-              Domaines juridiques
+              Domaines de surveillance
             </CardTitle>
             <CardDescription>
               Selectionnez les domaines pertinents pour vos analyses
@@ -268,21 +382,21 @@ export default function LegalConfig() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {DOMAINS.map(domain => (
+              {VD_DOMAINS.slice(0, 6).map(domain => (
                 <div
-                  key={domain.value}
+                  key={domain.code}
                   className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                    preferences.preferred_domains.includes(domain.value)
+                    preferences.preferred_domains.includes(domain.code.toLowerCase())
                       ? 'border-primary bg-primary/5'
                       : 'border-border hover:border-primary/50'
                   }`}
-                  onClick={() => toggleDomain(domain.value)}
+                  onClick={() => toggleDomain(domain.code.toLowerCase())}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-medium">{domain.label}</span>
+                    <span className="font-medium">{domain.name}</span>
                     <Switch
-                      checked={preferences.preferred_domains.includes(domain.value)}
-                      onCheckedChange={() => toggleDomain(domain.value)}
+                      checked={preferences.preferred_domains.includes(domain.code.toLowerCase())}
+                      onCheckedChange={() => toggleDomain(domain.code.toLowerCase())}
                     />
                   </div>
                   <p className="text-sm text-muted-foreground mt-1">{domain.description}</p>

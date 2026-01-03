@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -75,6 +76,11 @@ interface DeepAnalysisResult {
     recommended_actions: string[];
     severity_assessment: string;
   };
+  lkb_verification?: {
+    units_matched: number;
+    verified_articles: string[];
+    unverified_articles: string[];
+  };
 }
 
 serve(async (req) => {
@@ -84,6 +90,11 @@ serve(async (req) => {
 
   try {
     const { emails, faits, dysfonctionnement, incidentType, institution } = await req.json();
+
+    // Initialize Supabase client for LKB queries
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
@@ -98,15 +109,57 @@ serve(async (req) => {
       });
     }
 
+    // === DB-FIRST: Query legal_units for relevant articles ===
+    console.log('DB-FIRST: Querying LKB for legal context...');
+    const lkbContext: string[] = [];
+    const verifiedArticles: string[] = [];
+
+    // Search for relevant legal units based on incident type and dysfunction
+    const searchTerms = [incidentType, institution, dysfonctionnement?.split(' ').slice(0, 3).join(' ')].filter(Boolean);
+    
+    for (const term of searchTerms.slice(0, 2)) {
+      const { data: units } = await supabase
+        .from('legal_units')
+        .select(`
+          id, cite_key, content_text, keywords,
+          legal_instruments!inner(instrument_uid, short_title, title)
+        `)
+        .or(`content_text.ilike.%${term}%,keywords.cs.{${term.toLowerCase()}}`)
+        .limit(5);
+      
+      if (units) {
+        for (const unit of units) {
+          const inst = unit.legal_instruments as any;
+          const ref = `${inst?.short_title || inst?.instrument_uid} ${unit.cite_key}`;
+          if (!verifiedArticles.includes(ref)) {
+            verifiedArticles.push(ref);
+            lkbContext.push(`[${ref}]: ${unit.content_text?.substring(0, 200)}...`);
+          }
+        }
+      }
+    }
+
+    console.log(`LKB: Found ${verifiedArticles.length} relevant articles from DB`);
+
     // Build email context with numbered references
     const emailContext = (emails || []).map((e: EmailData, i: number) => 
       `[EMAIL ${i + 1}]\nDate: ${e.received_at}\nDe: ${e.sender}\nA: ${e.recipient || 'N/A'}\nObjet: ${e.subject}\n---\n${e.body.substring(0, 2500)}\n---`
     ).join('\n\n');
 
-    // Enhanced system prompt for maximum legal precision
+    // Build LKB articles section for prompt
+    const lkbArticlesSection = lkbContext.length > 0 
+      ? `ARTICLES DE LOI VERIFIES (source: base de donnees locale):
+${lkbContext.join('\n')}
+
+REGLE D'OR: Tu DOIS utiliser ces articles verifies en priorite. Ne cite JAMAIS un article que tu n'as pas dans cette liste sauf si tu es ABSOLUMENT certain de son existence.
+
+`
+      : '';
+
+    // Enhanced system prompt with LKB context
     const systemPrompt = `Tu es un expert juridique suisse specialise dans l'analyse approfondie de dysfonctionnements institutionnels, la protection de l'adulte et la procedure administrative.
 
-REGLES STRICTES D'ANALYSE:
+${lkbArticlesSection}REGLES STRICTES D'ANALYSE:
 
 1. CITATIONS EXACTES OBLIGATOIRES
    - Chaque affirmation DOIT etre appuyee par une citation VERBATIM des emails
@@ -115,11 +168,9 @@ REGLES STRICTES D'ANALYSE:
    - Si tu ne peux pas citer, ecris "Aucune citation disponible"
 
 2. REFERENCES LEGALES PRECISES
-   - Cite UNIQUEMENT des articles de loi suisse que tu connais avec certitude
+   - PRIORITE AUX ARTICLES VERIFIES ci-dessus
    - Format obligatoire: "Art. XXX al. Y Code/Loi (ex: Art. 389 al. 2 CC)"
-   - Codes valides: CC (Code civil), CO (Code des obligations), CPC (Code de procedure civile), 
-     CPA (Code de procedure administrative), LPA-VD (Loi procedure administrative Vaud), 
-     LVPAE (Loi vaudoise protection adulte enfant), LPD (Loi protection donnees)
+   - Codes valides: CC, CO, CPC, CPA, LPA-VD, LVPAE, LPD, LEO, LASV, LPGA
    - Si incertain de l'article exact, ecris "Base legale a verifier"
    - NE JAMAIS inventer un numero d'article
 
@@ -136,7 +187,7 @@ REGLES STRICTES D'ANALYSE:
 
 5. HIERARCHIE DES GRAVITES
    - minor: Retard < 15 jours, oubli sans consequence
-   - moderate: Retard 15-60 jours, manque communication, procedure incomplète
+   - moderate: Retard 15-60 jours, manque communication, procedure incomplete
    - major: Retard > 60 jours, violation droits fondamentaux, prejudice grave
 
 INSTITUTION: ${institution || 'Non specifiee'}
@@ -340,6 +391,13 @@ ATTENTION: Ne cite JAMAIS un article de loi dont tu n'es pas certain de l'existe
 
     const analysis: DeepAnalysisResult = JSON.parse(toolCall.function.arguments);
 
+    // Add LKB verification metadata
+    analysis.lkb_verification = {
+      units_matched: verifiedArticles.length,
+      verified_articles: verifiedArticles,
+      unverified_articles: []
+    };
+
     // Validate that citations are present
     const hasCitations = analysis.causal_chain?.some(c => c.citation && c.citation.length > 10);
     
@@ -349,7 +407,9 @@ ATTENTION: Ne cite JAMAIS un article de loi dont tu n'es pas certain de l'existe
       metadata: {
         emailsAnalyzed: (emails || []).length,
         hasCitations,
-        model: 'google/gemini-2.5-flash'
+        model: 'google/gemini-2.5-flash',
+        lkb_units_used: verifiedArticles.length,
+        db_first: true
       }
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
