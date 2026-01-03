@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, forwardRef, ForwardedRef } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth, AppRole } from '@/hooks/useAuth';
 import { Loader2, ShieldAlert } from 'lucide-react';
@@ -20,7 +20,10 @@ interface AuthGuardProps {
   fallback?: ReactNode;
 }
 
-export function AuthGuard({ children, requiredRoles, fallback }: AuthGuardProps) {
+export const AuthGuard = forwardRef(function AuthGuard(
+  { children, requiredRoles, fallback }: AuthGuardProps,
+  ref: ForwardedRef<HTMLDivElement>
+) {
   const { session, loading, profileLoading, roles, hasRole } = useAuth();
   const location = useLocation();
 
@@ -79,8 +82,8 @@ export function AuthGuard({ children, requiredRoles, fallback }: AuthGuardProps)
     }
   }
 
-  return <>{children}</>;
-}
+  return <div ref={ref}>{children}</div>;
+});
 
 // Higher-order component for role-based access
 export function withRoleGuard<P extends object>(
