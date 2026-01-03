@@ -5,7 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/components/ThemeProvider";
-import { AuthGuard } from "@/components/auth/AuthGuard";
+import { AuthGuard, AdminGuard } from "@/components/auth/AuthGuard";
 import { ErrorBoundary } from "@/components/common";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TutorialProvider, WelcomeTutorialModal } from "@/components/tutorial/GuidedTutorial";
@@ -27,7 +27,10 @@ const Tutorial = lazy(() => import("./pages/Tutorial"));
 const ControlCenter = lazy(() => import("./pages/ControlCenter"));
 const Profile = lazy(() => import("./pages/Profile"));
 const EmailCleanup = lazy(() => import("./pages/EmailCleanup"));
+const EmailsInbox = lazy(() => import("./pages/EmailsInbox"));
+const EmailsAnalyzed = lazy(() => import("./pages/EmailsAnalyzed"));
 const FactualDossier = lazy(() => import("./pages/FactualDossier"));
+const Journal = lazy(() => import("./pages/Journal"));
 const Events = lazy(() => import("./pages/Events"));
 const Auth = lazy(() => import("./pages/Auth"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -78,10 +81,11 @@ const App = () => (
                   
                   {/* Protected routes - Simplified */}
                   <Route path="/" element={<AuthGuard><Dashboard /></AuthGuard>} />
-                  <Route path="/control-center" element={<AuthGuard><ControlCenter /></AuthGuard>} />
                   
                   {/* Emails - Unified */}
                   <Route path="/emails" element={<AuthGuard><Emails /></AuthGuard>} />
+                  <Route path="/emails-inbox" element={<AuthGuard><EmailsInbox /></AuthGuard>} />
+                  <Route path="/emails-analyzed" element={<AuthGuard><EmailsAnalyzed /></AuthGuard>} />
                   <Route path="/email-cleanup" element={<AuthGuard><EmailCleanup /></AuthGuard>} />
                   <Route path="/attachments" element={<AuthGuard><Attachments /></AuthGuard>} />
                   <Route path="/analysis-pipeline" element={<AuthGuard><AnalysisPipeline /></AuthGuard>} />
@@ -96,6 +100,7 @@ const App = () => (
                   {/* Dossier Factuel */}
                   <Route path="/factual-dossier" element={<AuthGuard><FactualDossier /></AuthGuard>} />
                   <Route path="/events" element={<AuthGuard><Events /></AuthGuard>} />
+                  <Route path="/journal" element={<AuthGuard><Journal /></AuthGuard>} />
                   <Route path="/ia-auditeur" element={<AuthGuard><IAAuditeur /></AuthGuard>} />
                   
                   {/* Settings */}
@@ -106,8 +111,8 @@ const App = () => (
                   <Route path="/import-incident" element={<AuthGuard><ImportIncident /></AuthGuard>} />
                   <Route path="/ia-training" element={<AuthGuard><IATraining /></AuthGuard>} />
                   <Route path="/swipe-training" element={<AuthGuard><SwipeTraining /></AuthGuard>} />
-                  <Route path="/legal-config" element={<AuthGuard><LegalConfig /></AuthGuard>} />
-                  <Route path="/legal-admin" element={<AuthGuard><LegalAdmin /></AuthGuard>} />
+                  <Route path="/legal-config" element={<AdminGuard><LegalConfig /></AdminGuard>} />
+                  <Route path="/legal-admin" element={<AdminGuard><LegalAdmin /></AdminGuard>} />
                   
                   <Route path="*" element={<NotFound />} />
                 </Routes>
