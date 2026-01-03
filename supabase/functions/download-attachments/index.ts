@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, corsHeaders, log } from "../_shared/core.ts";
 import { getGmailTokens, encryptGmailTokens } from "../_shared/encryption.ts";
+import { verifyAuth, unauthorizedResponse } from "../_shared/auth.ts";
 
 interface AttachmentInfo {
   attachmentId: string;
@@ -16,22 +17,41 @@ serve(async (req) => {
   }
 
   try {
+    // Verify user authentication
+    const { user, error: authError } = await verifyAuth(req);
+    if (authError || !user) {
+      console.error("Authentication failed:", authError);
+      return unauthorizedResponse("Authentification requise");
+    }
+
     const { emailId, messageId } = await req.json();
     
-    console.log(`Downloading attachments for email ${emailId}, message ${messageId}`);
+    console.log(`[User ${user.id}] Downloading attachments for email ${emailId}, message ${messageId}`);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get Gmail config
+    // Get Gmail config scoped to the authenticated user
     const { data: gmailConfig, error: configError } = await supabase
       .from("gmail_config")
       .select("*")
-      .single();
+      .eq("user_id", user.id)
+      .maybeSingle();
 
-    if (configError || !gmailConfig) {
-      throw new Error("Gmail non configuré");
+    if (configError) {
+      console.error("Error fetching Gmail config:", configError);
+      return new Response(
+        JSON.stringify({ success: false, error: "Erreur lors de la récupération de la configuration Gmail" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!gmailConfig) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Gmail non configuré pour cet utilisateur" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // Decrypt tokens using the encryption module
