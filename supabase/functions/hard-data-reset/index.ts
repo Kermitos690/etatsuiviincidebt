@@ -42,6 +42,33 @@ serve(async (req) => {
       });
     }
 
+    // =========================================================================
+    // ADMIN ROLE CHECK - This function is DANGEROUS, restrict to admins only
+    // =========================================================================
+    const { data: userRoles, error: rolesError } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id);
+
+    if (rolesError) {
+      console.error("[hard-data-reset] Error checking roles:", rolesError);
+      return new Response(JSON.stringify({ error: "Erreur de vérification des rôles" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const isAdmin = userRoles?.some(r => r.role === "admin");
+    if (!isAdmin) {
+      console.warn(`[hard-data-reset] Non-admin user ${user.email} attempted to reset data`);
+      return new Response(JSON.stringify({ 
+        error: "Accès refusé: Seuls les administrateurs peuvent effectuer cette opération" 
+      }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     console.log(`[hard-data-reset] User ${user.email} initiated hard reset`);
 
     const deletionResults: Record<string, number> = {};

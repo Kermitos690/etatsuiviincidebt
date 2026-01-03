@@ -1,103 +1,130 @@
 project_id = "csysnvkvnoghhyqaxdkz"
 
+# ============================================================================
+# JWT VERIFICATION POLICY
+# ============================================================================
+# verify_jwt = false: Only for OAuth callbacks and public endpoints
+# verify_jwt = true (default): Functions with internal verifyAuth() still need
+#                              the Supabase JWT header for the auth library to work
+# ============================================================================
+
+# OAuth callback - must be public for Google redirect
 [functions.gmail-oauth]
 verify_jwt = false
 
+# Sync functions - Called via SDK with auth token
 [functions.gmail-sync]
-verify_jwt = false
-
-[functions.cleanup-emails]
-verify_jwt = false
-
-[functions.extract-email-facts]
-verify_jwt = false
-
-[functions.analyze-thread]
-verify_jwt = false
-
-[functions.analyze-thread-complete]
-verify_jwt = false
-
-[functions.analyze-incident]
-verify_jwt = false
-
-[functions.detect-anomalies]
-verify_jwt = false
-
-[functions.download-attachments]
-verify_jwt = false
-
-[functions.download-all-attachments]
-verify_jwt = false
-
-[functions.analyze-attachment]
-verify_jwt = false
-
-[functions.full-reanalyze]
-verify_jwt = false
-
-[functions.batch-analyze-emails]
-verify_jwt = false
-
-[functions.backup-data]
-verify_jwt = false
-
-[functions.notify-critical]
-verify_jwt = false
+verify_jwt = true
 
 [functions.sync-status]
-verify_jwt = false
+verify_jwt = true
 
-[functions.analyze-event]
-verify_jwt = false
+# Email cleanup and processing
+[functions.cleanup-emails]
+verify_jwt = true
 
-[functions.send-incident-pdf]
-verify_jwt = false
-
-[functions.legal-verify]
-verify_jwt = false
-
-[functions.hard-data-reset]
-verify_jwt = false
-
-[functions.cross-reference-analysis]
-verify_jwt = false
-
-[functions.analyze-import-incident]
-verify_jwt = false
+[functions.extract-email-facts]
+verify_jwt = true
 
 [functions.auto-process-email]
-verify_jwt = false
+verify_jwt = true
 
-[functions.analyze-email-advanced]
-verify_jwt = false
+# Thread analysis
+[functions.analyze-thread]
+verify_jwt = true
 
-[functions.send-email]
-verify_jwt = false
+[functions.analyze-thread-complete]
+verify_jwt = true
 
-[functions.generate-training-pairs]
-verify_jwt = false
+# Incident analysis
+[functions.analyze-incident]
+verify_jwt = true
+
+[functions.analyze-import-incident]
+verify_jwt = true
 
 [functions.deep-incident-analysis]
-verify_jwt = false
+verify_jwt = true
+
+# Anomaly detection
+[functions.detect-anomalies]
+verify_jwt = true
+
+# Attachments
+[functions.download-attachments]
+verify_jwt = true
+
+[functions.download-all-attachments]
+verify_jwt = true
+
+[functions.analyze-attachment]
+verify_jwt = true
+
+# Batch operations
+[functions.full-reanalyze]
+verify_jwt = true
+
+[functions.batch-analyze-emails]
+verify_jwt = true
+
+# Backup
+[functions.backup-data]
+verify_jwt = true
+
+# Notifications
+[functions.notify-critical]
+verify_jwt = true
+
+# Events
+[functions.analyze-event]
+verify_jwt = true
+
+# Email sending (requires auth for security)
+[functions.send-incident-pdf]
+verify_jwt = true
+
+[functions.send-email]
+verify_jwt = true
+
+# Legal functions
+[functions.legal-verify]
+verify_jwt = true
 
 [functions.search-incident-legal-context]
-verify_jwt = false
+verify_jwt = true
 
 [functions.seed-complete-laws]
-verify_jwt = false
+verify_jwt = true
 
 [functions.legal-text-ingestion]
-verify_jwt = false
+verify_jwt = true
 
 [functions.legal-query-api]
-verify_jwt = false
+verify_jwt = true
 
 [functions.email-legal-detection]
-verify_jwt = false
+verify_jwt = true
 
+# Cross-reference
+[functions.cross-reference-analysis]
+verify_jwt = true
+
+# Email advanced analysis
+[functions.analyze-email-advanced]
+verify_jwt = true
+
+# Training
+[functions.generate-training-pairs]
+verify_jwt = true
+
+# Perplexity verifier
 [functions.perplexity-verifier]
-verify_jwt = false
+verify_jwt = true
 
+# Claim builder
 [functions.claim-builder]
-verify_jwt = false
+verify_jwt = true
+
+# DANGEROUS - Admin only (has internal role check)
+[functions.hard-data-reset]
+verify_jwt = true
