@@ -1,267 +1,241 @@
 /**
- * Génération et stockage automatique des PDFs d'incident
- * Sauvegarde dans Supabase Storage + table incident_exports
+ * Generate and Store Incident PDF - Automatic storage with versioning
+ * Uses the proper generateIncidentPDF for full PDF+ capabilities
  */
 
 import { supabase } from '@/integrations/supabase/client';
-import { generateIncidentPDF } from './generateIncidentPDF';
 import { Incident } from '@/types/incident';
+import generateIncidentPDF from './generateIncidentPDF';
 
-interface GenerateOptions {
+export interface GenerateOptions {
   includeProofs?: boolean;
   includeLegalExplanations?: boolean;
   includeEmails?: boolean;
   includeEmailCitations?: boolean;
   includeLegalSearch?: boolean;
   includeDeepAnalysis?: boolean;
+  includeAttachments?: boolean;
   emails?: any[];
+  attachments?: any[];
 }
 
 /**
- * Génère les initiales d'une institution
- * Ex: "Service de Protection Civile" -> "SPC"
+ * Extract initials from institution name
  */
-function getInstitutionInitials(institution: string): string {
+export function getInstitutionInitials(institution: string): string {
   if (!institution) return 'INC';
   
-  // Cas spéciaux connus
-  const specialCases: Record<string, string> = {
-    'justice de paix': 'JP',
+  // Handle common abbreviations
+  const abbrevMap: Record<string, string> = {
     'juge de paix': 'JP',
-    'service de curatelle': 'SC',
+    'service curatelle professionnelle': 'SCP',
+    'service de protection de l\'adulte': 'SPA',
+    'autorité de protection': 'APEA',
+    'office des poursuites': 'OP',
+    'tribunal': 'TRI',
     'curatelle': 'CUR',
-    'apea': 'APEA',
-    'kesb': 'KESB',
-    'tribunal': 'TRIB',
     'police': 'POL',
-    'assurance': 'ASS',
-    'banque': 'BQ',
-    'commune': 'COM',
-    'canton': 'CT',
-    'etat': 'ET',
   };
-
-  const lowerInst = institution.toLowerCase();
-  for (const [key, initials] of Object.entries(specialCases)) {
-    if (lowerInst.includes(key)) return initials;
+  
+  const lower = institution.toLowerCase();
+  for (const [key, abbrev] of Object.entries(abbrevMap)) {
+    if (lower.includes(key)) return abbrev;
   }
-
-  // Générer initiales à partir des mots principaux
-  const words = institution
-    .split(/[\s\-_]+/)
-    .filter(w => w.length > 2 && !['de', 'du', 'des', 'la', 'le', 'les', 'et'].includes(w.toLowerCase()));
   
-  if (words.length === 0) return 'INC';
-  if (words.length === 1) return words[0].substring(0, 3).toUpperCase();
+  // Extract first letters of significant words
+  const words = institution.split(/[\s\-_,]+/).filter(w => w.length > 2 && !['de', 'du', 'des', 'la', 'le', 'les', 'et'].includes(w.toLowerCase()));
+  if (words.length >= 2) {
+    return words.slice(0, 3).map(w => w[0].toUpperCase()).join('');
+  }
   
-  return words
-    .slice(0, 4)
-    .map(w => w[0])
-    .join('')
-    .toUpperCase();
+  return institution.substring(0, 3).toUpperCase();
 }
 
 /**
- * Génère le nom de fichier avancé
- * Format: {DATE}_{PRIORITE}_{INITIALES}_{NUMERO}.pdf
+ * Map priority to French label for filename
  */
-export function generateAdvancedFilename(incident: Incident, isPdfPlus: boolean = false): string {
-  const date = incident.dateIncident 
-    ? new Date(incident.dateIncident).toISOString().split('T')[0]
-    : new Date().toISOString().split('T')[0];
-  
-  const priorityMap: Record<string, string> = {
-    critique: 'CRIT',
-    eleve: 'ELEV',
-    moyen: 'MOY',
-    faible: 'FAIB',
+function getPriorityLabel(priorite: string): string {
+  const map: Record<string, string> = {
+    'critique': 'CRITIQUE',
+    'urgent': 'URGENT', 
+    'elevee': 'ELEVE',
+    'élevée': 'ELEVE',
+    'haute': 'HAUTE',
+    'normale': 'NORMALE',
+    'basse': 'BASSE',
+    'faible': 'FAIBLE',
+    'moyen': 'MOYEN',
   };
-  const priority = priorityMap[incident.priorite] || 'MOY';
-  
+  return map[priorite.toLowerCase()] || priorite.toUpperCase();
+}
+
+/**
+ * Generate advanced filename with date, priority, institution, and version
+ * Format: YYYY-MM-DD_PRIORITE_INITIALS_NUMERO_PLUS?_V{version}.pdf
+ */
+export function generateAdvancedFilename(
+  incident: { dateIncident: string; priorite: string; institution: string; numero: number },
+  isPdfPlus: boolean = false,
+  version: number = 1
+): string {
+  const date = new Date(incident.dateIncident);
+  const dateStr = date.toISOString().split('T')[0];
+  const priority = getPriorityLabel(incident.priorite);
   const initials = getInstitutionInitials(incident.institution);
   const numero = String(incident.numero).padStart(4, '0');
-  const suffix = isPdfPlus ? '_PLUS' : '';
   
-  return `${date}_${priority}_${initials}_${numero}${suffix}.pdf`;
+  let filename = `${dateStr}_${priority}_${initials}_${numero}`;
+  if (isPdfPlus) filename += '_PLUS';
+  filename += `_V${version}.pdf`;
+  
+  return filename;
 }
 
 /**
- * Génère un PDF, le stocke dans Supabase Storage et l'enregistre dans incident_exports
- * Retourne aussi le blob pour téléchargement local
+ * Get next version number for an incident's exports
+ */
+async function getNextVersion(incidentId: string, isPdfPlus: boolean): Promise<number> {
+  try {
+    const { data } = await supabase
+      .from('incident_exports')
+      .select('version, file_name')
+      .eq('incident_id', incidentId)
+      .order('version', { ascending: false });
+    
+    if (!data || data.length === 0) return 1;
+    
+    // Filter by PDF type (PLUS or normal)
+    const relevantExports = data.filter(e => {
+      const hasPlus = e.file_name?.includes('_PLUS');
+      return isPdfPlus ? hasPlus : !hasPlus;
+    });
+    
+    if (relevantExports.length === 0) return 1;
+    
+    const maxVersion = Math.max(...relevantExports.map(e => e.version || 1));
+    return maxVersion + 1;
+  } catch (e) {
+    console.error('Error getting version:', e);
+    return 1;
+  }
+}
+
+/**
+ * Generate and store incident PDF with proper versioning
+ * Uses the REAL generateIncidentPDF for full PDF+ capabilities
  */
 export async function generateAndStoreIncidentPDF(
-  incident: Incident,
+  incident: Incident | any,
   options: GenerateOptions = {},
   isPdfPlus: boolean = false
 ): Promise<{ blob: Blob; fileName: string; storagePath: string }> {
+  // Get current user
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Utilisateur non authentifié');
 
-  // Générer le PDF (la fonction existante retourne void et download directement)
-  // On doit modifier pour obtenir le blob
-  const pdfBlob = await generateIncidentPDFBlob(incident, options);
-  
-  const fileName = generateAdvancedFilename(incident, isPdfPlus);
-  const storagePath = `${user.id}/${incident.id}/${fileName}`;
+  // Determine if this is a PDF+ (has advanced options enabled)
+  const isAdvanced = isPdfPlus || 
+    options.includeEmails || 
+    options.includeEmailCitations ||
+    options.includeLegalSearch || 
+    options.includeDeepAnalysis;
 
-  // Upload vers Supabase Storage
+  // Get next version number
+  const version = await getNextVersion(incident.id, isAdvanced);
+
+  // Generate filename with versioning
+  const fileName = generateAdvancedFilename(
+    {
+      dateIncident: incident.dateIncident,
+      priorite: incident.priorite,
+      institution: incident.institution,
+      numero: incident.numero
+    },
+    isAdvanced,
+    version
+  );
+
+  // Build storage path with unique version folder
+  const storagePath = `${user.id}/${incident.id}/v${version}/${fileName}`;
+
+  // Convert incident to the format expected by generateIncidentPDF
+  const incidentData = {
+    id: incident.id,
+    numero: incident.numero,
+    titre: incident.titre,
+    dateIncident: incident.dateIncident,
+    dateCreation: incident.dateCreation,
+    institution: incident.institution,
+    type: incident.type,
+    gravite: incident.gravite,
+    priorite: incident.priorite,
+    score: incident.score,
+    statut: incident.statut,
+    faits: incident.faits,
+    dysfonctionnement: incident.dysfonctionnement,
+    transmisJP: incident.transmisJP,
+    dateTransmissionJP: incident.dateTransmissionJP,
+    preuves: (incident.preuves || []).map((p: any) => ({
+      id: p.id,
+      type: p.type,
+      label: p.label,
+      url: p.url,
+      hash: p.hash,
+      filename: p.filename,
+      ai_analysis: p.ai_analysis,
+      size_bytes: p.size_bytes,
+      mime_type: p.mime_type,
+    })),
+    gmailReferences: incident.gmailReferences,
+    confidenceLevel: incident.confidenceLevel,
+    email_source_id: incident.email_source_id,
+  };
+
+  // Use the REAL generateIncidentPDF for full PDF+ capabilities
+  const blob = await generateIncidentPDF(incidentData, {
+    includeProofs: options.includeProofs ?? true,
+    includeLegalExplanations: options.includeLegalExplanations ?? true,
+    includeEmails: options.includeEmails ?? false,
+    includeEmailCitations: options.includeEmailCitations ?? false,
+    includeLegalSearch: options.includeLegalSearch ?? false,
+    includeDeepAnalysis: options.includeDeepAnalysis ?? false,
+    includeAttachments: options.includeAttachments ?? false,
+    emails: options.emails,
+    attachments: options.attachments,
+  });
+
+  // Upload to Supabase Storage (no overwrite, unique path)
   const { error: uploadError } = await supabase.storage
     .from('incident-exports')
-    .upload(storagePath, pdfBlob, {
+    .upload(storagePath, blob, {
       contentType: 'application/pdf',
-      upsert: true,
+      upsert: false
     });
 
   if (uploadError) {
     console.error('Upload error:', uploadError);
-    throw new Error('Erreur lors du stockage du PDF');
+    throw new Error(`Échec du stockage: ${uploadError.message}`);
   }
 
-  // Enregistrer dans incident_exports
-  const { error: insertError } = await supabase
+  // Record in database with proper versioning
+  const { error: dbError } = await supabase
     .from('incident_exports')
     .insert({
       incident_id: incident.id,
       user_id: user.id,
       file_name: fileName,
       storage_path: storagePath,
-      file_size_bytes: pdfBlob.size,
+      file_size_bytes: blob.size,
       export_options: options as Record<string, boolean>,
-      version: 1,
+      version: version
     });
 
-  if (insertError) {
-    console.error('Insert error:', insertError);
-    // Ne pas throw, le PDF est quand même stocké
+  if (dbError) {
+    console.error('DB insert error:', dbError);
+    // Don't throw - PDF is already uploaded
   }
 
-  return { blob: pdfBlob, fileName, storagePath };
+  return { blob, fileName, storagePath };
 }
 
-/**
- * Version modifiée de generateIncidentPDF qui retourne un Blob
- */
-async function generateIncidentPDFBlob(
-  incident: Incident,
-  options: GenerateOptions
-): Promise<Blob> {
-  // Import dynamique de jsPDF pour réduire bundle
-  const { default: jsPDF } = await import('jspdf');
-  const { 
-    PDF_COLORS, 
-    PDF_DIMENSIONS,
-    setColor,
-    getSeverityColor,
-    drawPremiumHeader,
-    drawPremiumFooter,
-    drawSectionTitle,
-    normalizeTextForPdf,
-    drawJustifiedTextBlock,
-  } = await import('./pdfStyles');
-  const { format } = await import('date-fns');
-  const { fr } = await import('date-fns/locale');
-
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-  });
-
-  const { marginLeft, contentWidth, safeContentWidth, pageWidth, marginRight, maxContentY } = PDF_DIMENSIONS;
-  let y = 15;
-  let pageNumber = 1;
-
-  // Helper pour vérifier saut de page
-  const checkPageBreak = (neededHeight: number) => {
-    if (y + neededHeight > maxContentY) {
-      drawPremiumFooter(doc, 'incident', pageNumber, 1, format(new Date(), 'dd/MM/yyyy'));
-      doc.addPage();
-      pageNumber++;
-      y = 20;
-    }
-  };
-
-  // En-tête
-  y = drawPremiumHeader(doc, 'incident', incident.titre, incident.numero);
-
-  // Métadonnées
-  checkPageBreak(40);
-  y += 5;
-  
-  const infoData = [
-    { label: 'Date incident', value: format(new Date(incident.dateIncident), 'd MMMM yyyy', { locale: fr }) },
-    { label: 'Institution', value: incident.institution },
-    { label: 'Type', value: incident.type },
-    { label: 'Gravité', value: incident.gravite },
-    { label: 'Priorité', value: incident.priorite.toUpperCase() },
-    { label: 'Statut', value: incident.statut },
-  ];
-
-  doc.setFontSize(10);
-  for (const item of infoData) {
-    doc.setFont('helvetica', 'bold');
-    setColor(doc, PDF_COLORS.secondary);
-    doc.text(`${item.label}:`, marginLeft, y);
-    
-    doc.setFont('helvetica', 'normal');
-    setColor(doc, PDF_COLORS.text);
-    doc.text(item.value || 'N/A', marginLeft + 35, y);
-    y += 6;
-  }
-
-  y += 10;
-
-  // Section FAITS
-  checkPageBreak(30);
-  y = drawSectionTitle(doc, 'EXPOSE DES FAITS', y, { numbered: true, number: 1 });
-  
-  const faitsText = normalizeTextForPdf(incident.faits || 'Non renseigné', { maxLength: 3000 });
-  y = drawJustifiedTextBlock(doc, faitsText, y);
-  y += 10;
-
-  // Section DYSFONCTIONNEMENT
-  checkPageBreak(30);
-  y = drawSectionTitle(doc, 'DYSFONCTIONNEMENT IDENTIFIE', y, { numbered: true, number: 2 });
-  
-  const dysfText = normalizeTextForPdf(incident.dysfonctionnement || 'Non renseigné', { maxLength: 3000 });
-  y = drawJustifiedTextBlock(doc, dysfText, y);
-  y += 10;
-
-  // Preuves si demandées
-  if (options.includeProofs && incident.preuves && incident.preuves.length > 0) {
-    checkPageBreak(20 + incident.preuves.length * 8);
-    y = drawSectionTitle(doc, 'PIECES JUSTIFICATIVES', y, { numbered: true, number: 3 });
-    
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    setColor(doc, PDF_COLORS.text);
-    
-    incident.preuves.forEach((preuve, idx) => {
-      checkPageBreak(8);
-      doc.text(`${idx + 1}. ${preuve.label} (${preuve.type})`, marginLeft + 5, y);
-      y += 6;
-    });
-    y += 5;
-  }
-
-  // Transmission JP
-  if (incident.transmisJP) {
-    checkPageBreak(15);
-    y += 5;
-    setColor(doc, PDF_COLORS.legal, 'fill');
-    doc.roundedRect(marginLeft, y - 4, contentWidth, 12, 2, 2, 'F');
-    
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    setColor(doc, PDF_COLORS.white);
-    const transmisText = `Transmis au Juge de Paix le ${incident.dateTransmissionJP ? format(new Date(incident.dateTransmissionJP), 'd MMMM yyyy', { locale: fr }) : 'N/A'}`;
-    doc.text(transmisText, marginLeft + 5, y + 3);
-    y += 15;
-  }
-
-  // Footer
-  drawPremiumFooter(doc, 'incident', pageNumber, pageNumber, format(new Date(), 'dd/MM/yyyy HH:mm'));
-
-  // Retourner le blob
-  return doc.output('blob');
-}
+export default generateAndStoreIncidentPDF;

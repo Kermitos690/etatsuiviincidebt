@@ -64,10 +64,30 @@ export default function SwipeTraining() {
   const [email2, setEmail2] = useState<Email | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [generatingPairs, setGeneratingPairs] = useState(false);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [notes, setNotes] = useState('');
   const [showTutorial, setShowTutorial] = useState(false);
   const [startTime, setStartTime] = useState<number>(0);
+
+  const generatePairs = async () => {
+    setGeneratingPairs(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-training-pairs', {
+        body: { limit: 20 }
+      });
+
+      if (error) throw error;
+
+      toast.success(`${data?.generated || 0} nouvelles paires générées`);
+      await fetchPairsAndStats();
+    } catch (err) {
+      console.error('Error generating pairs:', err);
+      toast.error('Erreur lors de la génération des paires');
+    } finally {
+      setGeneratingPairs(false);
+    }
+  };
 
   useEffect(() => {
     fetchPairsAndStats();
@@ -297,14 +317,29 @@ export default function SwipeTraining() {
           <Card className="border-dashed">
             <CardContent className="py-12 text-center">
               <Trophy className="h-12 w-12 mx-auto text-yellow-500 mb-4" />
-              <h3 className="font-medium text-lg mb-2">Session terminée !</h3>
+              <h3 className="font-medium text-lg mb-2">
+                {pairs.length === 0 ? 'Aucune paire disponible' : 'Session terminée !'}
+              </h3>
               <p className="text-muted-foreground mb-4">
-                Plus de paires à comparer pour le moment.
+                {pairs.length === 0 
+                  ? 'Générez des paires d\'emails pour commencer l\'entraînement.'
+                  : 'Plus de paires à comparer pour le moment.'
+                }
               </p>
-              <Button onClick={fetchPairsAndStats}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Rafraîchir
-              </Button>
+              <div className="flex gap-2 justify-center">
+                <Button onClick={generatePairs} disabled={generatingPairs}>
+                  {generatingPairs ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Star className="h-4 w-4 mr-2" />
+                  )}
+                  Générer des paires
+                </Button>
+                <Button variant="outline" onClick={fetchPairsAndStats}>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Rafraîchir
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ) : (
