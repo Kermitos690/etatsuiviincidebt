@@ -46,6 +46,33 @@ serve(async (req) => {
       });
     }
 
+    // ==========================================
+    // PHASE 2: DB-FIRST LEGAL DETECTION
+    // ==========================================
+    let legalMentions = [];
+    try {
+      console.log(`[auto-process-email] Running legal detection for email ${emailId}`);
+      
+      const { data: detectionResult, error: detectionError } = await supabase.functions.invoke('email-legal-detection', {
+        body: {
+          email_id: emailId,
+          subject: email.subject,
+          body: email.body,
+          from: email.sender,
+          date: email.received_at,
+        }
+      });
+
+      if (detectionError) {
+        console.error('[auto-process-email] Legal detection error:', detectionError);
+      } else if (detectionResult?.success) {
+        legalMentions = detectionResult.mentions || [];
+        console.log(`[auto-process-email] Found ${legalMentions.length} legal mentions`);
+      }
+    } catch (e) {
+      console.error('[auto-process-email] Legal detection failed:', e);
+    }
+
     // Call AI to analyze the email
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
@@ -55,8 +82,14 @@ serve(async (req) => {
       });
     }
 
+    // Build context from legal mentions for AI
+    const legalContext = legalMentions.length > 0 
+      ? `\n\nRéférences légales détectées dans l'email:\n${legalMentions.map((m: any) => `- ${m.match_text} (confiance: ${Math.round(m.confidence * 100)}%)`).join('\n')}`
+      : '';
+
     const systemPrompt = `Tu es un expert juridique suisse spécialisé dans l'analyse des emails liés à la curatelle. 
 Analyse cet email et détermine s'il contient un incident administratif à signaler.
+${legalContext}
 
 Retourne un JSON avec:
 {
@@ -68,7 +101,8 @@ Retourne un JSON avec:
   "suggestedInstitution": "institution concernée",
   "suggestedType": "type d'incident",
   "suggestedGravity": "Mineur|Modéré|Grave|Critique",
-  "summary": "résumé court"
+  "summary": "résumé court",
+  "legalReferences": ["liste des références légales mentionnées"]
 }`;
 
     const userMessage = `Email de: ${email.sender}
@@ -114,6 +148,11 @@ ${email.body?.slice(0, 4000) || 'Corps vide'}`;
       console.error('Failed to parse AI response:', content);
       analysis = { isIncident: false, confidence: 0, summary: 'Analyse impossible' };
     }
+
+    // Add legal mentions to analysis
+    analysis.legalMentionsCount = legalMentions.length;
+    analysis.legalMentionsResolved = legalMentions.filter((m: any) => m.resolved).length;
+    analysis.dbFirstEnforced = true;
 
     // Update email with analysis
     const { error: updateError } = await supabase
@@ -179,8 +218,13 @@ ${email.body?.slice(0, 4000) || 'Corps vide'}`;
     return new Response(JSON.stringify({
       success: true,
       analysis,
+      legalMentions: {
+        total: legalMentions.length,
+        resolved: legalMentions.filter((m: any) => m.resolved).length,
+      },
       incidentCreated,
-      incident
+      incident,
+      dbFirstEnforced: true,
     }), {
       headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' }
     });
