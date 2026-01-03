@@ -115,28 +115,67 @@ serve(async (req) => {
     const verifiedArticles: string[] = [];
 
     // Search for relevant legal units based on incident type and dysfunction
-    const searchTerms = [incidentType, institution, dysfonctionnement?.split(' ').slice(0, 3).join(' ')].filter(Boolean);
+    const searchTerms = [
+      incidentType,
+      institution, 
+      ...(dysfonctionnement?.split(' ').slice(0, 5) || [])
+    ].filter(Boolean);
     
-    for (const term of searchTerms.slice(0, 2)) {
+    // Build keyword search array
+    const keywordSearchArray = searchTerms.map(t => t.toLowerCase()).filter(t => t.length > 3);
+    
+    // Search by keywords first (more precise)
+    if (keywordSearchArray.length > 0) {
+      const { data: keywordUnits } = await supabase
+        .from('legal_units')
+        .select(`
+          id, cite_key, content_text, keywords, is_key_unit,
+          legal_instruments!inner(instrument_uid, short_title, title, abbreviation)
+        `)
+        .overlaps('keywords', keywordSearchArray)
+        .eq('is_key_unit', true)
+        .limit(10);
+      
+      if (keywordUnits) {
+        for (const unit of keywordUnits) {
+          const inst = unit.legal_instruments as any;
+          const ref = `Art. ${unit.cite_key.split('-').pop()} ${inst?.abbreviation || inst?.short_title || inst?.instrument_uid}`;
+          if (!verifiedArticles.includes(ref)) {
+            verifiedArticles.push(ref);
+            lkbContext.push(`[${ref}]: ${unit.content_text}`);
+          }
+        }
+      }
+    }
+    
+    // Fallback: Search by content text
+    for (const term of searchTerms.slice(0, 3)) {
+      if (term.length < 4) continue;
       const { data: units } = await supabase
         .from('legal_units')
         .select(`
-          id, cite_key, content_text, keywords,
-          legal_instruments!inner(instrument_uid, short_title, title)
+          id, cite_key, content_text, keywords, is_key_unit,
+          legal_instruments!inner(instrument_uid, short_title, title, abbreviation)
         `)
-        .or(`content_text.ilike.%${term}%,keywords.cs.{${term.toLowerCase()}}`)
+        .ilike('content_text', `%${term}%`)
         .limit(5);
       
       if (units) {
         for (const unit of units) {
           const inst = unit.legal_instruments as any;
-          const ref = `${inst?.short_title || inst?.instrument_uid} ${unit.cite_key}`;
+          const ref = `Art. ${unit.cite_key.split('-').pop()} ${inst?.abbreviation || inst?.short_title || inst?.instrument_uid}`;
           if (!verifiedArticles.includes(ref)) {
             verifiedArticles.push(ref);
-            lkbContext.push(`[${ref}]: ${unit.content_text?.substring(0, 200)}...`);
+            lkbContext.push(`[${ref}]: ${unit.content_text}`);
           }
         }
       }
+    }
+    
+    // Limit to top 15 most relevant articles
+    if (lkbContext.length > 15) {
+      lkbContext.length = 15;
+      verifiedArticles.length = 15;
     }
 
     console.log(`LKB: Found ${verifiedArticles.length} relevant articles from DB`);
