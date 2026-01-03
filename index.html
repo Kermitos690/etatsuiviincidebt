@@ -18,9 +18,13 @@
       upgrade-insecure-requests;
     " />
     
-    <!-- Preconnect to critical origins for faster font loading -->
+    <!-- Preconnect to critical origins for faster loading -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Preconnect to Supabase for faster API/Auth calls -->
+    <link rel="preconnect" href="https://csysnvkvnoghhyqaxdkz.supabase.co" crossorigin />
+    <!-- DNS prefetch as fallback for browsers that don't support preconnect -->
+    <link rel="dns-prefetch" href="https://csysnvkvnoghhyqaxdkz.supabase.co" />
     
     <!-- Preload critical font to improve LCP -->
     <link 
