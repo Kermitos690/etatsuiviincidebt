@@ -24,7 +24,8 @@ import {
   LucideIcon,
   FolderOpen,
   CalendarPlus,
-  Scale
+  Scale,
+  Lightbulb
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -77,6 +78,7 @@ const navCategories: NavCategory[] = [
     label: 'Incidents',
     icon: AlertTriangle,
     items: [
+      { to: '/suggestions', icon: Lightbulb, label: 'Suggestions' },
       { to: '/incidents', icon: AlertTriangle, label: 'Liste' },
       { to: '/incidents-timeline', icon: Activity, label: 'Timeline' },
       { to: '/journal', icon: BookOpen, label: 'Journal' },

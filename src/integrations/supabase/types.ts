@@ -1630,6 +1630,87 @@ export type Database = {
           },
         ]
       }
+      incident_suggestions: {
+        Row: {
+          ai_analysis: Json | null
+          confidence: number | null
+          created_at: string
+          created_incident_id: string | null
+          email_source_id: string | null
+          id: string
+          legal_mentions: Json | null
+          rejection_reason: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          suggested_dysfunction: string | null
+          suggested_facts: string | null
+          suggested_gravity: string | null
+          suggested_institution: string | null
+          suggested_title: string
+          suggested_type: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ai_analysis?: Json | null
+          confidence?: number | null
+          created_at?: string
+          created_incident_id?: string | null
+          email_source_id?: string | null
+          id?: string
+          legal_mentions?: Json | null
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          suggested_dysfunction?: string | null
+          suggested_facts?: string | null
+          suggested_gravity?: string | null
+          suggested_institution?: string | null
+          suggested_title: string
+          suggested_type?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ai_analysis?: Json | null
+          confidence?: number | null
+          created_at?: string
+          created_incident_id?: string | null
+          email_source_id?: string | null
+          id?: string
+          legal_mentions?: Json | null
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          suggested_dysfunction?: string | null
+          suggested_facts?: string | null
+          suggested_gravity?: string | null
+          suggested_institution?: string | null
+          suggested_title?: string
+          suggested_type?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "incident_suggestions_created_incident_id_fkey"
+            columns: ["created_incident_id"]
+            isOneToOne: false
+            referencedRelation: "incidents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incident_suggestions_email_source_id_fkey"
+            columns: ["email_source_id"]
+            isOneToOne: false
+            referencedRelation: "emails"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       incidents: {
         Row: {
           analysis_notes: string | null

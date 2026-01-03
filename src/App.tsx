@@ -37,6 +37,7 @@ const IATraining = lazy(() => import("./pages/IATraining"));
 const SwipeTraining = lazy(() => import("./pages/SwipeTraining"));
 const LegalConfig = lazy(() => import("./pages/LegalConfig"));
 const LegalAdmin = lazy(() => import("./pages/LegalAdmin"));
+const Suggestions = lazy(() => import("./pages/Suggestions"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -87,6 +88,7 @@ const App = () => (
                   <Route path="/analysis-pipeline" element={<AuthGuard><AnalysisPipeline /></AuthGuard>} />
                   
                   {/* Incidents */}
+                  <Route path="/suggestions" element={<AuthGuard><Suggestions /></AuthGuard>} />
                   <Route path="/incidents" element={<AuthGuard><Incidents /></AuthGuard>} />
                   <Route path="/incidents/:id" element={<AuthGuard><IncidentDetail /></AuthGuard>} />
                   <Route path="/incidents/:id/edit" element={<AuthGuard><EditIncident /></AuthGuard>} />
