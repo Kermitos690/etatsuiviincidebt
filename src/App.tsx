@@ -27,8 +27,6 @@ const Tutorial = lazy(() => import("./pages/Tutorial"));
 const ControlCenter = lazy(() => import("./pages/ControlCenter"));
 const Profile = lazy(() => import("./pages/Profile"));
 const EmailCleanup = lazy(() => import("./pages/EmailCleanup"));
-const EmailsInbox = lazy(() => import("./pages/EmailsInbox"));
-const EmailsAnalyzed = lazy(() => import("./pages/EmailsAnalyzed"));
 const FactualDossier = lazy(() => import("./pages/FactualDossier"));
 const Journal = lazy(() => import("./pages/Journal"));
 const Events = lazy(() => import("./pages/Events"));
@@ -84,8 +82,6 @@ const App = () => (
                   
                   {/* Emails - Unified */}
                   <Route path="/emails" element={<AuthGuard><Emails /></AuthGuard>} />
-                  <Route path="/emails-inbox" element={<AuthGuard><EmailsInbox /></AuthGuard>} />
-                  <Route path="/emails-analyzed" element={<AuthGuard><EmailsAnalyzed /></AuthGuard>} />
                   <Route path="/email-cleanup" element={<AuthGuard><EmailCleanup /></AuthGuard>} />
                   <Route path="/attachments" element={<AuthGuard><Attachments /></AuthGuard>} />
                   <Route path="/analysis-pipeline" element={<AuthGuard><AnalysisPipeline /></AuthGuard>} />

@@ -79,6 +79,7 @@ const navCategories: NavCategory[] = [
     items: [
       { to: '/incidents', icon: AlertTriangle, label: 'Liste' },
       { to: '/incidents-timeline', icon: Activity, label: 'Timeline' },
+      { to: '/journal', icon: BookOpen, label: 'Journal' },
       { to: '/nouveau', icon: Plus, label: 'Nouveau' },
       { to: '/factual-dossier', icon: FileText, label: 'Dossier Factuel' },
       { to: '/events', icon: CalendarPlus, label: 'Événements' },
