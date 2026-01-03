@@ -37,38 +37,82 @@ serve(async (req) => {
     // === DB-FIRST: Query legal_units (LKB) ===
     console.log('DB-FIRST: Querying LKB for legal context...');
     
-    // Search in legal_units first (new LKB schema)
+    // Search in legal_units first (new LKB schema with 492+ articles)
     const searchTerms = [
       incidentType,
       ...(keywords || []),
-      dysfonctionnement?.split(' ').slice(0, 5).join(' ')
+      ...(dysfonctionnement?.split(' ').slice(0, 5) || [])
     ].filter(Boolean);
 
+    // Build keyword array for overlap search
+    const keywordArray = searchTerms.map(t => t.toLowerCase()).filter(t => t.length > 3);
+    
+    // Priority 1: Search by overlapping keywords (most precise)
+    if (keywordArray.length > 0) {
+      const { data: keywordUnits } = await supabase
+        .from('legal_units')
+        .select(`
+          id, cite_key, content_text, keywords, is_key_unit,
+          legal_instruments!inner(instrument_uid, short_title, title, abbreviation, jurisdiction)
+        `)
+        .overlaps('keywords', keywordArray)
+        .eq('is_key_unit', true)
+        .limit(10);
+
+      if (keywordUnits) {
+        for (const unit of keywordUnits) {
+          const inst = unit.legal_instruments as any;
+          const articleNum = unit.cite_key.split('-').pop();
+          const abbrev = inst?.abbreviation || inst?.short_title || inst?.instrument_uid;
+          
+          results.push({
+            title: `${abbrev} - Art. ${articleNum}`,
+            reference_number: unit.cite_key,
+            summary: unit.content_text || 'Texte non disponible',
+            source_url: inst?.jurisdiction === 'CH' 
+              ? `https://www.fedlex.admin.ch/eli/cc/24/233_245_233/fr#art_${articleNum}`
+              : `https://prestations.vd.ch/pub/blv/web`,
+            source_name: 'LKB (vérifié)',
+            source_type: 'legislation',
+            relevance_score: 0.98,
+            verified_source: true
+          });
+        }
+      }
+    }
+
+    // Priority 2: Search by content text
     for (const term of searchTerms.slice(0, 3)) {
+      if (term.length < 4 || results.length >= 15) continue;
+      
       const { data: lkbUnits } = await supabase
         .from('legal_units')
         .select(`
-          id, cite_key, content_text, keywords,
-          legal_instruments!inner(instrument_uid, short_title, title, jurisdiction)
+          id, cite_key, content_text, keywords, is_key_unit,
+          legal_instruments!inner(instrument_uid, short_title, title, abbreviation, jurisdiction)
         `)
-        .or(`content_text.ilike.%${term}%,keywords.cs.{${term.toLowerCase()}}`)
+        .ilike('content_text', `%${term}%`)
         .limit(5);
 
       if (lkbUnits) {
         for (const unit of lkbUnits) {
+          // Skip if already added
+          if (results.find(r => r.reference_number === unit.cite_key)) continue;
+          
           const inst = unit.legal_instruments as any;
-          const shortTitle = inst?.short_title || inst?.instrument_uid;
+          const articleNum = unit.cite_key.split('-').pop();
+          const abbrev = inst?.abbreviation || inst?.short_title || inst?.instrument_uid;
           
           results.push({
-            title: `${shortTitle} - ${unit.cite_key}`,
+            title: `${abbrev} - Art. ${articleNum}`,
             reference_number: unit.cite_key,
-            summary: unit.content_text?.substring(0, 300) || 'Texte non disponible',
+            summary: unit.content_text || 'Texte non disponible',
             source_url: inst?.jurisdiction === 'CH' 
-              ? `https://www.fedlex.admin.ch/eli/cc/24/233_245_233/fr`
+              ? `https://www.fedlex.admin.ch/eli/cc/24/233_245_233/fr#art_${articleNum}`
               : `https://prestations.vd.ch/pub/blv/web`,
-            source_name: 'Legal Knowledge Base (LKB)',
+            source_name: 'LKB (vérifié)',
             source_type: 'legislation',
-            relevance_score: 0.95,
+            relevance_score: unit.is_key_unit ? 0.95 : 0.85,
             verified_source: true
           });
         }
