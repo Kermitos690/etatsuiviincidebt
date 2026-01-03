@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buildTrainingPromptContext } from "../_shared/training.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -180,6 +181,13 @@ serve(async (req) => {
 
     console.log(`LKB: Found ${verifiedArticles.length} relevant articles from DB`);
 
+    // ==========================================
+    // DB-FIRST: FETCH TRAINING DATA FOR PROMPT ENRICHMENT
+    // ==========================================
+    console.log(`[deep-incident-analysis] Fetching training data for prompt enrichment...`);
+    const trainingContext = await buildTrainingPromptContext(supabase);
+    console.log(`[deep-incident-analysis] Training context: ${trainingContext ? 'enriched with user feedback' : 'empty'}`);
+
     // Build email context with numbered references
     const emailContext = (emails || []).map((e: EmailData, i: number) => 
       `[EMAIL ${i + 1}]\nDate: ${e.received_at}\nDe: ${e.sender}\nA: ${e.recipient || 'N/A'}\nObjet: ${e.subject}\n---\n${e.body.substring(0, 2500)}\n---`
@@ -195,10 +203,12 @@ REGLE D'OR: Tu DOIS utiliser ces articles verifies en priorite. Ne cite JAMAIS u
 `
       : '';
 
-    // Enhanced system prompt with LKB context
+    // Enhanced system prompt with LKB context AND training data
     const systemPrompt = `Tu es un expert juridique suisse specialise dans l'analyse approfondie de dysfonctionnements institutionnels, la protection de l'adulte et la procedure administrative.
 
-${lkbArticlesSection}REGLES STRICTES D'ANALYSE:
+${lkbArticlesSection}${trainingContext}
+
+REGLES STRICTES D'ANALYSE:
 
 1. CITATIONS EXACTES OBLIGATOIRES
    - Chaque affirmation DOIT etre appuyee par une citation VERBATIM des emails

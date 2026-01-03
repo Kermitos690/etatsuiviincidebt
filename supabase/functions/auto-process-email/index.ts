@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, log } from "../_shared/core.ts";
 import { verifyAuth, unauthorizedResponse, createServiceClient } from "../_shared/auth.ts";
+import { buildTrainingPromptContext, recordTrainingCase } from "../_shared/training.ts";
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -108,6 +109,13 @@ serve(async (req) => {
       });
     }
 
+    // ==========================================
+    // DB-FIRST: FETCH TRAINING DATA FOR PROMPT ENRICHMENT
+    // ==========================================
+    console.log(`[auto-process-email] Fetching training data for prompt enrichment...`);
+    const trainingContext = await buildTrainingPromptContext(supabase, user.id);
+    console.log(`[auto-process-email] Training context: ${trainingContext ? 'enriched' : 'empty'}`);
+
     // Build context from legal mentions for AI
     const legalContext = legalMentions.length > 0 
       ? `\n\nRéférences légales détectées dans l'email:\n${legalMentions.map((m: any) => `- ${m.match_text} (confiance: ${Math.round(m.confidence * 100)}%)`).join('\n')}`
@@ -116,6 +124,10 @@ serve(async (req) => {
     const systemPrompt = `Tu es un expert juridique suisse spécialisé dans l'analyse des emails liés à la curatelle. 
 Analyse cet email et détermine s'il contient un incident administratif à signaler.
 ${legalContext}
+${trainingContext}
+
+IMPORTANT: Si des exemples de FAUX POSITIFS sont listés ci-dessus, NE PAS détecter des incidents similaires.
+Si des exemples VALIDÉS sont listés, utilise-les comme référence pour ta détection.
 
 Retourne un JSON avec:
 {
@@ -179,6 +191,24 @@ ${email.body?.slice(0, 4000) || 'Corps vide'}`;
     analysis.legalMentionsCount = legalMentions.length;
     analysis.legalMentionsResolved = legalMentions.filter((m: any) => m.resolved).length;
     analysis.dbFirstEnforced = true;
+    analysis.trainingDataUsed = trainingContext.length > 0;
+
+    // ==========================================
+    // RECORD THIS ANALYSIS FOR FUTURE TRAINING
+    // ==========================================
+    if (analysis.isIncident && analysis.confidence >= 50) {
+      await recordTrainingCase(supabase, {
+        userId: user.id,
+        emailId: emailId,
+        situationSummary: `${email.subject}\n\n${analysis.suggestedFacts || analysis.summary || ''}`,
+        detectedViolationType: analysis.suggestedType,
+        detectedLegalRefs: analysis.legalReferences || legalMentions,
+        aiConfidence: analysis.confidence / 100,
+        aiReasoning: analysis.summary,
+        trainingPriority: analysis.confidence >= 80 ? 3 : 5 // Lower priority for high confidence
+      });
+      console.log(`[auto-process-email] Recorded training case for email ${emailId}`);
+    }
 
     // Update email with analysis
     const { error: updateError } = await supabase

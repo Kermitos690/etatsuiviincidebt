@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, corsHeaders, log } from "../_shared/core.ts";
 import { verifyAuth, unauthorizedResponse, createServiceClient } from "../_shared/auth.ts";
+import { buildTrainingPromptContext } from "../_shared/training.ts";
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -86,6 +87,13 @@ serve(async (req) => {
       });
     }
 
+    // ==========================================
+    // DB-FIRST: FETCH TRAINING DATA FOR PROMPT ENRICHMENT
+    // ==========================================
+    console.log(`[analyze-email-advanced] Fetching training data for prompt enrichment...`);
+    const trainingContext = await buildTrainingPromptContext(supabase, user.id);
+    console.log(`[analyze-email-advanced] Training context: ${trainingContext ? 'enriched with user feedback' : 'empty'}`);
+
     // Build conversation context
     const conversationContext = emails.map((e, i) => 
       `[Email ${i + 1} - ${e.received_at}]
@@ -98,6 +106,7 @@ ${e.body?.slice(0, 2000) || 'Corps vide'}
     ).join('\n\n');
 
     const systemPrompt = `Tu es un expert juridique suisse spécialisé dans l'analyse approfondie des communications liées à la curatelle et protection des adultes.
+${trainingContext}
 
 Analyse cette conversation/email et détecte:
 1. Violations de délais légaux
@@ -106,6 +115,9 @@ Analyse cette conversation/email et détecte:
 4. Contradictions entre emails
 5. Violations de règles/procédures
 6. Tactiques d'évitement ou de contournement
+
+IMPORTANT: Utilise les exemples validés ci-dessus comme référence pour calibrer tes détections.
+Évite de détecter des situations similaires aux faux positifs listés.
 
 Retourne un JSON structuré:
 {
@@ -144,7 +156,8 @@ Retourne un JSON structuré:
   "problem_score": number (0-100),
   "summary": "résumé en 2-3 phrases",
   "recommendations": ["action recommandée"],
-  "confidence": "High|Medium|Low"
+  "confidence": "High|Medium|Low",
+  "training_data_used": boolean
 }`;
 
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
