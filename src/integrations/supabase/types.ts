@@ -1666,9 +1666,11 @@ export type Database = {
       }
       legal_articles: {
         Row: {
+          alinea: string | null
           article_number: string
           article_text: string
           article_title: string | null
+          blv_reference: string | null
           canton: string | null
           code_name: string
           content_hash: string
@@ -1677,7 +1679,10 @@ export type Database = {
           domain_type: string | null
           id: string
           is_current: boolean | null
+          is_key_article: boolean | null
           keywords: string[] | null
+          law_id: string | null
+          lettre: string | null
           previous_version_id: string | null
           scope: string | null
           source_document: string | null
@@ -1688,9 +1693,11 @@ export type Database = {
           version_number: number
         }
         Insert: {
+          alinea?: string | null
           article_number: string
           article_text: string
           article_title?: string | null
+          blv_reference?: string | null
           canton?: string | null
           code_name: string
           content_hash: string
@@ -1699,7 +1706,10 @@ export type Database = {
           domain_type?: string | null
           id?: string
           is_current?: boolean | null
+          is_key_article?: boolean | null
           keywords?: string[] | null
+          law_id?: string | null
+          lettre?: string | null
           previous_version_id?: string | null
           scope?: string | null
           source_document?: string | null
@@ -1710,9 +1720,11 @@ export type Database = {
           version_number?: number
         }
         Update: {
+          alinea?: string | null
           article_number?: string
           article_text?: string
           article_title?: string | null
+          blv_reference?: string | null
           canton?: string | null
           code_name?: string
           content_hash?: string
@@ -1721,7 +1733,10 @@ export type Database = {
           domain_type?: string | null
           id?: string
           is_current?: boolean | null
+          is_key_article?: boolean | null
           keywords?: string[] | null
+          law_id?: string | null
+          lettre?: string | null
           previous_version_id?: string | null
           scope?: string | null
           source_document?: string | null
@@ -1732,6 +1747,13 @@ export type Database = {
           version_number?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "legal_articles_law_id_fkey"
+            columns: ["law_id"]
+            isOneToOne: false
+            referencedRelation: "legal_laws"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "legal_articles_previous_version_id_fkey"
             columns: ["previous_version_id"]
@@ -1792,18 +1814,151 @@ export type Database = {
         }
         Relationships: []
       }
+      legal_domains: {
+        Row: {
+          code: string
+          created_at: string
+          description: string | null
+          display_order: number | null
+          icon: string | null
+          id: string
+          keywords: string[] | null
+          label_fr: string
+          parent_code: string | null
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          description?: string | null
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          keywords?: string[] | null
+          label_fr: string
+          parent_code?: string | null
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          description?: string | null
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          keywords?: string[] | null
+          label_fr?: string
+          parent_code?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_domains_parent_code_fkey"
+            columns: ["parent_code"]
+            isOneToOne: false
+            referencedRelation: "legal_domains"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      legal_laws: {
+        Row: {
+          abbreviation: string | null
+          adoption_date: string | null
+          blv_reference: string | null
+          canton: string | null
+          code_name: string
+          created_at: string
+          description: string | null
+          domain: string
+          domain_category: string | null
+          domain_type: string | null
+          entry_into_force: string | null
+          full_name: string
+          id: string
+          is_current: boolean | null
+          keywords: string[] | null
+          last_revision: string | null
+          replaced_by: string | null
+          scope: string | null
+          seeded_articles: number | null
+          source_url: string | null
+          total_articles: number | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          abbreviation?: string | null
+          adoption_date?: string | null
+          blv_reference?: string | null
+          canton?: string | null
+          code_name: string
+          created_at?: string
+          description?: string | null
+          domain: string
+          domain_category?: string | null
+          domain_type?: string | null
+          entry_into_force?: string | null
+          full_name: string
+          id?: string
+          is_current?: boolean | null
+          keywords?: string[] | null
+          last_revision?: string | null
+          replaced_by?: string | null
+          scope?: string | null
+          seeded_articles?: number | null
+          source_url?: string | null
+          total_articles?: number | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          abbreviation?: string | null
+          adoption_date?: string | null
+          blv_reference?: string | null
+          canton?: string | null
+          code_name?: string
+          created_at?: string
+          description?: string | null
+          domain?: string
+          domain_category?: string | null
+          domain_type?: string | null
+          entry_into_force?: string | null
+          full_name?: string
+          id?: string
+          is_current?: boolean | null
+          keywords?: string[] | null
+          last_revision?: string | null
+          replaced_by?: string | null
+          scope?: string | null
+          seeded_articles?: number | null
+          source_url?: string | null
+          total_articles?: number | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       legal_references: {
         Row: {
+          alinea: string | null
           article_number: string
           article_text: string | null
+          blv_reference: string | null
           canton: string | null
           code_name: string
           created_at: string
           domain: string | null
           domain_type: string | null
+          entry_into_force: string | null
+          full_article_text: string | null
           id: string
+          is_key_article: boolean | null
           is_verified: boolean | null
           keywords: string[] | null
+          last_revision: string | null
+          law_id: string | null
+          lettre: string | null
           notes: string | null
           scope: string | null
           source_url: string | null
@@ -1812,16 +1967,24 @@ export type Database = {
           verified_at: string | null
         }
         Insert: {
+          alinea?: string | null
           article_number: string
           article_text?: string | null
+          blv_reference?: string | null
           canton?: string | null
           code_name: string
           created_at?: string
           domain?: string | null
           domain_type?: string | null
+          entry_into_force?: string | null
+          full_article_text?: string | null
           id?: string
+          is_key_article?: boolean | null
           is_verified?: boolean | null
           keywords?: string[] | null
+          last_revision?: string | null
+          law_id?: string | null
+          lettre?: string | null
           notes?: string | null
           scope?: string | null
           source_url?: string | null
@@ -1830,16 +1993,24 @@ export type Database = {
           verified_at?: string | null
         }
         Update: {
+          alinea?: string | null
           article_number?: string
           article_text?: string | null
+          blv_reference?: string | null
           canton?: string | null
           code_name?: string
           created_at?: string
           domain?: string | null
           domain_type?: string | null
+          entry_into_force?: string | null
+          full_article_text?: string | null
           id?: string
+          is_key_article?: boolean | null
           is_verified?: boolean | null
           keywords?: string[] | null
+          last_revision?: string | null
+          law_id?: string | null
+          lettre?: string | null
           notes?: string | null
           scope?: string | null
           source_url?: string | null
@@ -1847,7 +2018,15 @@ export type Database = {
           user_id?: string | null
           verified_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "legal_references_law_id_fkey"
+            columns: ["law_id"]
+            isOneToOne: false
+            referencedRelation: "legal_laws"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       legal_search_results: {
         Row: {
@@ -2976,10 +3155,14 @@ export type Database = {
         Row: {
           auto_verify_legal: boolean | null
           created_at: string | null
+          excluded_domains: string[] | null
           id: string
+          include_federal: boolean | null
+          notification_threshold: number | null
           preferred_canton: string | null
           preferred_domains: string[] | null
           preferred_scope: string | null
+          priority_laws: string[] | null
           surveillance_topics: string[] | null
           updated_at: string | null
           user_id: string
@@ -2987,10 +3170,14 @@ export type Database = {
         Insert: {
           auto_verify_legal?: boolean | null
           created_at?: string | null
+          excluded_domains?: string[] | null
           id?: string
+          include_federal?: boolean | null
+          notification_threshold?: number | null
           preferred_canton?: string | null
           preferred_domains?: string[] | null
           preferred_scope?: string | null
+          priority_laws?: string[] | null
           surveillance_topics?: string[] | null
           updated_at?: string | null
           user_id: string
@@ -2998,10 +3185,14 @@ export type Database = {
         Update: {
           auto_verify_legal?: boolean | null
           created_at?: string | null
+          excluded_domains?: string[] | null
           id?: string
+          include_federal?: boolean | null
+          notification_threshold?: number | null
           preferred_canton?: string | null
           preferred_domains?: string[] | null
           preferred_scope?: string | null
+          priority_laws?: string[] | null
           surveillance_topics?: string[] | null
           updated_at?: string | null
           user_id?: string
