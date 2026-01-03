@@ -30,20 +30,23 @@ serve(async (req) => {
 
   try {
     // Handle OAuth ERROR callback (GET request with error parameter)
-    // Google returns error=access_denied when user denies consent OR app is in "Testing" mode without test user
+    // Google returns error=access_denied when user denies consent OR app is in "Testing" mode without test user.
+    // NOTE: Google usually returns the `state` parameter even on error; we use it to redirect back to the right app URL.
     if (req.method === "GET" && url.searchParams.has("error")) {
       const error = url.searchParams.get("error") || "unknown_error";
       const errorDescription = url.searchParams.get("error_description") || "";
-      
+      const state = url.searchParams.get("state");
+
       console.error("OAuth callback received error:", error, "description:", errorDescription);
-      
+
       // Determine user-friendly message based on error type
       let userMessage = "Erreur lors de la connexion Gmail";
       let suggestion = "";
-      
+
       if (error === "access_denied") {
         userMessage = "Accès refusé par Google";
-        suggestion = "Si l'app est 'En test', ajoutez votre email dans les 'Utilisateurs de test' dans Google Cloud Console";
+        suggestion =
+          "Si l'app est 'En test', ajoutez votre email dans les 'Utilisateurs de test' dans Google Cloud Console";
       } else if (error === "invalid_client") {
         userMessage = "Client OAuth invalide";
         suggestion = "Vérifiez la configuration des identifiants dans Google Cloud Console";
@@ -51,11 +54,28 @@ serve(async (req) => {
         userMessage = "URI de redirection non autorisée";
         suggestion = "Ajoutez l'URI de redirection dans Google Cloud Console";
       }
-      
-      // Get the app URL for redirect
-      const appUrl = Deno.env.get("SITE_URL") || "https://68b94080-8702-44ad-92ac-e956f60a1e94.lovableproject.com";
+
+      // Try to recover appUrl from `state` (best effort)
+      let appUrlFromState: string | null = null;
+      if (state) {
+        try {
+          const parsed = JSON.parse(atob(state));
+          if (typeof parsed?.app_url === "string" && parsed.app_url.startsWith("http")) {
+            appUrlFromState = parsed.app_url;
+          }
+        } catch (_e) {
+          // ignore
+        }
+      }
+
+      // Fallback to configured SITE_URL; last resort is a safe default
+      const appUrl =
+        appUrlFromState ||
+        Deno.env.get("SITE_URL") ||
+        "https://68b94080-8702-44ad-92ac-e956f60a1e94.lovableproject.com";
+
       const redirectUrl = `${appUrl}/gmail-config?oauth_error=${encodeURIComponent(error)}&error_message=${encodeURIComponent(userMessage)}&error_suggestion=${encodeURIComponent(suggestion)}&error_description=${encodeURIComponent(errorDescription)}`;
-      
+
       // Return HTML that redirects back to app with error info
       const html = `<!DOCTYPE html>
 <html>
@@ -94,9 +114,9 @@ serve(async (req) => {
 </body>
 </html>`;
       return new Response(html, {
-        headers: { 
+        headers: {
           "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "no-cache, no-store, must-revalidate"
+          "Cache-Control": "no-cache, no-store, must-revalidate",
         },
       });
     }
@@ -118,25 +138,26 @@ serve(async (req) => {
         });
       }
 
-      // Decode and validate state (contains user_id and timestamp)
-      let stateData: { user_id: string; timestamp: number };
+      // Decode and validate state (contains user_id, timestamp, and optional app_url)
+      type OAuthState = { user_id: string; timestamp: number; app_url?: string };
+      let stateData: OAuthState;
       try {
         stateData = JSON.parse(atob(state));
-        
+
         // Check state is not too old (15 minutes max)
         const stateAge = Date.now() - stateData.timestamp;
         if (stateAge > 15 * 60 * 1000) {
           throw new Error("State expired");
         }
-        
+
         if (!stateData.user_id) {
           throw new Error("Invalid state: missing user_id");
         }
       } catch (e) {
         console.error("Invalid OAuth state:", e);
-        return new Response("Invalid OAuth request: corrupted state", { 
+        return new Response("Invalid OAuth request: corrupted state", {
           status: 400,
-          headers: { "Content-Type": "text/plain" }
+          headers: { "Content-Type": "text/plain" },
         });
       }
 
@@ -206,8 +227,17 @@ serve(async (req) => {
 
       console.log("Tokens stored successfully for user:", stateData.user_id);
 
-      // Get the app URL for redirect
-      const appUrl = Deno.env.get("SITE_URL") || "https://68b94080-8702-44ad-92ac-e956f60a1e94.lovableproject.com";
+      // Get the app URL for redirect (prefer the origin captured in state)
+      const appUrlFromState =
+        typeof stateData.app_url === "string" && stateData.app_url.startsWith("http")
+          ? stateData.app_url
+          : null;
+
+      const appUrl =
+        appUrlFromState ||
+        Deno.env.get("SITE_URL") ||
+        "https://68b94080-8702-44ad-92ac-e956f60a1e94.lovableproject.com";
+
       const redirectUrl = `${appUrl}/gmail-config?connected=true&email=${encodeURIComponent(userEmail)}`;
       
       // Return HTML that handles both mobile and desktop
@@ -312,11 +342,27 @@ serve(async (req) => {
         "https://www.googleapis.com/auth/userinfo.email",
       ].join(" ");
 
-      // Generate state parameter with user ID and timestamp for CSRF protection
+      // Generate state parameter with user ID + timestamp for CSRF protection,
+      // and capture the app origin so the callback can redirect back reliably.
+      const originHeader = req.headers.get("origin") ?? "";
+      let appUrlForState = originHeader;
+
+      if (!appUrlForState) {
+        const referer = req.headers.get("referer");
+        if (referer) {
+          try {
+            appUrlForState = new URL(referer).origin;
+          } catch (_e) {
+            // ignore
+          }
+        }
+      }
+
       const state = btoa(
         JSON.stringify({
           user_id: user.id,
           timestamp: Date.now(),
+          app_url: appUrlForState || undefined,
         })
       );
 
