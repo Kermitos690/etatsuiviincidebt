@@ -814,7 +814,8 @@ async function paginatedFetchSupabase(
   return result;
 }
 
-async function queryLocalLegalArticles(
+// Query legal_units (LKB new schema) instead of legacy legal_articles
+async function queryLocalLegalUnits(
   supabase: any,
   query: string,
   _topics?: string[],
@@ -828,15 +829,15 @@ async function queryLocalLegalArticles(
       try {
         // Probe sans filtre
         const probeSans = await supabase
-          .from("legal_articles")
+          .from("legal_units")
           .select("id", { count: "exact", head: true });
         probeInfo.probeSansFiltre = probeSans.count ?? null;
         
-        // Probe avec filtre (is_current = true)
+        // Probe avec filtre (is_key_unit = true)
         const probeAvec = await supabase
-          .from("legal_articles")
+          .from("legal_units")
           .select("id", { count: "exact", head: true })
-          .eq("is_current", true);
+          .eq("is_key_unit", true);
         probeInfo.probeAvecFiltre = probeAvec.count ?? null;
         
         if (probeSans.error) {
@@ -849,7 +850,63 @@ async function queryLocalLegalArticles(
       }
     }
 
-    // Paginated fetch
+    // Query legal_units with instrument join for code_name
+    const { data, error } = await supabase
+      .from("legal_units")
+      .select(`
+        id, cite_key, content_text, keywords, is_key_unit,
+        legal_instruments!inner(instrument_uid, abbreviation, domain_tags)
+      `)
+      .limit(500);
+
+    if (error || !data) return [];
+
+    const matches: LocalLegalMatch[] = [];
+    for (const row of data as any[]) {
+      const instrument = row?.legal_instruments;
+      const code_name = String(instrument?.abbreviation || instrument?.instrument_uid || "");
+      const article_number = String(row?.cite_key || "").replace(/^art\.\s*/i, "");
+      const article_text = String(row?.content_text || "");
+      const domain = Array.isArray(instrument?.domain_tags) ? instrument.domain_tags[0] : undefined;
+      const keywords = Array.isArray(row?.keywords) ? row.keywords.map((k: any) => String(k)) : undefined;
+
+      const relevance = calculateRelevance(
+        normalizeText(`${code_name} ${article_number} ${article_text}`),
+        query,
+        keywords
+      );
+
+      if (relevance > 0.08) {
+        matches.push({
+          code_name,
+          article_number,
+          article_title: undefined,
+          article_text,
+          domain,
+          keywords,
+          relevance,
+        });
+      }
+    }
+
+    matches.sort((a, b) => b.relevance - a.relevance);
+    return matches.slice(0, 5);
+  } catch {
+    return [];
+  }
+}
+
+// Legacy fallback - query legal_articles if legal_units is empty
+async function queryLocalLegalArticles(
+  supabase: any,
+  query: string,
+  _topics?: string[],
+  debugInfo?: PaginationDebugInfo,
+  enableProbes?: boolean,
+  probeInfo?: ProbeDebugInfo
+): Promise<LocalLegalMatch[]> {
+  try {
+    // Paginated fetch from legacy table
     const batchSize = debugInfo ? debugInfo.batchSize : 500;
     const maxRows = debugInfo ? debugInfo.maxRows : 2000;
     const data = await paginatedFetchSupabase(
@@ -1545,13 +1602,23 @@ serve(async (req) => {
       }
     }
 
-    // Local first - pass separate debug info and probe info to each table query
-    const [localArticles, localRefs] = await Promise.all([
-      queryLocalLegalArticles(supabase, query, request.context?.topics, debugInfoArticles, debugProbes, probesArticles),
-      queryLocalLegalReferences(supabase, query, debugInfoReferences, debugProbes, probesReferences),
-    ]);
-
-    const localMatches = [...localArticles, ...localRefs].sort((a, b) => b.relevance - a.relevance);
+    // Local first - query LKB (legal_units) first, fallback to legacy tables
+    const lkbUnits = await queryLocalLegalUnits(supabase, query, request.context?.topics, debugInfoArticles, debugProbes, probesArticles);
+    
+    // If LKB has results, use them; otherwise fallback to legacy
+    let localMatches: LocalLegalMatch[];
+    if (lkbUnits.length > 0) {
+      localMatches = lkbUnits;
+      console.log(JSON.stringify({ event: "lkb_query_success", count: lkbUnits.length }));
+    } else {
+      // Fallback to legacy tables
+      const [localArticles, localRefs] = await Promise.all([
+        queryLocalLegalArticles(supabase, query, request.context?.topics, debugInfoArticles, debugProbes, probesArticles),
+        queryLocalLegalReferences(supabase, query, debugInfoReferences, debugProbes, probesReferences),
+      ]);
+      localMatches = [...localArticles, ...localRefs].sort((a, b) => b.relevance - a.relevance);
+      console.log(JSON.stringify({ event: "legacy_fallback", articles: localArticles.length, refs: localRefs.length }));
+    }
 
     const gate = shouldCallPerplexity(request, localMatches);
 
