@@ -35,6 +35,7 @@ const ImportIncident = lazy(() => import("./pages/ImportIncident"));
 const IATraining = lazy(() => import("./pages/IATraining"));
 const SwipeTraining = lazy(() => import("./pages/SwipeTraining"));
 const LegalConfig = lazy(() => import("./pages/LegalConfig"));
+const LegalAdmin = lazy(() => import("./pages/LegalAdmin"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -106,6 +107,7 @@ const App = () => (
                   <Route path="/ia-training" element={<AuthGuard><IATraining /></AuthGuard>} />
                   <Route path="/swipe-training" element={<AuthGuard><SwipeTraining /></AuthGuard>} />
                   <Route path="/legal-config" element={<AuthGuard><LegalConfig /></AuthGuard>} />
+                  <Route path="/legal-admin" element={<AuthGuard><LegalAdmin /></AuthGuard>} />
                   
                   <Route path="*" element={<NotFound />} />
                 </Routes>

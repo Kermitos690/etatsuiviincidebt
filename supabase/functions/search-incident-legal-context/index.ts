@@ -34,13 +34,50 @@ serve(async (req) => {
     const results: LegalSearchResult[] = [];
     let perplexityUsed = false;
 
-    // 1. First, check local legal_references table
+    // === DB-FIRST: Query legal_units (LKB) ===
+    console.log('DB-FIRST: Querying LKB for legal context...');
+    
+    // Search in legal_units first (new LKB schema)
     const searchTerms = [
       incidentType,
       ...(keywords || []),
       dysfonctionnement?.split(' ').slice(0, 5).join(' ')
     ].filter(Boolean);
 
+    for (const term of searchTerms.slice(0, 3)) {
+      const { data: lkbUnits } = await supabase
+        .from('legal_units')
+        .select(`
+          id, cite_key, content_text, keywords,
+          legal_instruments!inner(instrument_uid, short_title, title, jurisdiction)
+        `)
+        .or(`content_text.ilike.%${term}%,keywords.cs.{${term.toLowerCase()}}`)
+        .limit(5);
+
+      if (lkbUnits) {
+        for (const unit of lkbUnits) {
+          const inst = unit.legal_instruments as any;
+          const shortTitle = inst?.short_title || inst?.instrument_uid;
+          
+          results.push({
+            title: `${shortTitle} - ${unit.cite_key}`,
+            reference_number: unit.cite_key,
+            summary: unit.content_text?.substring(0, 300) || 'Texte non disponible',
+            source_url: inst?.jurisdiction === 'CH' 
+              ? `https://www.fedlex.admin.ch/eli/cc/24/233_245_233/fr`
+              : `https://prestations.vd.ch/pub/blv/web`,
+            source_name: 'Legal Knowledge Base (LKB)',
+            source_type: 'legislation',
+            relevance_score: 0.95,
+            verified_source: true
+          });
+        }
+      }
+    }
+
+    console.log(`LKB: Found ${results.length} legal units from database`);
+
+    // Fallback: Check legacy legal_references table
     for (const term of searchTerms.slice(0, 3)) {
       const { data: localRefs } = await supabase
         .from('legal_references')
@@ -50,22 +87,24 @@ serve(async (req) => {
 
       if (localRefs) {
         for (const ref of localRefs) {
-          results.push({
-            title: `${ref.code_name} - Art. ${ref.article_number}`,
-            reference_number: ref.article_number,
-            summary: ref.article_text?.substring(0, 300) || 'Texte non disponible',
-            source_url: ref.source_url || `https://www.fedlex.admin.ch/eli/cc/24/233_245_233/fr#${ref.article_number}`,
-            source_name: 'Base legale interne',
-            source_type: 'legislation',
-            relevance_score: 0.8,
-            verified_source: true
-          });
+          // Only add if not already in results
+          if (!results.find(r => r.reference_number === ref.article_number)) {
+            results.push({
+              title: `${ref.code_name} - Art. ${ref.article_number}`,
+              reference_number: ref.article_number,
+              summary: ref.article_text?.substring(0, 300) || 'Texte non disponible',
+              source_url: ref.source_url || `https://www.fedlex.admin.ch/eli/cc/24/233_245_233/fr#${ref.article_number}`,
+              source_name: 'Base legale interne',
+              source_type: 'legislation',
+              relevance_score: 0.8,
+              verified_source: true
+            });
+          }
         }
       }
     }
 
-    // 2. ALWAYS call legal-verify with force_external for critical legal searches
-    // This ensures Perplexity is used for grounded, verified information
+    // 2. Call legal-verify for additional verification
     try {
       const query = buildLegalQuery(incidentType, dysfonctionnement, faits, institution);
       
