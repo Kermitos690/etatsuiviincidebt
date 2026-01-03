@@ -1,8 +1,8 @@
-import React, { memo } from 'react';
+import React, { memo, useEffect, useState } from 'react';
 import {
   Mail, AlertTriangle, Check, Clock, Brain, MessageSquare, ArrowRight,
   Scale, Paperclip, Download, Loader2, FileText, Image, File, X,
-  ChevronLeft, Building2, RefreshCw, Zap, Trash2, Quote
+  ChevronLeft, Building2, RefreshCw, Zap, Trash2, Quote, Database
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { Email, EmailAttachment, AdvancedAnalysis } from './types';
 import { HighlightedEmailBody, getExtractedCitations } from '@/components/email/HighlightedEmailBody';
+import { supabase } from '@/integrations/supabase/client';
 interface EmailDetailProps {
   email: Email;
   attachments: EmailAttachment[];
@@ -57,6 +58,14 @@ const formatFullDate = (date: string) => {
   });
 };
 
+interface LegalMention {
+  id: string;
+  match_type: string;
+  match_text: string;
+  confidence: number;
+  resolved: boolean;
+}
+
 function EmailDetailInner({
   email,
   attachments,
@@ -75,6 +84,21 @@ function EmailDetailInner({
 }: EmailDetailProps) {
   const analysis = email.ai_analysis;
   const threadAnalysis = email.thread_analysis;
+  const [legalMentions, setLegalMentions] = useState<LegalMention[]>([]);
+
+  // Fetch legal mentions for this email
+  useEffect(() => {
+    const fetchLegalMentions = async () => {
+      const { data } = await supabase
+        .from('email_legal_mentions')
+        .select('id, match_type, match_text, confidence, resolved')
+        .eq('email_id', email.id);
+      if (data) {
+        setLegalMentions(data);
+      }
+    };
+    fetchLegalMentions();
+  }, [email.id]);
 
   return (
     <div className="h-full flex flex-col bg-background rounded-2xl border border-border/50 overflow-hidden animate-slide-in-right">
@@ -141,6 +165,26 @@ function EmailDetailInner({
             <Badge variant="secondary">
               <Building2 className="h-3 w-3 mr-1" />
               {analysis.suggestedInstitution}
+            </Badge>
+          )}
+          {/* Legal mentions badge */}
+          {legalMentions.length > 0 && (
+            <Badge 
+              variant="outline" 
+              className={cn(
+                'gap-1',
+                legalMentions.every(m => m.resolved) 
+                  ? 'border-emerald-500/30 text-emerald-600' 
+                  : 'border-amber-500/30 text-amber-600'
+              )}
+            >
+              <Scale className="h-3 w-3" />
+              {legalMentions.filter(m => m.match_type === 'exact_citation').length || legalMentions.length} réf.
+              {legalMentions.every(m => m.resolved) ? (
+                <Database className="h-3 w-3 text-emerald-500" />
+              ) : (
+                <AlertTriangle className="h-3 w-3 text-amber-500" />
+              )}
             </Badge>
           )}
         </div>

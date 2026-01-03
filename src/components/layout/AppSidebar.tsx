@@ -23,7 +23,8 @@ import {
   User,
   LucideIcon,
   FolderOpen,
-  CalendarPlus
+  CalendarPlus,
+  Scale
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -50,7 +51,7 @@ interface NavCategory {
   items: NavItem[];
 }
 
-// Simplified navigation structure - 4 categories
+// Simplified navigation structure - 5 categories including Legal
 const navCategories: NavCategory[] = [
   {
     id: 'dashboard',
@@ -81,6 +82,15 @@ const navCategories: NavCategory[] = [
       { to: '/nouveau', icon: Plus, label: 'Nouveau' },
       { to: '/factual-dossier', icon: FileText, label: 'Dossier Factuel' },
       { to: '/events', icon: CalendarPlus, label: 'Événements' },
+    ]
+  },
+  {
+    id: 'legal',
+    label: 'Juridique',
+    icon: Scale,
+    items: [
+      { to: '/legal-config', icon: Scale, label: 'Configuration' },
+      { to: '/legal-admin', icon: BookOpen, label: 'Administration LKB' },
     ]
   },
   {
