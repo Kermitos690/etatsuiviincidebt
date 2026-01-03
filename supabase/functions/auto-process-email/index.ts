@@ -193,51 +193,48 @@ ${email.body?.slice(0, 4000) || 'Corps vide'}`;
       console.error('Update error:', updateError);
     }
 
-    // Auto-create incident if conditions are met
-    let incidentCreated = false;
-    let incident = null;
+    // Create a suggestion for validation instead of auto-creating incident
+    let suggestionCreated = false;
+    let suggestion = null;
 
-    if (autoCreate && analysis.isIncident && analysis.confidence >= confidenceThreshold) {
-      // Get next incident number
-      const { data: lastIncident } = await supabase
-        .from('incidents')
-        .select('numero')
-        .order('numero', { ascending: false })
-        .limit(1)
-        .single();
+    if (analysis.isIncident && analysis.confidence >= 30) {
+      // Check if suggestion already exists for this email
+      const { data: existingSuggestion } = await supabase
+        .from('incident_suggestions')
+        .select('id')
+        .eq('email_source_id', emailId)
+        .maybeSingle();
 
-      const nextNumero = (lastIncident?.numero || 0) + 1;
+      if (!existingSuggestion) {
+        const { data: newSuggestion, error: suggestionError } = await supabase
+          .from('incident_suggestions')
+          .insert({
+            user_id: email.user_id,
+            email_source_id: emailId,
+            suggested_title: analysis.suggestedTitle || email.subject,
+            suggested_facts: analysis.suggestedFacts || '',
+            suggested_dysfunction: analysis.suggestedDysfunction || '',
+            suggested_institution: analysis.suggestedInstitution || 'Non spécifié',
+            suggested_type: analysis.suggestedType || 'Communication',
+            suggested_gravity: analysis.suggestedGravity || 'Modéré',
+            confidence: Math.round(analysis.confidence),
+            ai_analysis: analysis,
+            legal_mentions: legalMentions,
+            status: 'pending'
+          })
+          .select()
+          .single();
 
-      const { data: newIncident, error: incidentError } = await supabase
-        .from('incidents')
-        .insert({
-          numero: nextNumero,
-          date_incident: new Date().toISOString().split('T')[0],
-          institution: analysis.suggestedInstitution || 'Non spécifié',
-          type: analysis.suggestedType || 'Communication',
-          gravite: analysis.suggestedGravity || 'Modéré',
-          statut: 'Ouvert',
-          titre: analysis.suggestedTitle || email.subject,
-          faits: analysis.suggestedFacts || '',
-          dysfonctionnement: analysis.suggestedDysfunction || '',
-          score: Math.round(analysis.confidence / 10),
-          priorite: analysis.suggestedGravity === 'Critique' ? 'critique' : 
-                   analysis.suggestedGravity === 'Grave' ? 'eleve' : 'moyen',
-          email_source_id: emailId,
-          user_id: email.user_id
-        })
-        .select()
-        .single();
-
-      if (!incidentError && newIncident) {
-        incidentCreated = true;
-        incident = newIncident;
-
-        // Link email to incident
-        await supabase
-          .from('emails')
-          .update({ incident_id: newIncident.id })
-          .eq('id', emailId);
+        if (!suggestionError && newSuggestion) {
+          suggestionCreated = true;
+          suggestion = newSuggestion;
+          console.log(`[auto-process-email] Created suggestion ${newSuggestion.id} for email ${emailId}`);
+        } else if (suggestionError) {
+          console.error('[auto-process-email] Failed to create suggestion:', suggestionError);
+        }
+      } else {
+        console.log(`[auto-process-email] Suggestion already exists for email ${emailId}`);
+        suggestion = existingSuggestion;
       }
     }
 
@@ -248,8 +245,8 @@ ${email.body?.slice(0, 4000) || 'Corps vide'}`;
         total: legalMentions.length,
         resolved: legalMentions.filter((m: any) => m.resolved).length,
       },
-      incidentCreated,
-      incident,
+      suggestionCreated,
+      suggestion,
       dbFirstEnforced: true,
     }), {
       headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' }

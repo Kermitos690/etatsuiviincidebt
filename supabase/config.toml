@@ -128,3 +128,7 @@ verify_jwt = true
 # DANGEROUS - Admin only (has internal role check)
 [functions.hard-data-reset]
 verify_jwt = true
+
+# Approve suggestion to create incident
+[functions.approve-suggestion]
+verify_jwt = true
