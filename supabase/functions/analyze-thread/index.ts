@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { getCorsHeaders, corsHeaders, log } from "../_shared/core.ts";
+import { verifyAuth, unauthorizedResponse } from "../_shared/auth.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -7,6 +8,12 @@ serve(async (req) => {
   }
 
   try {
+    // Verify authentication
+    const { user, error: authError } = await verifyAuth(req);
+    if (authError || !user) {
+      return unauthorizedResponse(authError || 'Authentication required');
+    }
+
     const { threadId, messages } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 

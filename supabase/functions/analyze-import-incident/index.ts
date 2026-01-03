@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, corsHeaders, log } from "../_shared/core.ts";
+import { verifyAuth, unauthorizedResponse, createServiceClient } from "../_shared/auth.ts";
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -8,7 +9,13 @@ serve(async (req) => {
   }
 
   try {
-    const { content, userId } = await req.json();
+    // Verify authentication
+    const { user, error: authError } = await verifyAuth(req);
+    if (authError || !user) {
+      return unauthorizedResponse(authError || 'Authentication required');
+    }
+
+    const { content } = await req.json();
 
     if (!content || content.trim().length < 50) {
       return new Response(
@@ -17,21 +24,22 @@ serve(async (req) => {
       );
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    // Récupérer les incidents existants pour détecter les liens
-    let existingIncidents: any[] = [];
-    if (userId) {
-      const { data } = await supabase
-        .from('incidents')
-        .select('id, numero, titre, faits, dysfonctionnement, institution, type')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(50);
-      existingIncidents = data || [];
+    const supabase = createServiceClient();
+    if (!supabase) {
+      return new Response(JSON.stringify({ error: 'Server configuration error' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
+
+    // Récupérer les incidents existants pour détecter les liens - use authenticated user
+    const { data } = await supabase
+      .from('incidents')
+      .select('id, numero, titre, faits, dysfonctionnement, institution, type')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    const existingIncidents = data || [];
 
     // Appeler l'IA pour analyser le contenu
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, corsHeaders, log } from "../_shared/core.ts";
+import { verifyAuth, unauthorizedResponse, createServiceClient } from "../_shared/auth.ts";
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -8,6 +9,12 @@ serve(async (req) => {
   }
 
   try {
+    // Verify authentication
+    const { user, error: authError } = await verifyAuth(req);
+    if (authError || !user) {
+      return unauthorizedResponse(authError || 'Authentication required');
+    }
+
     const { emailId, threadId, analyzeThread = false } = await req.json();
 
     if (!emailId) {
@@ -17,9 +24,28 @@ serve(async (req) => {
       });
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = createServiceClient();
+    if (!supabase) {
+      return new Response(JSON.stringify({ error: 'Server configuration error' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Verify email ownership
+    const { data: emailCheck } = await supabase
+      .from('emails')
+      .select('id')
+      .eq('id', emailId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (!emailCheck) {
+      return new Response(JSON.stringify({ error: 'Email not found or access denied' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
 
     // Get the email(s)
     let emails = [];
