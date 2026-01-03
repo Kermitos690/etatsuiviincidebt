@@ -1,11 +1,14 @@
-import { FileText, Download, Trash2, Loader2, Clock, FileCheck } from 'lucide-react';
+import { FileText, Download, Trash2, Clock, FileCheck, Eye } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useIncidentExports, IncidentExport } from '@/hooks/useIncidentExports';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,6 +20,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface ExportedDocumentsProps {
   incidentId: string | undefined;
@@ -24,6 +33,30 @@ interface ExportedDocumentsProps {
 
 export function ExportedDocuments({ incidentId }: ExportedDocumentsProps) {
   const { exports, loading, downloadExport, deleteExport, refetch } = useIncidentExports(incidentId);
+  const [viewingPdf, setViewingPdf] = useState<string | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+
+  const viewExport = async (exp: IncidentExport) => {
+    try {
+      // Get signed URL for viewing
+      const { data, error } = await supabase.storage
+        .from('incident-exports')
+        .createSignedUrl(exp.storage_path, 300); // 5 minutes
+
+      if (error) throw error;
+
+      setPdfUrl(data.signedUrl);
+      setViewingPdf(exp.id);
+    } catch (err) {
+      console.error('View error:', err);
+      toast.error('Impossible d\'afficher le PDF');
+    }
+  };
+
+  const closeViewer = () => {
+    setViewingPdf(null);
+    setPdfUrl(null);
+  };
 
   if (loading) {
     return (
@@ -50,6 +83,13 @@ export function ExportedDocuments({ incidentId }: ExportedDocumentsProps) {
            exp.export_options?.includeDeepAnalysis;
   };
 
+  const getVersion = (exp: IncidentExport) => {
+    // Extract version from filename (e.g., _V2.pdf)
+    const match = exp.file_name.match(/_V(\d+)\.pdf$/i);
+    if (match) return parseInt(match[1], 10);
+    return exp.version || 1;
+  };
+
   const formatFileSize = (bytes: number | null) => {
     if (!bytes) return 'N/A';
     if (bytes < 1024) return `${bytes} B`;
@@ -58,101 +98,130 @@ export function ExportedDocuments({ incidentId }: ExportedDocumentsProps) {
   };
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Documents générés ({exports.length})
-          </CardTitle>
-          {exports.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={refetch}>
-              <Clock className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent>
-        {exports.length === 0 ? (
-          <div className="text-center py-6">
-            <FileCheck className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-            <p className="text-sm text-muted-foreground">
-              Aucun document généré pour cet incident.
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Cliquez sur "PDF" ou "PDF+" pour générer un rapport.
-            </p>
+    <>
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Documents générés ({exports.length})
+            </CardTitle>
+            {exports.length > 0 && (
+              <Button variant="ghost" size="sm" onClick={refetch}>
+                <Clock className="h-4 w-4" />
+              </Button>
+            )}
           </div>
-        ) : (
-          <div className="space-y-3">
-            {exports.map((exp) => (
-              <div 
-                key={exp.id}
-                className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors"
-              >
-                <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-primary" />
-                </div>
-                
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium text-sm truncate">{exp.file_name}</p>
-                    {isPdfPlus(exp) && (
-                      <Badge variant="secondary" className="text-xs">PDF+</Badge>
-                    )}
+        </CardHeader>
+        <CardContent>
+          {exports.length === 0 ? (
+            <div className="text-center py-6">
+              <FileCheck className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+              <p className="text-sm text-muted-foreground">
+                Aucun document généré pour cet incident.
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Cliquez sur "PDF" ou "PDF+" pour générer un rapport.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {exports.map((exp) => (
+                <div 
+                  key={exp.id}
+                  className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <FileText className="h-5 w-5 text-primary" />
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{format(new Date(exp.created_at), "d MMM yyyy 'à' HH:mm", { locale: fr })}</span>
-                    <span>•</span>
-                    <span>{formatFileSize(exp.file_size_bytes)}</span>
-                  </div>
-                </div>
-
-                <div className="flex gap-1">
-                  <Button 
-                    variant="ghost" 
-                    size="icon"
-                    onClick={() => downloadExport(exp)}
-                    title="Télécharger"
-                  >
-                    <Download className="h-4 w-4" />
-                  </Button>
                   
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        className="text-destructive hover:text-destructive"
-                        title="Supprimer"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Supprimer ce document ?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Cette action est irréversible. Le fichier sera supprimé définitivement.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Annuler</AlertDialogCancel>
-                        <AlertDialogAction 
-                          onClick={() => deleteExport(exp)}
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium text-sm truncate max-w-[180px]">{exp.file_name}</p>
+                      <Badge variant="outline" className="text-xs">V{getVersion(exp)}</Badge>
+                      {isPdfPlus(exp) && (
+                        <Badge variant="secondary" className="text-xs bg-primary/20 text-primary">PDF+</Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>{format(new Date(exp.created_at), "d MMM yyyy 'à' HH:mm", { locale: fr })}</span>
+                      <span>•</span>
+                      <span>{formatFileSize(exp.file_size_bytes)}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-1">
+                    <Button 
+                      variant="ghost" 
+                      size="icon"
+                      onClick={() => viewExport(exp)}
+                      title="Afficher"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="icon"
+                      onClick={() => downloadExport(exp)}
+                      title="Télécharger"
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                    
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          className="text-destructive hover:text-destructive"
+                          title="Supprimer"
                         >
-                          Supprimer
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Supprimer ce document ?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Cette action est irréversible. Le fichier sera supprimé définitivement.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Annuler</AlertDialogCancel>
+                          <AlertDialogAction 
+                            onClick={() => deleteExport(exp)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Supprimer
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* PDF Viewer Dialog */}
+      <Dialog open={!!viewingPdf} onOpenChange={(open) => !open && closeViewer()}>
+        <DialogContent className="max-w-4xl h-[85vh]">
+          <DialogHeader>
+            <DialogTitle>Aperçu du document</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 h-full min-h-0">
+            {pdfUrl && (
+              <iframe 
+                src={pdfUrl} 
+                className="w-full h-[calc(85vh-80px)] rounded-lg border"
+                title="PDF Preview"
+              />
+            )}
           </div>
-        )}
-      </CardContent>
-    </Card>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
