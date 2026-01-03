@@ -83,3 +83,21 @@ verify_jwt = false
 
 [functions.search-incident-legal-context]
 verify_jwt = false
+
+[functions.seed-complete-laws]
+verify_jwt = false
+
+[functions.legal-text-ingestion]
+verify_jwt = false
+
+[functions.legal-query-api]
+verify_jwt = false
+
+[functions.email-legal-detection]
+verify_jwt = false
+
+[functions.perplexity-verifier]
+verify_jwt = false
+
+[functions.claim-builder]
+verify_jwt = false
