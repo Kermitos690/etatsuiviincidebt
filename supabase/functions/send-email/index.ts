@@ -1,9 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { getCorsHeaders, corsHeaders, log } from "../_shared/core.ts";
+import { corsHeaders, log } from "../_shared/core.ts";
+import { verifyAuth, unauthorizedResponse } from "../_shared/auth.ts";
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Authentication required
+  const { user, error: authError } = await verifyAuth(req);
+  if (authError || !user) {
+    log('warn', 'Unauthorized attempt to send email');
+    return unauthorizedResponse('Authentication required to send emails');
   }
 
   try {
@@ -15,6 +23,8 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
+
+    log('info', `Sending email to ${to} by user ${user.id}`);
 
     const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
     if (!RESEND_API_KEY) {
@@ -49,6 +59,7 @@ serve(async (req) => {
     }
 
     const data = await response.json();
+    log('info', `Email sent successfully: ${data.id}`);
     
     return new Response(JSON.stringify({ 
       success: true, 
