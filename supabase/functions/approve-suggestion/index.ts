@@ -78,12 +78,49 @@ serve(async (req) => {
         return errorResponse('Failed to update suggestion', 500);
       }
 
-      console.log(`Suggestion ${suggestionId} marked as ${action}`);
+      // Record AI training feedback for rejected/low_importance suggestions
+      await supabase.from('ai_training_feedback').insert({
+        user_id: user.id,
+        entity_id: suggestionId,
+        entity_type: 'incident_suggestion',
+        feedback_type: action === 'reject' ? 'false_positive' : 'low_importance',
+        original_detection: suggestion.ai_analysis,
+        user_correction: {
+          action,
+          reason: rejectionReason || null,
+          suggested_title: suggestion.suggested_title,
+          suggested_gravity: suggestion.suggested_gravity,
+          confidence: suggestion.confidence
+        },
+        notes: rejectionReason || `Suggestion marked as ${action}`,
+        used_for_training: false
+      });
+
+      // Also create ai_situation_training record for future model improvements
+      if (suggestion.email_source_id) {
+        await supabase.from('ai_situation_training').insert({
+          user_id: user.id,
+          email_id: suggestion.email_source_id,
+          situation_summary: `${suggestion.suggested_title}\n\n${suggestion.suggested_facts || ''}`,
+          detected_violation_type: suggestion.suggested_type,
+          detected_legal_refs: suggestion.legal_mentions || [],
+          ai_confidence: (suggestion.confidence || 0) / 100,
+          ai_reasoning: suggestion.ai_analysis?.summary || null,
+          validation_status: action === 'reject' ? 'rejected' : 'low_priority',
+          user_correction: action === 'reject' ? 'Faux positif - pas un incident' : 'Peu important',
+          correction_notes: rejectionReason || null,
+          training_priority: action === 'reject' ? 8 : 3, // Higher priority for false positives
+          is_used_for_training: false
+        });
+      }
+
+      console.log(`Suggestion ${suggestionId} marked as ${action}, training feedback recorded`);
 
       return successResponse({
         success: true,
         action,
-        suggestion: { id: suggestionId, status: action }
+        suggestion: { id: suggestionId, status: action },
+        trainingRecorded: true
       });
     }
 
@@ -168,13 +205,50 @@ serve(async (req) => {
         event_description: `Incident créé depuis la suggestion #${suggestionId.slice(0, 8)}`,
       });
 
-    console.log(`Suggestion ${suggestionId} approved, incident ${newIncident.id} created`);
+    // Record AI training feedback for approved suggestions (positive reinforcement)
+    await supabase.from('ai_training_feedback').insert({
+      user_id: user.id,
+      entity_id: suggestionId,
+      entity_type: 'incident_suggestion',
+      feedback_type: 'validated',
+      original_detection: suggestion.ai_analysis,
+      user_correction: {
+        action: 'approved',
+        modifications: modifications || null,
+        incident_id: newIncident.id,
+        confidence: suggestion.confidence
+      },
+      notes: modifications ? 'Approved with modifications' : 'Approved as-is',
+      used_for_training: false
+    });
+
+    // Create ai_situation_training record for validated cases
+    if (suggestion.email_source_id) {
+      await supabase.from('ai_situation_training').insert({
+        user_id: user.id,
+        email_id: suggestion.email_source_id,
+        incident_id: newIncident.id,
+        situation_summary: `${finalTitle}\n\n${finalFacts || ''}`,
+        detected_violation_type: finalType,
+        detected_legal_refs: suggestion.legal_mentions || [],
+        ai_confidence: (suggestion.confidence || 0) / 100,
+        ai_reasoning: suggestion.ai_analysis?.summary || null,
+        validation_status: modifications ? 'corrected' : 'validated',
+        user_correction: modifications ? JSON.stringify(modifications) : null,
+        correct_legal_refs: suggestion.legal_mentions || [],
+        training_priority: 5, // Medium priority for validated cases
+        is_used_for_training: false
+      });
+    }
+
+    console.log(`Suggestion ${suggestionId} approved, incident ${newIncident.id} created, training feedback recorded`);
 
     return successResponse({
       success: true,
       action: 'approved',
       incident: newIncident,
-      suggestion: { id: suggestionId, status: 'approved' }
+      suggestion: { id: suggestionId, status: 'approved' },
+      trainingRecorded: true
     });
 
   } catch (error: unknown) {
