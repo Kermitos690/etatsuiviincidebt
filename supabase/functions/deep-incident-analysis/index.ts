@@ -98,41 +98,74 @@ serve(async (req) => {
       });
     }
 
-    // Build email context
+    // Build email context with numbered references
     const emailContext = (emails || []).map((e: EmailData, i: number) => 
-      `[Email ${i + 1}] De: ${e.sender} | Date: ${e.received_at}\nObjet: ${e.subject}\n${e.body.substring(0, 2000)}`
-    ).join('\n\n---\n\n');
+      `[EMAIL ${i + 1}]\nDate: ${e.received_at}\nDe: ${e.sender}\nA: ${e.recipient || 'N/A'}\nObjet: ${e.subject}\n---\n${e.body.substring(0, 2500)}\n---`
+    ).join('\n\n');
 
-    const systemPrompt = `Tu es un expert juridique suisse spécialisé dans l'analyse approfondie de dysfonctionnements institutionnels et de protection de l'adulte.
+    // Enhanced system prompt for maximum legal precision
+    const systemPrompt = `Tu es un expert juridique suisse specialise dans l'analyse approfondie de dysfonctionnements institutionnels, la protection de l'adulte et la procedure administrative.
 
-Ton rôle est d'analyser les faits et emails pour produire une analyse structurée comprenant:
-1. Chaîne causale: identifier les causes, citations exactes, conséquences et impacts
-2. Excuses vs obligations légales: détecter les excuses avancées et les confronter aux obligations légales suisses
-3. Contradictions comportementales: repérer les incohérences dans les actions des acteurs
-4. Analyse des délais: identifier les délais légaux violés ou en danger
-5. Défaillances en cascade: montrer comment une erreur entraîne les suivantes
-6. Responsabilités: attribuer les responsabilités avec score de sévérité (1-10)
-7. Synthèse: dysfonctionnement principal, cause racine, facteurs aggravants, droits violés, actions recommandées
+REGLES STRICTES D'ANALYSE:
 
-Tu dois retourner un JSON structuré conforme au schéma DeepAnalysisResult.
-Cite toujours des passages exacts des emails entre guillemets.
-Référence les articles de loi suisse pertinents (CC, CPC, CPA, LPJA, etc.).`;
+1. CITATIONS EXACTES OBLIGATOIRES
+   - Chaque affirmation DOIT etre appuyee par une citation VERBATIM des emails
+   - Format: "Citation exacte" [EMAIL X, Date]
+   - JAMAIS de paraphrase ou de resume sans citation
+   - Si tu ne peux pas citer, ecris "Aucune citation disponible"
 
-    const userPrompt = `Analyse approfondie de l'incident suivant:
+2. REFERENCES LEGALES PRECISES
+   - Cite UNIQUEMENT des articles de loi suisse que tu connais avec certitude
+   - Format obligatoire: "Art. XXX al. Y Code/Loi (ex: Art. 389 al. 2 CC)"
+   - Codes valides: CC (Code civil), CO (Code des obligations), CPC (Code de procedure civile), 
+     CPA (Code de procedure administrative), LPA-VD (Loi procedure administrative Vaud), 
+     LVPAE (Loi vaudoise protection adulte enfant), LPD (Loi protection donnees)
+   - Si incertain de l'article exact, ecris "Base legale a verifier"
+   - NE JAMAIS inventer un numero d'article
 
-INSTITUTION: ${institution}
-TYPE: ${incidentType}
+3. CHRONOLOGIE ET DELAIS
+   - Identifie les dates precises mentionnees dans les emails
+   - Calcule les delais reels (jours) entre evenements
+   - Compare aux delais legaux: 30 jours (decision administrative), 10 jours (recours)
+   - Signale tout depassement avec la citation source
 
-FAITS CONSTATÉS:
-${faits}
+4. ANALYSE DES ACTEURS
+   - Identifie chaque acteur par son role institutionnel
+   - Documente ses engagements vs ses actions
+   - Releve les contradictions avec preuves
 
-DYSFONCTIONNEMENT:
-${dysfonctionnement}
+5. HIERARCHIE DES GRAVITES
+   - minor: Retard < 15 jours, oubli sans consequence
+   - moderate: Retard 15-60 jours, manque communication, procedure incomplète
+   - major: Retard > 60 jours, violation droits fondamentaux, prejudice grave
 
-CORRESPONDANCE EMAIL:
+INSTITUTION: ${institution || 'Non specifiee'}
+TYPE D'INCIDENT: ${incidentType || 'Non specifie'}
+
+Retourne un JSON structure conforme au schema DeepAnalysisResult.`;
+
+    const userPrompt = `ANALYSE APPROFONDIE REQUISE
+
+FAITS CONSTATES:
+${faits || 'Non fournis'}
+
+DYSFONCTIONNEMENT SIGNALE:
+${dysfonctionnement || 'Non specifie'}
+
+CORRESPONDANCE EMAIL (${(emails || []).length} messages):
 ${emailContext || 'Aucun email fourni'}
 
-Produis une analyse JSON complète selon le schéma DeepAnalysisResult. Sois exhaustif et cite des passages exacts.`;
+INSTRUCTIONS:
+1. Lis attentivement chaque email
+2. Extrait les citations exactes pertinentes (avec [EMAIL X, Date])
+3. Identifie la chaine causale des evenements
+4. Detecte les excuses vs obligations legales
+5. Releve les contradictions comportementales
+6. Analyse les delais (calcul precis en jours)
+7. Etablis les responsabilites avec score de severite (1-10)
+8. Produis une synthese avec cause racine et actions recommandees
+
+ATTENTION: Ne cite JAMAIS un article de loi dont tu n'es pas certain de l'existence.`;
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -150,51 +183,54 @@ Produis une analyse JSON complète selon le schéma DeepAnalysisResult. Sois exh
           type: 'function',
           function: {
             name: 'deep_analysis',
-            description: 'Retourne une analyse approfondie structurée de l\'incident',
+            description: 'Retourne une analyse approfondie structuree de l\'incident avec citations exactes',
             parameters: {
               type: 'object',
               properties: {
                 causal_chain: {
                   type: 'array',
+                  description: 'Chaine causale des evenements avec citations verbatim',
                   items: {
                     type: 'object',
                     properties: {
-                      cause: { type: 'string' },
-                      citation: { type: 'string' },
-                      consequence: { type: 'string' },
-                      impact: { type: 'string' },
-                      date: { type: 'string' }
+                      cause: { type: 'string', description: 'Cause identifiee' },
+                      citation: { type: 'string', description: 'Citation EXACTE de l\'email avec [EMAIL X, Date]' },
+                      consequence: { type: 'string', description: 'Consequence directe' },
+                      impact: { type: 'string', description: 'Impact sur la personne concernee' },
+                      date: { type: 'string', description: 'Date de l\'evenement si connue' }
                     },
                     required: ['cause', 'citation', 'consequence', 'impact']
                   }
                 },
                 excuses_detected: {
                   type: 'array',
+                  description: 'Excuses avancees vs obligations legales',
                   items: {
                     type: 'object',
                     properties: {
-                      actor: { type: 'string' },
-                      excuse: { type: 'string' },
-                      citation: { type: 'string' },
-                      legal_obligation: { type: 'string' },
-                      legal_article: { type: 'string' },
-                      is_valid: { type: 'boolean' },
-                      counter_argument: { type: 'string' }
+                      actor: { type: 'string', description: 'Nom/role de l\'acteur' },
+                      excuse: { type: 'string', description: 'Excuse avancee' },
+                      citation: { type: 'string', description: 'Citation exacte de l\'excuse' },
+                      legal_obligation: { type: 'string', description: 'Obligation legale correspondante' },
+                      legal_article: { type: 'string', description: 'Article de loi precis (ex: Art. 389 al. 2 CC) ou "Base legale a verifier"' },
+                      is_valid: { type: 'boolean', description: 'L\'excuse est-elle juridiquement valable?' },
+                      counter_argument: { type: 'string', description: 'Contre-argument juridique' }
                     },
                     required: ['actor', 'excuse', 'legal_obligation', 'is_valid', 'counter_argument']
                   }
                 },
                 behavioral_contradictions: {
                   type: 'array',
+                  description: 'Contradictions dans le comportement des acteurs',
                   items: {
                     type: 'object',
                     properties: {
                       actor: { type: 'string' },
-                      action_1: { type: 'string' },
+                      action_1: { type: 'string', description: 'Premiere action/declaration' },
                       action_1_date: { type: 'string' },
-                      action_2: { type: 'string' },
+                      action_2: { type: 'string', description: 'Action/declaration contradictoire' },
                       action_2_date: { type: 'string' },
-                      contradiction: { type: 'string' },
+                      contradiction: { type: 'string', description: 'Explication de la contradiction' },
                       severity: { type: 'string', enum: ['minor', 'moderate', 'major'] }
                     },
                     required: ['actor', 'action_1', 'action_2', 'contradiction', 'severity']
@@ -202,64 +238,69 @@ Produis une analyse JSON complète selon le schéma DeepAnalysisResult. Sois exh
                 },
                 deadline_analysis: {
                   type: 'array',
+                  description: 'Analyse des delais avec calculs precis',
                   items: {
                     type: 'object',
                     properties: {
-                      event: { type: 'string' },
-                      event_date: { type: 'string' },
-                      deadline_date: { type: 'string' },
-                      legal_deadline_days: { type: 'number' },
-                      remaining_days: { type: 'number' },
-                      impact: { type: 'string' },
-                      citation: { type: 'string' },
-                      legal_basis: { type: 'string' }
+                      event: { type: 'string', description: 'Evenement declencheur' },
+                      event_date: { type: 'string', description: 'Date de l\'evenement (format ISO ou texte)' },
+                      deadline_date: { type: 'string', description: 'Date limite calculee' },
+                      legal_deadline_days: { type: 'number', description: 'Delai legal en jours' },
+                      remaining_days: { type: 'number', description: 'Jours restants (negatif si depasse)' },
+                      impact: { type: 'string', description: 'Impact du depassement eventuel' },
+                      citation: { type: 'string', description: 'Citation source' },
+                      legal_basis: { type: 'string', description: 'Base legale du delai (Art. X Loi)' }
                     },
                     required: ['event', 'impact', 'legal_basis']
                   }
                 },
                 cascade_failures: {
                   type: 'array',
+                  description: 'Defaillances en cascade',
                   items: {
                     type: 'object',
                     properties: {
-                      step: { type: 'number' },
-                      failure: { type: 'string' },
+                      step: { type: 'number', description: 'Numero d\'etape (1, 2, 3...)' },
+                      failure: { type: 'string', description: 'Description de la defaillance' },
                       date: { type: 'string' },
-                      leads_to: { type: 'string' },
-                      responsibility: { type: 'string' }
+                      leads_to: { type: 'string', description: 'Consequence directe menant a l\'etape suivante' },
+                      responsibility: { type: 'string', description: 'Acteur responsable' }
                     },
                     required: ['step', 'failure', 'leads_to', 'responsibility']
                   }
                 },
                 responsibilities: {
                   type: 'array',
+                  description: 'Attribution des responsabilites avec scores',
                   items: {
                     type: 'object',
                     properties: {
-                      actor: { type: 'string' },
-                      role: { type: 'string' },
-                      failures: { type: 'array', items: { type: 'string' } },
-                      legal_violations: { type: 'array', items: { type: 'string' } },
-                      mitigating_factors: { type: 'array', items: { type: 'string' } },
-                      severity_score: { type: 'number' }
+                      actor: { type: 'string', description: 'Nom ou role de l\'acteur' },
+                      role: { type: 'string', description: 'Fonction institutionnelle' },
+                      failures: { type: 'array', items: { type: 'string' }, description: 'Liste des manquements' },
+                      legal_violations: { type: 'array', items: { type: 'string' }, description: 'Articles de loi violes (format: Art. X Loi)' },
+                      mitigating_factors: { type: 'array', items: { type: 'string' }, description: 'Facteurs attenuants' },
+                      severity_score: { type: 'number', description: 'Score de severite de 1 (mineur) a 10 (tres grave)' }
                     },
                     required: ['actor', 'role', 'failures', 'severity_score']
                   }
                 },
                 synthesis: {
                   type: 'object',
+                  description: 'Synthese globale de l\'analyse',
                   properties: {
-                    main_dysfunction: { type: 'string' },
-                    root_cause: { type: 'string' },
-                    aggravating_factors: { type: 'array', items: { type: 'string' } },
-                    rights_violated: { type: 'array', items: { type: 'string' } },
-                    recommended_actions: { type: 'array', items: { type: 'string' } },
-                    severity_assessment: { type: 'string' }
+                    main_dysfunction: { type: 'string', description: 'Dysfonctionnement principal identifie' },
+                    root_cause: { type: 'string', description: 'Cause racine du probleme' },
+                    aggravating_factors: { type: 'array', items: { type: 'string' }, description: 'Facteurs aggravants' },
+                    rights_violated: { type: 'array', items: { type: 'string' }, description: 'Droits fondamentaux violes (avec base legale)' },
+                    recommended_actions: { type: 'array', items: { type: 'string' }, description: 'Actions recommandees (concretes et realisables)' },
+                    severity_assessment: { type: 'string', description: 'Evaluation globale de la gravite avec justification' }
                   },
                   required: ['main_dysfunction', 'root_cause', 'severity_assessment']
                 }
               },
-              required: ['causal_chain', 'synthesis']
+              required: ['causal_chain', 'synthesis'],
+              additionalProperties: false
             }
           }
         }],
@@ -299,9 +340,17 @@ Produis une analyse JSON complète selon le schéma DeepAnalysisResult. Sois exh
 
     const analysis: DeepAnalysisResult = JSON.parse(toolCall.function.arguments);
 
+    // Validate that citations are present
+    const hasCitations = analysis.causal_chain?.some(c => c.citation && c.citation.length > 10);
+    
     return new Response(JSON.stringify({ 
       success: true, 
-      analysis 
+      analysis,
+      metadata: {
+        emailsAnalyzed: (emails || []).length,
+        hasCitations,
+        model: 'google/gemini-2.5-flash'
+      }
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

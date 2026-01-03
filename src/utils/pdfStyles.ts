@@ -327,85 +327,112 @@ export function normalizeTextForPdf(text: string, options: {
   
   let normalized = text;
   
-  // Fix UTF-8 double encoding (mojibake) - Extended mapping
-  const encodingFixes: [RegExp, string][] = [
-    // Common UTF-8 double-encoded characters -> ASCII equivalents
-    [/Ã©/g, 'e'],
-    [/Ã¨/g, 'e'],
-    [/Ã /g, 'a'],
-    [/Ã¢/g, 'a'],
-    [/Ãª/g, 'e'],
-    [/Ã®/g, 'i'],
-    [/Ã´/g, 'o'],
-    [/Ã»/g, 'u'],
-    [/Ã§/g, 'c'],
-    [/Ã¹/g, 'u'],
-    [/Ã¼/g, 'u'],
-    [/Ã¤/g, 'a'],
-    [/Ã¶/g, 'o'],
-    [/Ã«/g, 'e'],
-    [/Ã¯/g, 'i'],
-    [/Ã¿/g, 'y'],
-    [/Ã€/g, 'A'],
-    [/Ã‰/g, 'E'],
-    [/Ã‹/g, 'E'],
-    [/Ãˆ/g, 'E'],
-    [/Ã"/g, 'O'],
-    [/Ãœ/g, 'U'],
-    [/Å"/g, 'oe'],
-    [/Å'/g, 'OE'],
-    [/Â©/g, '(c)'],
-    [/Â«/g, '"'],
-    [/Â»/g, '"'],
-    [/Â°/g, 'deg'],
-    [/Â€/g, 'EUR'],
-    
-    // Smart quotes and dashes (Windows-1252 to UTF-8)
-    [/â€™/g, "'"],
-    [/â€˜/g, "'"],
-    [/â€œ/g, '"'],
-    [/â€/g, '"'],
-    [/â€"/g, '-'],
-    [/â€¦/g, '...'],
-    [/Â·/g, '.'],
-    [/â€¢/g, '-'],
-    [/â‚¬/g, 'EUR'],
-    
-    // Corrupted UTF-8 bytes (Â prefix issue)
-    [/Â\s/g, ' '],
-    [/Â(?=[a-zA-Z])/gi, ''],
-    
-    // HTML entities
-    [/&amp;/g, '&'],
-    [/&lt;/g, '<'],
-    [/&gt;/g, '>'],
-    [/&quot;/g, '"'],
-    [/&#39;/g, "'"],
-    [/&apos;/g, "'"],
-    [/&nbsp;/g, ' '],
-    [/&#x26;/g, '&'],
-    [/&#x27;/g, "'"],
-    [/&#x22;/g, '"'],
-    [/&#xA0;/g, ' '],
-    [/&#160;/g, ' '],
-    
-    // Non-breaking spaces
-    [/\u00A0/g, ' '],
-    [/\u200B/g, ''], // Zero-width space
-    [/\u200C/g, ''], // Zero-width non-joiner
-    [/\u200D/g, ''], // Zero-width joiner
-    [/\uFEFF/g, ''], // BOM
-    
-    // Fix common Windows line endings issues
-    [/\r\n/g, '\n'],
-    [/\r/g, '\n'],
+  // ============================================
+  // PHASE 1: UTF-8 double encoding (mojibake) fixes - EXHAUSTIVE
+  // ============================================
+  const mojibakeFixes: [RegExp, string][] = [
+    // Common French accented characters (double-encoded UTF-8)
+    [/Ã©/g, 'e'], [/Ã¨/g, 'e'], [/Ã /g, 'a'], [/Ã¢/g, 'a'],
+    [/Ãª/g, 'e'], [/Ã®/g, 'i'], [/Ã´/g, 'o'], [/Ã»/g, 'u'],
+    [/Ã§/g, 'c'], [/Ã¹/g, 'u'], [/Ã¼/g, 'u'], [/Ã¤/g, 'a'],
+    [/Ã¶/g, 'o'], [/Ã«/g, 'e'], [/Ã¯/g, 'i'], [/Ã¿/g, 'y'],
+    [/Ã€/g, 'A'], [/Ã‰/g, 'E'], [/Ã‹/g, 'E'], [/Ãˆ/g, 'E'],
+    [/Ã"/g, 'O'], [/Ãœ/g, 'U'],
+    // Swiss/German specific
+    [/Ã¤/g, 'a'], [/Ã¶/g, 'o'], [/Ã¼/g, 'u'],
+    // Ligatures
+    [/Å"/g, 'oe'], [/Å'/g, 'OE'], [/Ã¦/g, 'ae'], [/Ã†/g, 'AE'],
+    // Symbols
+    [/Â©/g, '(c)'], [/Â«/g, '"'], [/Â»/g, '"'], [/Â°/g, ' deg'],
+    [/Â€/g, 'EUR'], [/Â£/g, 'GBP'],
+    // Smart quotes and dashes (Windows-1252 corrupted)
+    [/â€™/g, "'"], [/â€˜/g, "'"], [/â€œ/g, '"'], [/â€/g, '"'],
+    [/â€"/g, '-'], [/â€"/g, '-'], [/â€¦/g, '...'],
+    [/Â·/g, '.'], [/â€¢/g, '-'], [/â‚¬/g, 'EUR'],
+    // Corrupted Â prefix (common UTF-8 artifact)
+    [/Â\s/g, ' '], [/Â(?=[a-zA-Z])/gi, ''],
   ];
   
-  for (const [pattern, replacement] of encodingFixes) {
+  for (const [pattern, replacement] of mojibakeFixes) {
     normalized = normalized.replace(pattern, replacement);
   }
   
-  // Remove excessive citation lines (> character at start)
+  // ============================================
+  // PHASE 2: Direct Unicode to ASCII conversion (for Latin-1 compatibility)
+  // ============================================
+  const unicodeToAscii: Record<string, string> = {
+    // French accents -> ASCII equivalents
+    'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e', 'É': 'E', 'È': 'E', 'Ê': 'E', 'Ë': 'E',
+    'à': 'a', 'â': 'a', 'ä': 'a', 'À': 'A', 'Â': 'A', 'Ä': 'A',
+    'ù': 'u', 'û': 'u', 'ü': 'u', 'Ù': 'U', 'Û': 'U', 'Ü': 'U',
+    'î': 'i', 'ï': 'i', 'Î': 'I', 'Ï': 'I',
+    'ô': 'o', 'ö': 'o', 'Ô': 'O', 'Ö': 'O',
+    'ç': 'c', 'Ç': 'C',
+    'ÿ': 'y', 'Ÿ': 'Y',
+    'ñ': 'n', 'Ñ': 'N',
+    // Ligatures
+    'œ': 'oe', 'Œ': 'OE', 'æ': 'ae', 'Æ': 'AE',
+    'ß': 'ss',
+    // Quotation marks (using Unicode escapes to avoid parsing issues)
+    '\u2018': "'", '\u2019': "'", '\u201C': '"', '\u201D': '"',
+    '\u00AB': '"', '\u00BB': '"',
+    '\u2039': "'", '\u203A': "'",
+    // Dashes and special
+    '–': '-', '—': '-', '−': '-',
+    '…': '...',
+    '•': '-', '·': '.',
+    '°': ' deg',
+    '€': 'EUR', '£': 'GBP', '¥': 'JPY', '¢': 'c',
+    '©': '(c)', '®': '(R)', '™': '(TM)',
+    '×': 'x', '÷': '/',
+    '±': '+/-',
+    '¼': '1/4', '½': '1/2', '¾': '3/4',
+    '¹': '1', '²': '2', '³': '3',
+    // Arrows
+    '→': '->', '←': '<-', '↑': '^', '↓': 'v',
+    '⇒': '=>', '⇐': '<=',
+    // Checkmarks and symbols
+    '✓': 'OK', '✔': 'OK', '✗': 'X', '✘': 'X',
+    '⚠': '!', '★': '*', '☆': '*',
+    // Spaces
+    '\u00A0': ' ', // Non-breaking space
+    '\u200B': '',  // Zero-width space
+    '\u200C': '',  // Zero-width non-joiner
+    '\u200D': '',  // Zero-width joiner
+    '\uFEFF': '',  // BOM
+    '\u2003': ' ', // Em space
+    '\u2002': ' ', // En space
+    '\u2009': ' ', // Thin space
+  };
+  
+  for (const [char, replacement] of Object.entries(unicodeToAscii)) {
+    normalized = normalized.split(char).join(replacement);
+  }
+  
+  // ============================================
+  // PHASE 3: HTML entities
+  // ============================================
+  const htmlEntities: [RegExp, string][] = [
+    [/&amp;/g, '&'], [/&lt;/g, '<'], [/&gt;/g, '>'],
+    [/&quot;/g, '"'], [/&#39;/g, "'"], [/&apos;/g, "'"],
+    [/&nbsp;/g, ' '], [/&#x26;/g, '&'], [/&#x27;/g, "'"],
+    [/&#x22;/g, '"'], [/&#xA0;/g, ' '], [/&#160;/g, ' '],
+    [/&eacute;/gi, 'e'], [/&egrave;/gi, 'e'], [/&agrave;/gi, 'a'],
+    [/&ccedil;/gi, 'c'], [/&ocirc;/gi, 'o'], [/&ucirc;/gi, 'u'],
+  ];
+  
+  for (const [pattern, replacement] of htmlEntities) {
+    normalized = normalized.replace(pattern, replacement);
+  }
+  
+  // ============================================
+  // PHASE 4: Line endings normalization
+  // ============================================
+  normalized = normalized.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  
+  // ============================================
+  // PHASE 5: Remove excessive citation lines
+  // ============================================
   if (removeQuotes) {
     const lines = normalized.split('\n');
     const cleanedLines: string[] = [];
@@ -414,7 +441,6 @@ export function normalizeTextForPdf(text: string, options: {
     for (const line of lines) {
       if (line.trim().startsWith('>')) {
         consecutiveCitations++;
-        // Keep max 3 citation lines, then skip
         if (consecutiveCitations <= 3) {
           cleanedLines.push(line);
         } else if (consecutiveCitations === 4) {
@@ -429,10 +455,12 @@ export function normalizeTextForPdf(text: string, options: {
     normalized = cleanedLines.join('\n');
   }
   
-  // Remove duplicate signatures (common pattern: same block appears twice)
+  // ============================================
+  // PHASE 6: Remove duplicate signatures
+  // ============================================
   if (removeSignatures) {
     const signaturePatterns = [
-      /--\s*\n[\s\S]*?(?=--\s*\n|$)/g, // -- signature blocks
+      /--\s*\n[\s\S]*?(?=--\s*\n|$)/g,
       /Cordialement[\s\S]*?(?=Cordialement|$)/gi,
       /Meilleures salutations[\s\S]*?(?=Meilleures salutations|$)/gi,
     ];
@@ -440,7 +468,6 @@ export function normalizeTextForPdf(text: string, options: {
     for (const pattern of signaturePatterns) {
       const matches = normalized.match(pattern);
       if (matches && matches.length > 1) {
-        // Keep only the first occurrence
         let first = true;
         normalized = normalized.replace(pattern, (match) => {
           if (first) {
@@ -453,44 +480,52 @@ export function normalizeTextForPdf(text: string, options: {
     }
   }
   
-  // Replace glyphs that jsPDF default fonts cannot render reliably (use Unicode escapes)
-  const glyphSafeReplacements: [RegExp, string][] = [
-    [/[\u2713\u2714]/g, 'OK'],
-    [/[\u2717\u2718]/g, 'X'],
-    [/\u26A0/g, '!'],
-    [/\u2192/g, '->'],
-    [/[\u2013\u2014]/g, '-'],
-    [/\u2026/g, '...'],
-    [/\u20AC/g, 'EUR'],
-    [/[\u2018\u2019]/g, "'"],
-    [/[\u201C\u201D]/g, '"'],
-    [/\u2022/g, '-'],
-    [/\u00AB/g, '"'],
-    [/\u00BB/g, '"'],
-  ];
-
-  for (const [pattern, replacement] of glyphSafeReplacements) {
-    normalized = normalized.replace(pattern, replacement);
-  }
-
-  // Remove any remaining non-Latin1 chars (jsPDF default font limitation)
-  // Keeps: tab (\x09), newline (\x0A), carriage return (\x0D), printable ASCII (\x20-\x7E), Latin-1 Supplement (\xA0-\xFF)
-  normalized = normalized.replace(/[^\x09\x0A\x0D\x20-\x7E\xA0-\xFF]/g, '');
-
-  // Collapse multiple blank lines to max 2
+  // ============================================
+  // PHASE 7: Final cleanup - remove non-printable chars
+  // ============================================
+  // Keep: tab (\x09), newline (\x0A), carriage return (\x0D), 
+  // printable ASCII (\x20-\x7E), Latin-1 Supplement safe chars (\xA0-\xFF but cleaned)
+  normalized = normalized.replace(/[^\x09\x0A\x0D\x20-\x7E]/g, (char) => {
+    // For any remaining non-ASCII, try to preserve as space or remove
+    const code = char.charCodeAt(0);
+    if (code >= 0xA0 && code <= 0xFF) {
+      // Latin-1 supplement - try to convert
+      const latin1Map: Record<number, string> = {
+        0xA0: ' ', 0xA9: '(c)', 0xAB: '"', 0xBB: '"',
+        0xB0: ' deg', 0xB7: '.', 0xC0: 'A', 0xC1: 'A', 0xC2: 'A', 0xC3: 'A',
+        0xC4: 'A', 0xC5: 'A', 0xC7: 'C', 0xC8: 'E', 0xC9: 'E', 0xCA: 'E',
+        0xCB: 'E', 0xCC: 'I', 0xCD: 'I', 0xCE: 'I', 0xCF: 'I', 0xD0: 'D',
+        0xD1: 'N', 0xD2: 'O', 0xD3: 'O', 0xD4: 'O', 0xD5: 'O', 0xD6: 'O',
+        0xD8: 'O', 0xD9: 'U', 0xDA: 'U', 0xDB: 'U', 0xDC: 'U', 0xDD: 'Y',
+        0xDF: 'ss', 0xE0: 'a', 0xE1: 'a', 0xE2: 'a', 0xE3: 'a', 0xE4: 'a',
+        0xE5: 'a', 0xE7: 'c', 0xE8: 'e', 0xE9: 'e', 0xEA: 'e', 0xEB: 'e',
+        0xEC: 'i', 0xED: 'i', 0xEE: 'i', 0xEF: 'i', 0xF1: 'n', 0xF2: 'o',
+        0xF3: 'o', 0xF4: 'o', 0xF5: 'o', 0xF6: 'o', 0xF8: 'o', 0xF9: 'u',
+        0xFA: 'u', 0xFB: 'u', 0xFC: 'u', 0xFD: 'y', 0xFF: 'y',
+      };
+      return latin1Map[code] || '';
+    }
+    return '';
+  });
+  
+  // ============================================
+  // PHASE 8: Collapse excessive whitespace
+  // ============================================
   normalized = normalized.replace(/\n{4,}/g, '\n\n\n');
-
-  // Collapse multiple spaces
   normalized = normalized.replace(/[ \t]{3,}/g, '  ');
-
-  // Trim each line
   normalized = normalized.split('\n').map(l => l.trim()).join('\n');
-
+  
   // Apply max length if specified
   if (maxLength && normalized.length > maxLength) {
-    normalized = normalized.substring(0, maxLength) + '...';
+    // Don't cut in the middle of a word
+    let cutPoint = maxLength;
+    while (cutPoint > maxLength - 20 && cutPoint > 0 && normalized[cutPoint] !== ' ') {
+      cutPoint--;
+    }
+    if (cutPoint <= maxLength - 20) cutPoint = maxLength;
+    normalized = normalized.substring(0, cutPoint).trim() + '...';
   }
-
+  
   return normalized.trim();
 }
 
@@ -747,7 +782,77 @@ export function checkPageBreak(doc: jsPDF, currentY: number, requiredSpace: numb
 }
 
 /**
+ * Word-wrap text without cutting words in the middle
+ * @param doc - jsPDF instance
+ * @param text - Text to wrap
+ * @param maxWidth - Maximum width in mm
+ * @returns Array of lines, each line containing complete words only
+ */
+function wordWrapText(doc: jsPDF, text: string, maxWidth: number): string[] {
+  if (!text) return [];
+  
+  const paragraphs = text.split('\n');
+  const allLines: string[] = [];
+  
+  for (const paragraph of paragraphs) {
+    if (!paragraph.trim()) {
+      allLines.push('');
+      continue;
+    }
+    
+    const words = paragraph.split(/\s+/).filter(w => w.length > 0);
+    let currentLine = '';
+    
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const testWidth = doc.getTextWidth(testLine);
+      
+      if (testWidth <= maxWidth) {
+        currentLine = testLine;
+      } else {
+        // Current word doesn't fit on this line
+        if (currentLine) {
+          allLines.push(currentLine);
+        }
+        
+        // Check if the word itself is too long (longer than maxWidth)
+        const wordWidth = doc.getTextWidth(word);
+        if (wordWidth > maxWidth) {
+          // Word is too long - add hyphenation for very long words only
+          let remainingWord = word;
+          while (remainingWord.length > 0) {
+            let charsFit = remainingWord.length;
+            while (charsFit > 0 && doc.getTextWidth(remainingWord.substring(0, charsFit)) > maxWidth - 3) {
+              charsFit--;
+            }
+            if (charsFit === 0) charsFit = 1; // At least one character
+            
+            if (charsFit < remainingWord.length) {
+              allLines.push(remainingWord.substring(0, charsFit) + '-');
+              remainingWord = remainingWord.substring(charsFit);
+            } else {
+              currentLine = remainingWord;
+              remainingWord = '';
+            }
+          }
+        } else {
+          // Word fits on a new line by itself
+          currentLine = word;
+        }
+      }
+    }
+    
+    if (currentLine) {
+      allLines.push(currentLine);
+    }
+  }
+  
+  return allLines;
+}
+
+/**
  * Dessine du texte justifié dans une zone définie
+ * AMÉLIORATION: Ne coupe JAMAIS les mots au milieu - word wrap propre
  * @param doc - Instance jsPDF
  * @param text - Texte à justifier
  * @param x - Position X de départ
@@ -767,7 +872,9 @@ export function drawJustifiedText(
   if (!text || text.trim() === '') return y;
   
   const normalizedText = normalizeTextForPdf(text);
-  const lines = doc.splitTextToSize(normalizedText, maxWidth);
+  
+  // Use proper word wrapping instead of splitTextToSize
+  const lines = wordWrapText(doc, normalizedText, maxWidth);
   let currentY = y;
   
   for (let i = 0; i < lines.length; i++) {
@@ -780,23 +887,25 @@ export function drawJustifiedText(
     // Check for page break before each line
     currentY = checkPageBreak(doc, currentY, lineHeight + 5);
     
-    // Last line or short line: left-align instead of justify
+    // Last line or short line or paragraph-ending line: left-align instead of justify
     const isLastLine = i === lines.length - 1;
+    const isLastOfParagraph = i < lines.length - 1 && lines[i + 1].trim() === '';
     const words = line.split(/\s+/).filter(w => w.length > 0);
     
-    if (isLastLine || words.length <= 2) {
+    if (isLastLine || isLastOfParagraph || words.length <= 2) {
       doc.text(line, x, currentY);
     } else {
       // Justify the line by distributing space between words
-      const textWidth = doc.getTextWidth(line.replace(/\s+/g, ' '));
       const wordsWidth = words.reduce((sum, word) => sum + doc.getTextWidth(word), 0);
       const totalSpaceNeeded = maxWidth - wordsWidth;
-      const spacePerGap = totalSpaceNeeded / (words.length - 1);
+      const spacePerGap = Math.min(totalSpaceNeeded / (words.length - 1), 8); // Cap max space to 8mm
       
       let currentX = x;
       for (let j = 0; j < words.length; j++) {
         doc.text(words[j], currentX, currentY);
-        currentX += doc.getTextWidth(words[j]) + spacePerGap;
+        if (j < words.length - 1) {
+          currentX += doc.getTextWidth(words[j]) + spacePerGap;
+        }
       }
     }
     

@@ -15,6 +15,7 @@ interface LegalSearchResult {
   source_type: 'jurisprudence' | 'legislation';
   date_decision?: string;
   relevance_score?: number;
+  verified_source?: boolean;
 }
 
 serve(async (req) => {
@@ -23,7 +24,7 @@ serve(async (req) => {
   }
 
   try {
-    const { incidentType, institution, faits, dysfonctionnement, keywords } = await req.json();
+    const { incidentType, institution, faits, dysfonctionnement, keywords, force_external = true } = await req.json();
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -31,6 +32,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const results: LegalSearchResult[] = [];
+    let perplexityUsed = false;
 
     // 1. First, check local legal_references table
     const searchTerms = [
@@ -53,69 +55,94 @@ serve(async (req) => {
             reference_number: ref.article_number,
             summary: ref.article_text?.substring(0, 300) || 'Texte non disponible',
             source_url: ref.source_url || `https://www.fedlex.admin.ch/eli/cc/24/233_245_233/fr#${ref.article_number}`,
-            source_name: 'Base légale interne',
+            source_name: 'Base legale interne',
             source_type: 'legislation',
-            relevance_score: 0.8
+            relevance_score: 0.8,
+            verified_source: true
           });
         }
       }
     }
 
-    // 2. Check legal_search_results cache
-    const { data: cachedResults } = await supabase
-      .from('legal_search_results')
-      .select('*')
-      .or(`search_query.ilike.%${incidentType}%,keywords.cs.{${incidentType}}`)
-      .order('relevance_score', { ascending: false })
-      .limit(5);
-
-    if (cachedResults) {
-      for (const cached of cachedResults) {
-        if (!results.find(r => r.reference_number === cached.reference_number)) {
-          results.push({
-            title: cached.title,
-            reference_number: cached.reference_number || '',
-            summary: cached.summary || '',
-            source_url: cached.source_url,
-            source_name: cached.source_name,
-            source_type: cached.source_type as 'jurisprudence' | 'legislation',
-            date_decision: cached.date_decision || undefined,
-            relevance_score: cached.relevance_score || 0.5
-          });
+    // 2. ALWAYS call legal-verify with force_external for critical legal searches
+    // This ensures Perplexity is used for grounded, verified information
+    try {
+      const query = buildLegalQuery(incidentType, dysfonctionnement, faits, institution);
+      
+      const { data: verifyResult, error: verifyError } = await supabase.functions.invoke('legal-verify', {
+        body: { 
+          query,
+          mode: 'legal',
+          force_external: force_external, // Force Perplexity call
+          context: {
+            incident_title: incidentType,
+            category: incidentType,
+            facts_summary: faits?.substring(0, 500),
+            jurisdiction: 'CH',
+            institutions: institution ? [institution] : [],
+            topics: keywords || []
+          },
+          max_citations: 8
         }
-      }
-    }
+      });
 
-    // 3. Call legal-verify for additional context if we have few results
-    if (results.length < 5) {
-      try {
-        const query = `${incidentType} ${dysfonctionnement?.substring(0, 100) || ''} droit suisse`;
+      if (verifyError) {
+        console.error('legal-verify error:', verifyError);
+      } else if (verifyResult) {
+        perplexityUsed = verifyResult.source === 'external' || verifyResult.source === 'hybrid';
         
-        const { data: verifyResult } = await supabase.functions.invoke('legal-verify', {
-          body: { 
-            query,
-            mode: 'search',
-            limit: 5
-          }
-        });
-
-        if (verifyResult?.references) {
-          for (const ref of verifyResult.references) {
-            if (!results.find(r => r.reference_number === ref.article_number)) {
-              results.push({
-                title: `${ref.code_name} - Art. ${ref.article_number}`,
-                reference_number: ref.article_number,
-                summary: ref.explanation || ref.article_text?.substring(0, 300) || '',
-                source_url: ref.source_url || '',
-                source_name: ref.code_name,
-                source_type: 'legislation',
-                relevance_score: ref.relevance_score || 0.6
-              });
-            }
+        // Add citations from legal-verify
+        if (verifyResult.citations && Array.isArray(verifyResult.citations)) {
+          for (const citation of verifyResult.citations) {
+            const isOfficial = isOfficialSource(citation.url);
+            results.push({
+              title: citation.title || 'Reference juridique',
+              reference_number: extractReferenceNumber(citation.title) || '',
+              summary: '',
+              source_url: citation.url,
+              source_name: extractSourceName(citation.url),
+              source_type: citation.url.includes('bger.ch') ? 'jurisprudence' : 'legislation',
+              relevance_score: isOfficial ? 0.95 : 0.75,
+              verified_source: isOfficial
+            });
           }
         }
-      } catch (e) {
-        console.log('legal-verify call failed, continuing with existing results:', e);
+
+        // Add key points as additional context
+        if (verifyResult.key_points && Array.isArray(verifyResult.key_points)) {
+          // These are informational, not separate results
+          console.log('Key legal points:', verifyResult.key_points.slice(0, 3));
+        }
+      }
+    } catch (e) {
+      console.error('legal-verify call failed:', e);
+    }
+
+    // 3. Check legal_search_results cache (only if Perplexity wasn't used)
+    if (!perplexityUsed) {
+      const { data: cachedResults } = await supabase
+        .from('legal_search_results')
+        .select('*')
+        .or(`search_query.ilike.%${incidentType}%,keywords.cs.{${incidentType}}`)
+        .order('relevance_score', { ascending: false })
+        .limit(5);
+
+      if (cachedResults) {
+        for (const cached of cachedResults) {
+          if (!results.find(r => r.reference_number === cached.reference_number)) {
+            results.push({
+              title: cached.title,
+              reference_number: cached.reference_number || '',
+              summary: cached.summary || '',
+              source_url: cached.source_url,
+              source_name: cached.source_name,
+              source_type: cached.source_type as 'jurisprudence' | 'legislation',
+              date_decision: cached.date_decision || undefined,
+              relevance_score: cached.relevance_score || 0.5,
+              verified_source: false
+            });
+          }
+        }
       }
     }
 
@@ -127,15 +154,24 @@ serve(async (req) => {
       }
     }
 
-    // Sort by relevance
-    results.sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));
+    // Sort by relevance and verified status
+    results.sort((a, b) => {
+      // Prioritize verified sources
+      if (a.verified_source && !b.verified_source) return -1;
+      if (!a.verified_source && b.verified_source) return 1;
+      return (b.relevance_score || 0) - (a.relevance_score || 0);
+    });
 
-    console.log(`Legal search returned ${results.length} results for type: ${incidentType}`);
+    // Deduplicate by URL
+    const uniqueResults = deduplicateResults(results);
+
+    console.log(`Legal search returned ${uniqueResults.length} results for type: ${incidentType}, Perplexity used: ${perplexityUsed}`);
 
     return new Response(JSON.stringify({ 
       success: true, 
-      results: results.slice(0, 10),
-      totalFound: results.length
+      results: uniqueResults.slice(0, 10),
+      totalFound: uniqueResults.length,
+      source: perplexityUsed ? 'perplexity_verified' : 'local_only'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -153,6 +189,80 @@ serve(async (req) => {
   }
 });
 
+function buildLegalQuery(incidentType: string, dysfonctionnement: string, faits: string, institution: string): string {
+  const parts: string[] = [];
+  
+  if (incidentType) {
+    parts.push(`Type d'incident: ${incidentType}`);
+  }
+  
+  if (institution) {
+    parts.push(`Institution: ${institution}`);
+  }
+  
+  if (dysfonctionnement) {
+    parts.push(`Dysfonctionnement: ${dysfonctionnement.substring(0, 200)}`);
+  }
+  
+  if (faits) {
+    parts.push(`Faits: ${faits.substring(0, 300)}`);
+  }
+  
+  parts.push('Droit suisse applicable, articles de loi, jurisprudence ATF');
+  
+  return parts.join('. ');
+}
+
+function isOfficialSource(url: string): boolean {
+  const officialDomains = [
+    'fedlex.admin.ch',
+    'admin.ch',
+    'bger.ch',
+    'vd.ch',
+    'ge.ch',
+    'edoeb.admin.ch',
+    'ch.ch'
+  ];
+  
+  try {
+    const hostname = new URL(url).hostname;
+    return officialDomains.some(domain => hostname === domain || hostname.endsWith('.' + domain));
+  } catch {
+    return false;
+  }
+}
+
+function extractReferenceNumber(title: string): string {
+  if (!title) return '';
+  
+  // Extract article number from title like "CC art. 388" or "LPD 13"
+  const match = title.match(/(?:art\.?\s*)?(\d+(?:\.\d+)?(?:\s*(?:al\.?\s*)?\d+)?)/i);
+  return match ? match[1] : '';
+}
+
+function extractSourceName(url: string): string {
+  try {
+    const hostname = new URL(url).hostname;
+    if (hostname.includes('fedlex')) return 'Fedlex';
+    if (hostname.includes('bger')) return 'Tribunal federal';
+    if (hostname.includes('admin.ch')) return 'Admin.ch';
+    if (hostname.includes('vd.ch')) return 'Canton de Vaud';
+    return hostname;
+  } catch {
+    return 'Source externe';
+  }
+}
+
+function deduplicateResults(results: LegalSearchResult[]): LegalSearchResult[] {
+  const seen = new Set<string>();
+  return results.filter(result => {
+    const key = result.source_url || `${result.reference_number}:${result.title}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function getDefaultLegalBases(incidentType: string, institution: string): LegalSearchResult[] {
   const bases: LegalSearchResult[] = [];
   const type = incidentType?.toLowerCase() || '';
@@ -167,33 +277,36 @@ function getDefaultLegalBases(incidentType: string, institution: string): LegalS
       source_url: 'https://www.fedlex.admin.ch/eli/cc/24/233_245_233/fr#part_2/tit_11',
       source_name: 'Fedlex',
       source_type: 'legislation',
-      relevance_score: 0.9
+      relevance_score: 0.9,
+      verified_source: true
     });
   }
 
   // Délais / Non-réponse
-  if (type.includes('délai') || type.includes('retard') || type.includes('non-réponse')) {
+  if (type.includes('delai') || type.includes('retard') || type.includes('non-reponse')) {
     bases.push({
-      title: 'LPJA - Art. 29 (Droit d\'être entendu)',
-      reference_number: 'LPJA 29',
-      summary: 'Droit à une décision dans un délai raisonnable. L\'autorité doit statuer sans retard injustifié.',
-      source_url: 'https://www.fedlex.admin.ch/eli/cc/27/317_321_377/fr',
+      title: 'Constitution federale - Art. 29 (Garanties de procedure)',
+      reference_number: 'Cst. 29',
+      summary: 'Toute personne a droit a ce que sa cause soit traitee equitablement et jugee dans un delai raisonnable.',
+      source_url: 'https://www.fedlex.admin.ch/eli/cc/1999/404/fr#art_29',
       source_name: 'Fedlex',
       source_type: 'legislation',
-      relevance_score: 0.85
+      relevance_score: 0.85,
+      verified_source: true
     });
   }
 
   // Refus / Blocage
   if (type.includes('refus') || type.includes('blocage') || type.includes('obstruction')) {
     bases.push({
-      title: 'Constitution fédérale - Art. 29 (Garanties de procédure)',
+      title: 'Constitution federale - Art. 29 (Garanties de procedure)',
       reference_number: 'Cst. 29',
-      summary: 'Toute personne a droit à ce que sa cause soit traitée équitablement et jugée dans un délai raisonnable.',
+      summary: 'Toute personne a droit a ce que sa cause soit traitee equitablement et jugee dans un delai raisonnable.',
       source_url: 'https://www.fedlex.admin.ch/eli/cc/1999/404/fr#art_29',
       source_name: 'Fedlex',
       source_type: 'legislation',
-      relevance_score: 0.8
+      relevance_score: 0.8,
+      verified_source: true
     });
   }
 
@@ -202,24 +315,14 @@ function getDefaultLegalBases(incidentType: string, institution: string): LegalS
     bases.push({
       title: 'Code civil suisse - Art. 413 (Gestion du patrimoine)',
       reference_number: 'CC 413',
-      summary: 'Le curateur gère les biens avec diligence et représente la personne concernée dans les actes juridiques.',
+      summary: 'Le curateur gere les biens avec diligence et represente la personne concernee dans les actes juridiques.',
       source_url: 'https://www.fedlex.admin.ch/eli/cc/24/233_245_233/fr#art_413',
       source_name: 'Fedlex',
       source_type: 'legislation',
-      relevance_score: 0.85
+      relevance_score: 0.85,
+      verified_source: true
     });
   }
-
-  // General procedural rights
-  bases.push({
-    title: 'CPC - Art. 52 (Bonne foi)',
-    reference_number: 'CPC 52',
-    summary: 'Les parties et les tiers sont tenus de se conformer aux règles de la bonne foi.',
-    source_url: 'https://www.fedlex.admin.ch/eli/cc/2010/262/fr#art_52',
-    source_name: 'Fedlex',
-    source_type: 'legislation',
-    relevance_score: 0.7
-  });
 
   return bases;
 }

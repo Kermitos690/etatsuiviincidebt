@@ -1,4 +1,4 @@
-// Legal validation utilities - guardrails anti-hallucination
+// Legal validation utilities - Enhanced anti-hallucination guardrails
 import { log } from "./core.ts";
 
 // ============= Types =============
@@ -6,6 +6,8 @@ export interface LegalReference {
   code: string; // 'CC', 'LPD', 'LPPA-VD', 'CSIAS'
   article: string; // '8', '13.1', '388'
   text?: string;
+  verified?: boolean;
+  source?: 'local' | 'perplexity' | 'unverified';
 }
 
 export interface ValidationResult {
@@ -16,6 +18,12 @@ export interface ValidationResult {
   hallucinationDetails?: string[];
   correctedOutput?: unknown;
   confidenceAdjustment: number; // -1 to 0 (penalty)
+  verificationStats: {
+    total: number;
+    verified: number;
+    rejected: number;
+    percentVerified: number;
+  };
 }
 
 export interface LegalArticle {
@@ -26,29 +34,62 @@ export interface LegalArticle {
   article_text: string;
   domain?: string;
   keywords: string[];
+  canton?: string;
+  scope?: string;
 }
 
 // ============= Constants =============
+
+// Swiss legal code patterns
 const LEGAL_REF_PATTERNS = [
-  // Swiss patterns
-  /(?:art\.?|article)\s*(\d+(?:\.\d+)?(?:\s*(?:al\.?|alinéa)\s*\d+)?)\s+(?:du\s+)?([A-Z]{2,}(?:-[A-Z]+)?)/gi,
+  // Swiss patterns with article number
+  /(?:art\.?|article)\s*(\d+(?:\.\d+)?(?:\s*(?:al\.?|alinéa|let\.?)\s*[a-z0-9]+)?)\s+(?:du\s+)?([A-Z]{2,}(?:-[A-Z]+)?)/gi,
   /([A-Z]{2,}(?:-[A-Z]+)?)\s+(?:art\.?|article)\s*(\d+(?:\.\d+)?)/gi,
   // Direct code references
-  /(LPD|CC|CO|CP|CPC|CPP|LPPA-VD|RLPA-VD|LOJV|CDPJ|CSIAS)\s+(\d+(?:\.\d+)?)/gi,
+  /(LPD|CC|CO|CP|CPC|CPP|LPPA-VD|RLPA-VD|LOJV|CDPJ|CSIAS|LVPAE|LPA-VD|LSP-VD|LASV|Cst\.?)\s+(?:art\.?\s*)?(\d+(?:\.\d+)?(?:\s*(?:al\.?)\s*\d+)?)/gi,
+  // ATF references (jurisprudence)
+  /(ATF)\s+(\d+)\s+[IVX]+\s+(\d+)/gi,
 ];
 
+// Known valid Swiss legal codes
+const VALID_LEGAL_CODES = new Set([
+  // Federal codes
+  'CC', 'CO', 'CP', 'CPC', 'CPP', 'LPD', 'LPGA', 'LAI', 'LAMal', 'Cst',
+  'LTF', 'LPA', 'LPers', 'LTrans', 'OFSo',
+  // Vaud cantonal
+  'LVPAE', 'LPA-VD', 'LSP-VD', 'LASV', 'LEO', 'LPJA-VD', 'RLPA-VD', 'LOJV',
+  // Geneva cantonal
+  'LPA-GE', 'LOJ-GE',
+  // Common abbreviations
+  'CSIAS', 'CDPJ', 'ATF', 'TF',
+]);
+
+// Phrases that indicate potential hallucination
 const HALLUCINATION_INDICATORS = [
   "selon la jurisprudence constante",
   "il est de jurisprudence",
   "comme l'a rappelé le tribunal fédéral",
   "ATF non spécifié",
   "pratique établie",
+  "selon la doctrine majoritaire",
+  "l'article prévoit généralement",
+  "conformément à l'usage",
+];
+
+// Suspicious patterns in legal references
+const SUSPICIOUS_PATTERNS = [
+  // Fake article numbers (too high for most codes)
+  /art\.?\s*(\d{4,})/gi, // 4+ digit article numbers are usually fake
+  // Vague references without specific article
+  /selon\s+(?:le|la)\s+(?:loi|code|droit)\s+suisse/gi,
+  // Generic without citation
+  /en\s+vertu\s+du\s+droit\s+applicable/gi,
 ];
 
 // ============= Core Functions =============
 
 /**
- * Extract legal references from text
+ * Extract legal references from text with enhanced parsing
  */
 export function extractLegalReferences(text: string): LegalReference[] {
   const refs: LegalReference[] = [];
@@ -59,31 +100,62 @@ export function extractLegalReferences(text: string): LegalReference[] {
     let match;
     
     while ((match = regex.exec(text)) !== null) {
-      let code: string, article: string;
+      let code: string;
+      let article: string;
       
       // Handle different match groups based on pattern
       if (match[1] && match[2]) {
         // Check which is code vs article (codes are uppercase letters)
         if (/^[A-Z]{2,}/.test(match[1])) {
-          code = match[1].toUpperCase();
+          code = match[1].toUpperCase().replace(/\.$/,'');
           article = match[2];
         } else {
           article = match[1];
-          code = match[2].toUpperCase();
+          code = match[2].toUpperCase().replace(/\.$/,'');
         }
+      } else if (match[1]) {
+        code = match[1].toUpperCase().replace(/\.$/,'');
+        article = match[2] || '';
       } else {
         continue;
       }
       
+      // Normalize code name
+      code = normalizeCodeName(code);
+      
       const key = `${code}:${article}`;
-      if (!seen.has(key)) {
+      if (!seen.has(key) && article) {
         seen.add(key);
-        refs.push({ code, article });
+        refs.push({ 
+          code, 
+          article,
+          verified: false,
+          source: 'unverified'
+        });
       }
     }
   }
   
   return refs;
+}
+
+/**
+ * Normalize code names to standard format
+ */
+function normalizeCodeName(code: string): string {
+  const normalizations: Record<string, string> = {
+    'CST': 'Cst',
+    'CST.': 'Cst',
+    'CONST': 'Cst',
+    'CONSTITUTION': 'Cst',
+    'CODECIVIL': 'CC',
+    'CIVIL': 'CC',
+    'PENAL': 'CP',
+    'OBLIGATIONS': 'CO',
+  };
+  
+  const upper = code.toUpperCase().replace(/[.\s]/g, '');
+  return normalizations[upper] || code;
 }
 
 /**
@@ -97,6 +169,16 @@ export async function validateLegalReferences(
   const rejected: LegalReference[] = [];
   
   for (const ref of refs) {
+    // First check if the code itself is valid
+    if (!VALID_LEGAL_CODES.has(ref.code) && !VALID_LEGAL_CODES.has(ref.code.replace(/-[A-Z]+$/, ''))) {
+      rejected.push({
+        ...ref,
+        source: 'unverified'
+      });
+      continue;
+    }
+    
+    // Then check against repository
     const found = repository.find(
       article => 
         article.code_name.toUpperCase() === ref.code.toUpperCase() &&
@@ -107,9 +189,16 @@ export async function validateLegalReferences(
       verified.push({
         ...ref,
         text: found.article_text,
+        verified: true,
+        source: 'local'
       });
     } else {
-      rejected.push(ref);
+      // Code is valid but article not found in local DB
+      // Mark as potentially valid (needs Perplexity verification)
+      rejected.push({
+        ...ref,
+        source: 'unverified'
+      });
     }
   }
   
@@ -125,7 +214,9 @@ function normalizeArticleNumber(article: string): string {
     .replace(/art\.?/gi, '')
     .replace(/al\.?/gi, '.')
     .replace(/alinéa/gi, '.')
-    .toLowerCase();
+    .replace(/let\.?/gi, '')
+    .toLowerCase()
+    .trim();
 }
 
 /**
@@ -135,9 +226,10 @@ export function detectHallucinations(text: string): string[] {
   const detected: string[] = [];
   const lowerText = text.toLowerCase();
   
+  // Check for vague formulations
   for (const indicator of HALLUCINATION_INDICATORS) {
     if (lowerText.includes(indicator.toLowerCase())) {
-      detected.push(`Formulation vague détectée: "${indicator}"`);
+      detected.push(`Formulation vague detectee: "${indicator}"`);
     }
   }
   
@@ -145,10 +237,31 @@ export function detectHallucinations(text: string): string[] {
   const atfPattern = /ATF\s+(\d+)\s+[IVX]+\s+(\d+)/g;
   const atfMatches = text.matchAll(atfPattern);
   for (const match of atfMatches) {
-    // ATF volume numbers should be reasonable (100-160 typically)
     const volume = parseInt(match[1]);
+    // ATF volume numbers should be reasonable (100-160 typically)
     if (volume < 100 || volume > 200) {
-      detected.push(`Référence ATF suspecte: ${match[0]}`);
+      detected.push(`Reference ATF suspecte: ${match[0]} (volume ${volume} hors plage normale)`);
+    }
+  }
+  
+  // Check for suspicious patterns
+  for (const pattern of SUSPICIOUS_PATTERNS) {
+    const regex = new RegExp(pattern.source, pattern.flags);
+    const matches = text.match(regex);
+    if (matches) {
+      for (const m of matches) {
+        detected.push(`Pattern suspect: "${m.substring(0, 50)}..."`);
+      }
+    }
+  }
+  
+  // Check for invented article numbers (e.g., Art. 9999 CC)
+  const articlePattern = /art\.?\s*(\d+)/gi;
+  let artMatch;
+  while ((artMatch = articlePattern.exec(text)) !== null) {
+    const artNum = parseInt(artMatch[1]);
+    if (artNum > 1000) {
+      detected.push(`Numero d'article suspect: ${artNum} (trop eleve pour la plupart des codes)`);
     }
   }
   
@@ -178,7 +291,13 @@ export async function validateAIOutput(
   // Detect hallucinations
   const hallucinationDetails = detectHallucinations(aiOutput);
   const hallucinationDetected = hallucinationDetails.length > 0 || 
-    (strictMode && rejected.length > 0);
+    (strictMode && rejected.length > claimedRefs.length * 0.3);
+  
+  // Calculate verification stats
+  const total = claimedRefs.length;
+  const verifiedCount = verified.length;
+  const rejectedCount = rejected.length;
+  const percentVerified = total > 0 ? Math.round((verifiedCount / total) * 100) : 100;
   
   // Calculate confidence adjustment
   let confidenceAdjustment = 0;
@@ -186,7 +305,7 @@ export async function validateAIOutput(
     confidenceAdjustment -= (rejected.length / Math.max(claimedRefs.length, 1)) * 0.5;
   }
   if (hallucinationDetails.length > 0) {
-    confidenceAdjustment -= 0.2 * hallucinationDetails.length;
+    confidenceAdjustment -= 0.15 * hallucinationDetails.length;
   }
   confidenceAdjustment = Math.max(confidenceAdjustment, -1);
   
@@ -201,11 +320,70 @@ export async function validateAIOutput(
     hallucinationDetected,
     hallucinationDetails: hallucinationDetails.length > 0 ? hallucinationDetails : undefined,
     confidenceAdjustment,
+    verificationStats: {
+      total,
+      verified: verifiedCount,
+      rejected: rejectedCount,
+      percentVerified,
+    },
   };
 }
 
 /**
- * Create the "base légale non déterminée" fallback response
+ * Cross-verify legal references using multiple sources
+ */
+export async function crossVerifyReferences(
+  refs: LegalReference[],
+  localRepository: LegalArticle[],
+  perplexityVerifier?: (ref: LegalReference) => Promise<boolean>
+): Promise<LegalReference[]> {
+  const verifiedRefs: LegalReference[] = [];
+  
+  for (const ref of refs) {
+    // Check local first
+    const localMatch = localRepository.find(
+      article => 
+        article.code_name.toUpperCase() === ref.code.toUpperCase() &&
+        normalizeArticleNumber(article.article_number) === normalizeArticleNumber(ref.article)
+    );
+    
+    if (localMatch) {
+      verifiedRefs.push({
+        ...ref,
+        text: localMatch.article_text,
+        verified: true,
+        source: 'local'
+      });
+    } else if (perplexityVerifier) {
+      // Try external verification
+      try {
+        const isValid = await perplexityVerifier(ref);
+        verifiedRefs.push({
+          ...ref,
+          verified: isValid,
+          source: isValid ? 'perplexity' : 'unverified'
+        });
+      } catch {
+        verifiedRefs.push({
+          ...ref,
+          verified: false,
+          source: 'unverified'
+        });
+      }
+    } else {
+      verifiedRefs.push({
+        ...ref,
+        verified: false,
+        source: 'unverified'
+      });
+    }
+  }
+  
+  return verifiedRefs;
+}
+
+/**
+ * Create the "base legale non determinee" fallback response
  */
 export function createUndeterminedLegalBasisResponse(
   context: string,
@@ -215,20 +393,37 @@ export function createUndeterminedLegalBasisResponse(
 
 ${factSummary}
 
-## Base légale
+## Base legale
 
-**Base légale non déterminée**
+**Base legale non determinee**
 
-L'analyse n'a pas permis d'identifier une base légale vérifiable dans le référentiel interne. 
-Une vérification manuelle par un spécialiste est recommandée.
+L'analyse n'a pas permis d'identifier une base legale verifiable dans le referentiel interne. 
+Une verification manuelle par un specialiste est recommandee.
 
 ## Contexte
 ${context}
 
 ## Recommandations
-1. Consulter le référentiel légal interne pour identifier les articles applicables
-2. Solliciter l'avis d'un spécialiste si nécessaire
-3. Ne pas conclure à une illégalité sans base légale vérifiée`;
+1. Consulter le referentiel legal interne pour identifier les articles applicables
+2. Solliciter l'avis d'un specialiste si necessaire
+3. Ne pas conclure a une illegalite sans base legale verifiee`;
+}
+
+/**
+ * Generate verification badge text based on validation result
+ */
+export function getVerificationBadge(result: ValidationResult): {
+  text: string;
+  level: 'verified' | 'partial' | 'unverified';
+  color: 'green' | 'yellow' | 'red';
+} {
+  if (result.verificationStats.percentVerified >= 80 && !result.hallucinationDetected) {
+    return { text: 'Verifie', level: 'verified', color: 'green' };
+  } else if (result.verificationStats.percentVerified >= 50) {
+    return { text: 'Partiellement verifie', level: 'partial', color: 'yellow' };
+  } else {
+    return { text: 'Non verifie', level: 'unverified', color: 'red' };
+  }
 }
 
 /**
