@@ -78,7 +78,7 @@ export default function Incidents() {
   const [currentPage, setCurrentPage] = useState(1);
   const [dateDebut, setDateDebut] = useState<Date | undefined>(undefined);
   const [dateFin, setDateFin] = useState<Date | undefined>(undefined);
-  const [sortField, setSortField] = useState<SortField>('numero');
+  const [sortField, setSortField] = useState<SortField>('dateIncident');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   
   // Multi-select states

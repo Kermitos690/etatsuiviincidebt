@@ -75,10 +75,10 @@ export const useIncidentStore = create<IncidentStore>()(
       loadFromSupabase: async () => {
         set({ isLoading: true });
         try {
-          const { data, error } = await supabase
-            .from('incidents')
-            .select('*')
-            .order('numero', { ascending: false });
+        const { data, error } = await supabase
+          .from('incidents')
+          .select('*')
+          .order('date_incident', { ascending: false });
 
           if (error) {
             console.error('Error loading incidents:', error);
