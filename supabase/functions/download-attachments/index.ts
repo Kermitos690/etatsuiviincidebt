@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, corsHeaders, log } from "../_shared/core.ts";
+import { getGmailTokens, encryptGmailTokens } from "../_shared/encryption.ts";
 
 interface AttachmentInfo {
   attachmentId: string;
@@ -33,14 +34,33 @@ serve(async (req) => {
       throw new Error("Gmail non configuré");
     }
 
-    // Refresh token if needed
-    let accessToken = gmailConfig.access_token;
+    // Decrypt tokens using the encryption module
+    const tokens = await getGmailTokens({
+      access_token: null, // Plaintext columns removed
+      refresh_token: null,
+      access_token_enc: gmailConfig.access_token_enc,
+      refresh_token_enc: gmailConfig.refresh_token_enc,
+      token_nonce: gmailConfig.token_nonce,
+      token_key_version: gmailConfig.token_key_version,
+    });
+
+    if (!tokens.accessToken) {
+      throw new Error("Tokens Gmail non disponibles ou décryptage échoué");
+    }
+
+    let accessToken = tokens.accessToken;
+    const refreshToken = tokens.refreshToken;
     const tokenExpiry = new Date(gmailConfig.token_expiry);
     
+    // Refresh token if needed
     if (tokenExpiry <= new Date()) {
       console.log("Token expired, refreshing...");
       const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
       const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+      
+      if (!refreshToken) {
+        throw new Error("Refresh token non disponible pour le renouvellement");
+      }
       
       const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
@@ -48,7 +68,7 @@ serve(async (req) => {
         body: new URLSearchParams({
           client_id: clientId!,
           client_secret: clientSecret!,
-          refresh_token: gmailConfig.refresh_token,
+          refresh_token: refreshToken,
           grant_type: "refresh_token",
         }),
       });
@@ -56,13 +76,24 @@ serve(async (req) => {
       const tokenData = await tokenResponse.json();
       if (tokenData.access_token) {
         accessToken = tokenData.access_token;
+        
+        // Re-encrypt the new access token
+        const encrypted = await encryptGmailTokens(accessToken, refreshToken);
+        
         await supabase
           .from("gmail_config")
           .update({
-            access_token: accessToken,
+            access_token_enc: encrypted.accessTokenEnc,
+            refresh_token_enc: encrypted.refreshTokenEnc,
+            token_nonce: encrypted.nonce,
+            token_key_version: encrypted.keyVersion,
             token_expiry: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
           })
           .eq("id", gmailConfig.id);
+          
+        console.log("Token refreshed and re-encrypted successfully");
+      } else {
+        throw new Error("Échec du renouvellement du token");
       }
     }
 
@@ -185,7 +216,10 @@ serve(async (req) => {
   } catch (error) {
     console.error("Download attachments error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ 
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error" 
+      }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

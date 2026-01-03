@@ -221,7 +221,7 @@ async function processReanalyze(
     if (syncGmail) {
       await updateProgress({ step: "Synchronisation Gmail", stepNumber: 1 });
 
-      if (gmailConfig && gmailConfig.sync_enabled && gmailConfig.access_token) {
+      if (gmailConfig && gmailConfig.sync_enabled && gmailConfig.access_token_enc) {
         console.log("[Step 1] Gmail config found, syncing with filters...");
         
         try {
