@@ -216,13 +216,30 @@ export default function GmailConfig() {
     setLoading(true);
 
     try {
-      // Refresh session before OAuth flow
-      await supabase.auth.refreshSession();
+      // Force session refresh to get a fresh JWT with valid claims
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      
+      if (refreshError || !refreshData.session) {
+        console.error('Session refresh failed:', refreshError);
+        toast.error('Session expirée. Veuillez vous reconnecter.');
+        // Redirect to auth to re-login
+        window.location.href = '/auth?from=/gmail-config';
+        return;
+      }
 
       const { data, error } = await supabase.functions.invoke('gmail-oauth', {
         body: { action: 'get-auth-url' },
       });
-      if (error) throw error;
+      
+      if (error) {
+        console.error('gmail-oauth error:', error);
+        if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+          toast.error('Session expirée. Veuillez vous reconnecter.');
+          window.location.href = '/auth?from=/gmail-config';
+          return;
+        }
+        throw error;
+      }
 
       if (!data?.url) {
         throw new Error("URL d'autorisation manquante");
