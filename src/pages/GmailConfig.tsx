@@ -17,8 +17,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { 
   Mail, Settings, Check, X, RefreshCw, Plus, 
   ExternalLink, Shield, Clock, CalendarIcon, ChevronLeft, ChevronRight,
-  Loader2, CheckCircle2, AlertCircle, AlertTriangle, Copy
+  Loader2, CheckCircle2, AlertCircle, AlertTriangle, Copy, Link2, RotateCcw
 } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { INSTITUTIONAL_DOMAINS, SYNC_KEYWORDS, FILTER_PRESETS, type FilterPreset } from '@/config/appConfig';
 import { format, setMonth, setYear } from 'date-fns';
@@ -74,6 +75,7 @@ const YEARS = Array.from({ length: 20 }, (_, i) => new Date().getFullYear() - i)
 
 export default function GmailConfig() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { signInWithGoogle } = useAuth();
   const [config, setConfig] = useState<GmailConfig>({
     connected: false,
     syncEnabled: false,
@@ -91,6 +93,11 @@ export default function GmailConfig() {
   const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
   const [configId, setConfigId] = useState<string | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // State for OAuth flow tracking and Plan B
+  const [googleAuthUrl, setGoogleAuthUrl] = useState<string | null>(null);
+  const [oauthStarted, setOauthStarted] = useState(false);
+  const [planBLoading, setPlanBLoading] = useState(false);
 
   // Save config to database
   const saveConfigToDb = useCallback(async (domains: string[], keywords: string[], syncEnabled: boolean) => {
@@ -139,6 +146,18 @@ export default function GmailConfig() {
     const errorSuggestion = searchParams.get('error_suggestion');
     const errorDescription = searchParams.get('error_description');
 
+    // Check if we're returning from OAuth (localStorage marker)
+    const oauthStartedAt = localStorage.getItem('gmail_oauth_started_at');
+    if (oauthStartedAt) {
+      setOauthStarted(true);
+      // Clear the marker after 5 minutes
+      const startTime = parseInt(oauthStartedAt, 10);
+      if (Date.now() - startTime > 5 * 60 * 1000) {
+        localStorage.removeItem('gmail_oauth_started_at');
+        setOauthStarted(false);
+      }
+    }
+
     const clearOauthParams = () => {
       // IMPORTANT: keep unrelated params (e.g. __lovable_token) or the preview session can break
       const next = new URLSearchParams(searchParams);
@@ -152,6 +171,9 @@ export default function GmailConfig() {
       setConfig((prev) => ({ ...prev, connected: true, email: decodeURIComponent(email) }));
       toast.success('Connexion Gmail réussie');
       clearOauthParams();
+      // Clear OAuth marker
+      localStorage.removeItem('gmail_oauth_started_at');
+      setOauthStarted(false);
     } else if (oauthErrorParam) {
       // Handle OAuth error from redirect
       setOauthError({
@@ -245,6 +267,11 @@ export default function GmailConfig() {
         throw new Error("URL d'autorisation manquante");
       }
 
+      // Store the URL for "Copy link" feature and mark OAuth as started
+      setGoogleAuthUrl(data.url);
+      localStorage.setItem('gmail_oauth_started_at', Date.now().toString());
+      setOauthStarted(true);
+
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       if (isMobile) {
         window.location.href = data.url;
@@ -329,6 +356,69 @@ export default function GmailConfig() {
       toast.error('Erreur lors de la connexion Gmail');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Reload Gmail connection status
+  const handleReloadStatus = async () => {
+    setLoading(true);
+    try {
+      const connected = await loadConfig();
+      if (connected) {
+        toast.success('Gmail connecté !');
+        localStorage.removeItem('gmail_oauth_started_at');
+        setOauthStarted(false);
+      } else {
+        toast.info('Gmail non connecté. Vérifiez les logs backend.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Copy Google auth URL to clipboard
+  const handleCopyGoogleLink = async () => {
+    if (googleAuthUrl) {
+      await navigator.clipboard.writeText(googleAuthUrl);
+      toast.success('Lien Google copié !');
+    } else {
+      // Generate a new URL if we don't have one
+      try {
+        const { data, error } = await supabase.functions.invoke('gmail-oauth', {
+          body: { action: 'get-auth-url' },
+        });
+        if (!error && data?.url) {
+          setGoogleAuthUrl(data.url);
+          await navigator.clipboard.writeText(data.url);
+          toast.success('Lien Google copié !');
+        }
+      } catch {
+        toast.error('Erreur lors de la génération du lien');
+      }
+    }
+  };
+
+  // Plan B: Use Google Sign-In with Gmail scopes (already implemented in useAuth)
+  const handlePlanBGoogleSignIn = async () => {
+    setPlanBLoading(true);
+    try {
+      toast.info('Connexion via Google Sign-In...');
+      await signInWithGoogle();
+      // After sign-in, the AuthCallback will store tokens via store-oauth-tokens
+      // We need to wait and then reload config
+      setTimeout(async () => {
+        const connected = await loadConfig();
+        if (connected) {
+          toast.success('Gmail connecté via Google Sign-In !');
+          localStorage.removeItem('gmail_oauth_started_at');
+          setOauthStarted(false);
+        }
+        setPlanBLoading(false);
+      }, 3000);
+    } catch (error) {
+      console.error('Plan B Google Sign-In error:', error);
+      toast.error('Erreur lors de la connexion Google');
+      setPlanBLoading(false);
     }
   };
 
@@ -556,6 +646,59 @@ export default function GmailConfig() {
             </Alert>
           )}
 
+          {/* OAuth Return Detection - Show when user is returning from Google */}
+          {oauthStarted && !config.connected && (
+            <Alert className="border-primary/50 bg-primary/10">
+              <RotateCcw className="h-5 w-5 text-primary" />
+              <AlertTitle className="font-semibold text-primary">Retour de Google détecté</AlertTitle>
+              <AlertDescription className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Vous semblez revenir de la page d'authentification Google. 
+                  Si vous avez autorisé l'accès, cliquez sur "Recharger l'état".
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button 
+                    variant="default" 
+                    size="sm"
+                    onClick={handleReloadStatus}
+                    disabled={loading}
+                  >
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+                    Recharger l'état Gmail
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={handleGoogleAuth}
+                    disabled={loading}
+                  >
+                    <ExternalLink className="h-4 w-4 mr-1" />
+                    Relancer la connexion
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={handleCopyGoogleLink}
+                  >
+                    <Link2 className="h-4 w-4 mr-1" />
+                    Copier le lien Google
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => {
+                      localStorage.removeItem('gmail_oauth_started_at');
+                      setOauthStarted(false);
+                    }}
+                  >
+                    <X className="h-4 w-4 mr-1" />
+                    Fermer
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Sync Progress Card */}
           {syncStatus && (
             <Card className={cn(
@@ -711,6 +854,30 @@ export default function GmailConfig() {
                   {config.connected ? 'Reconnecter' : 'Connecter Gmail'}
                 </Button>
               </div>
+              
+              {/* Plan B: Google Sign-In with Gmail scopes (alternative method) */}
+              {!config.connected && (
+                <div className="p-4 rounded-xl bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div className="space-y-1">
+                      <p className="font-medium text-sm">🔑 Plan B : Connexion via Google Sign-In</p>
+                      <p className="text-xs text-muted-foreground">
+                        Si le bouton ci-dessus ne fonctionne pas, utilisez cette méthode alternative.
+                      </p>
+                    </div>
+                    <Button 
+                      onClick={handlePlanBGoogleSignIn} 
+                      disabled={planBLoading}
+                      variant="outline"
+                      className="w-full sm:w-auto flex-shrink-0 border-primary/50 hover:bg-primary/10"
+                    >
+                      {planBLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Mail className="h-4 w-4 mr-2" />}
+                      Connexion Google Sign-In
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300">
                 <Shield className="h-4 w-4 flex-shrink-0 mt-0.5" />
                 <p className="text-sm">Accès en lecture seule. Les tokens sont stockés de manière sécurisée.</p>

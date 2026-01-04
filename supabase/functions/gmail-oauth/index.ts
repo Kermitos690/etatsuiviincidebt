@@ -29,6 +29,18 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
+    // ===== ULTRA-VERBOSE LOGGING FOR ALL GET REQUESTS =====
+    if (req.method === "GET") {
+      const allParams = Object.fromEntries(url.searchParams.entries());
+      console.log("======= GMAIL-OAUTH GET REQUEST =======");
+      console.log("Full URL:", req.url);
+      console.log("Search params:", JSON.stringify(allParams));
+      console.log("Has 'code':", url.searchParams.has("code"));
+      console.log("Has 'error':", url.searchParams.has("error"));
+      console.log("Has 'state':", url.searchParams.has("state"));
+      console.log("========================================");
+    }
+
     // Handle OAuth ERROR callback (GET request with error parameter)
     // Google returns error=access_denied when user denies consent OR app is in "Testing" mode without test user.
     // NOTE: Google usually returns the `state` parameter even on error; we use it to redirect back to the right app URL.
@@ -37,7 +49,9 @@ serve(async (req) => {
       const errorDescription = url.searchParams.get("error_description") || "";
       const state = url.searchParams.get("state");
 
-      console.error("OAuth callback received error:", error, "description:", errorDescription);
+      console.error("🔴 OAuth callback received ERROR:", error);
+      console.error("Error description:", errorDescription);
+      console.error("State param:", state);
 
       // Determine user-friendly message based on error type
       let userMessage = "Erreur lors de la connexion Gmail";
@@ -127,7 +141,9 @@ serve(async (req) => {
       const code = url.searchParams.get("code")!;
       const state = url.searchParams.get("state");
       
-      console.log("Received OAuth callback with code");
+      console.log("🟢 Received OAuth callback with code!");
+      console.log("Code length:", code.length);
+      console.log("State present:", !!state);
 
       // Validate state parameter to prevent CSRF attacks
       if (!state) {
@@ -216,16 +232,20 @@ serve(async (req) => {
 
       console.log("Tokens will be stored encrypted (key version", encrypted.keyVersion, ")");
 
+      console.log("🔑 Attempting to upsert tokens for user:", stateData.user_id);
+      
       const { error: upsertError } = await supabase
         .from("gmail_config")
         .upsert(upsertData, { onConflict: "user_id" });
 
       if (upsertError) {
-        console.error("Failed to store tokens:", upsertError);
+        console.error("❌ Failed to store tokens:", upsertError);
+        console.error("Upsert error details:", JSON.stringify(upsertError));
         throw new Error("Failed to store OAuth tokens");
       }
 
-      console.log("Tokens stored successfully for user:", stateData.user_id);
+      console.log("✅ Tokens stored successfully for user:", stateData.user_id);
+      console.log("User email:", userEmail);
 
       // Get the app URL for redirect (prefer the origin captured in state)
       const appUrlFromState =
