@@ -32,6 +32,7 @@ const FactualDossier = lazy(() => import("./pages/FactualDossier"));
 const Journal = lazy(() => import("./pages/Journal"));
 const Events = lazy(() => import("./pages/Events"));
 const Auth = lazy(() => import("./pages/Auth"));
+const AuthCallback = lazy(() => import("./pages/AuthCallback"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const ImportIncident = lazy(() => import("./pages/ImportIncident"));
 const IATraining = lazy(() => import("./pages/IATraining"));
@@ -76,8 +77,9 @@ const App = () => (
               <WelcomeTutorialModal />
               <Suspense fallback={<PageLoader />}>
                 <Routes>
-                  {/* Public route */}
+                  {/* Public routes */}
                   <Route path="/auth" element={<Auth />} />
+                  <Route path="/auth/callback" element={<AuthCallback />} />
                   
                   {/* Protected routes - Simplified */}
                   <Route path="/" element={<AuthGuard><Dashboard /></AuthGuard>} />
