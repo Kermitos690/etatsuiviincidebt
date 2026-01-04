@@ -164,6 +164,21 @@ export default function GmailConfig() {
 
   const loadConfig = async () => {
     try {
+      // Ensure we have a fresh session before making the call
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !sessionData.session) {
+        console.log('No valid session, skipping config load');
+        return;
+      }
+      
+      // Refresh session if needed
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        console.log('Session refresh failed, user may need to re-login');
+        return;
+      }
+      
       const { data, error } = await supabase.functions.invoke('gmail-oauth', {
         body: { action: 'get-config' }
       });
@@ -187,6 +202,9 @@ export default function GmailConfig() {
   const handleGoogleAuth = async () => {
     setLoading(true);
     try {
+      // Refresh session before OAuth flow
+      await supabase.auth.refreshSession();
+      
       const { data, error } = await supabase.functions.invoke('gmail-oauth', {
         body: { action: 'get-auth-url' }
       });
