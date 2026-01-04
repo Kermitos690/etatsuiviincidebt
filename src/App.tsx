@@ -3,13 +3,14 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { AuthGuard, AdminGuard } from "@/components/auth/AuthGuard";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ErrorBoundary } from "@/components/common";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TutorialProvider, WelcomeTutorialModal } from "@/components/tutorial/GuidedTutorial";
+import { BootDiagnostics } from "@/components/common/BootDiagnostics";
 
 // Lazy loaded pages - simplified
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -76,11 +77,18 @@ const App = () => (
             <AuthProvider>
               <TutorialProvider>
                 <WelcomeTutorialModal />
+                <BootDiagnostics />
                 <Suspense fallback={<PageLoader />}>
                   <Routes>
                     {/* Public routes */}
                     <Route path="/auth" element={<Auth />} />
                     <Route path="/auth/callback" element={<AuthCallback />} />
+                    
+                    {/* Auth aliases - redirect FR/EN variants */}
+                    <Route path="/authentification" element={<Navigate to="/auth" replace />} />
+                    <Route path="/authentication" element={<Navigate to="/auth" replace />} />
+                    <Route path="/login" element={<Navigate to="/auth" replace />} />
+                    <Route path="/connexion" element={<Navigate to="/auth" replace />} />
                     
                     {/* Protected routes - Simplified */}
                     <Route path="/" element={<AuthGuard><Dashboard /></AuthGuard>} />

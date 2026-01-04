@@ -104,10 +104,37 @@ export default function Auth() {
     }
   };
 
+  // Show loading state with timeout protection
+  const [loadingTimeout, setLoadingTimeout] = useState(false);
+
+  useEffect(() => {
+    if (authLoading) {
+      const timer = setTimeout(() => setLoadingTimeout(true), 8000);
+      return () => clearTimeout(timer);
+    } else {
+      setLoadingTimeout(false);
+    }
+  }, [authLoading]);
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="text-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+          <p className="text-muted-foreground">Chargement...</p>
+          {loadingTimeout && (
+            <div className="space-y-2">
+              <p className="text-sm text-yellow-600">Le chargement prend plus de temps que prévu</p>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => window.location.reload()}
+              >
+                Recharger la page
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
