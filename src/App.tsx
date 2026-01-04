@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { AuthGuard, AdminGuard } from "@/components/auth/AuthGuard";
+import { AuthProvider } from "@/hooks/useAuth";
 import { ErrorBoundary } from "@/components/common";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TutorialProvider, WelcomeTutorialModal } from "@/components/tutorial/GuidedTutorial";
