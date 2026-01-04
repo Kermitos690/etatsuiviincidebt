@@ -138,22 +138,31 @@ export default function GmailConfig() {
     const errorMessage = searchParams.get('error_message');
     const errorSuggestion = searchParams.get('error_suggestion');
     const errorDescription = searchParams.get('error_description');
-    
+
+    const clearOauthParams = () => {
+      // IMPORTANT: keep unrelated params (e.g. __lovable_token) or the preview session can break
+      const next = new URLSearchParams(searchParams);
+      ['connected', 'email', 'oauth_error', 'error_message', 'error_suggestion', 'error_description'].forEach(
+        (k) => next.delete(k)
+      );
+      setSearchParams(next, { replace: true });
+    };
+
     if (connected === 'true' && email) {
-      setConfig(prev => ({ ...prev, connected: true, email: decodeURIComponent(email) }));
+      setConfig((prev) => ({ ...prev, connected: true, email: decodeURIComponent(email) }));
       toast.success('Connexion Gmail réussie');
-      setSearchParams({});
+      clearOauthParams();
     } else if (oauthErrorParam) {
       // Handle OAuth error from redirect
       setOauthError({
         error: oauthErrorParam,
         message: errorMessage ? decodeURIComponent(errorMessage) : 'Erreur lors de la connexion Gmail',
         suggestion: errorSuggestion ? decodeURIComponent(errorSuggestion) : '',
-        description: errorDescription ? decodeURIComponent(errorDescription) : undefined
+        description: errorDescription ? decodeURIComponent(errorDescription) : undefined,
       });
       toast.error(errorMessage ? decodeURIComponent(errorMessage) : 'Erreur lors de la connexion Gmail');
-      // Clear URL params but keep error state for display
-      setSearchParams({});
+      // Clear only OAuth params but keep error state for display
+      clearOauthParams();
     }
   }, [searchParams, setSearchParams]);
 
