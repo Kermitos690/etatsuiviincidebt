@@ -56,6 +56,7 @@ interface AuthContextValue {
   // Auth methods
   signIn: (email: string, password: string) => Promise<AuthTokenResponsePassword>;
   signUp: (email: string, password: string, displayName?: string) => Promise<AuthResponse>;
+  signInWithGoogle: () => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<{ error: AuthError | null }>;
 
   // Profile methods
@@ -238,6 +239,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  /**
+   * Sign in with Google OAuth + Gmail API scopes in a single flow.
+   * The callback will store Gmail tokens automatically.
+   */
+  const signInWithGoogle = useCallback(async (): Promise<{ error: AuthError | null }> => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+        scopes: "email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify",
+        queryParams: {
+          access_type: "offline",
+          prompt: "consent",
+        },
+      },
+    });
+    return { error };
+  }, []);
+
   const signOut = useCallback(async (): Promise<{ error: AuthError | null }> => {
     const { error } = await supabase.auth.signOut();
     if (!error) {
@@ -314,6 +334,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       profileLoading: state.profileLoading,
       signIn,
       signUp,
+      signInWithGoogle,
       signOut,
       updateProfile,
       refreshProfile,
@@ -331,6 +352,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       state.profileLoading,
       signIn,
       signUp,
+      signInWithGoogle,
       signOut,
       updateProfile,
       refreshProfile,

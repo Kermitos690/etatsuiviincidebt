@@ -545,6 +545,81 @@ serve(async (req) => {
       );
     }
 
+    // NEW ACTION: Store OAuth tokens from Google Sign-In callback
+    if (action === "store-oauth-tokens") {
+      const parsedBody = JSON.parse(body);
+      const { accessToken, refreshToken } = parsedBody;
+
+      if (!accessToken) {
+        return new Response(JSON.stringify({ error: "Missing access token" }), {
+          status: 400,
+          headers: { ...cors, "Content-Type": "application/json" },
+        });
+      }
+
+      // Get user email from Google
+      const userInfoResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!userInfoResponse.ok) {
+        console.error("Failed to get user info:", await userInfoResponse.text());
+        return new Response(JSON.stringify({ error: "Failed to get user info from Google" }), {
+          status: 400,
+          headers: { ...cors, "Content-Type": "application/json" },
+        });
+      }
+
+      const userInfo = await userInfoResponse.json();
+      const userEmail = userInfo.email;
+
+      console.log("Storing Gmail tokens from Google Sign-In for user:", user.id, "email:", userEmail);
+
+      // Encrypt and store tokens
+      if (!isEncryptionConfigured()) {
+        console.error("Encryption key missing - cannot store Gmail tokens");
+        return new Response(JSON.stringify({ error: "Server configuration incomplete" }), {
+          status: 500,
+          headers: { ...cors, "Content-Type": "application/json" },
+        });
+      }
+
+      const encrypted = await encryptGmailTokens(accessToken, refreshToken || null);
+
+      // Calculate token expiry (Google tokens typically expire in 1 hour)
+      const tokenExpiry = new Date(Date.now() + 3600 * 1000).toISOString();
+
+      const upsertData: any = {
+        user_id: user.id,
+        user_email: userEmail,
+        token_expiry: tokenExpiry,
+        access_token_enc: encrypted.accessTokenEnc,
+        refresh_token_enc: encrypted.refreshTokenEnc,
+        token_nonce: encrypted.nonce,
+        token_key_version: encrypted.keyVersion,
+        sync_enabled: true, // Auto-enable sync when using unified flow
+      };
+
+      const { error: upsertError } = await supabase
+        .from("gmail_config")
+        .upsert(upsertData, { onConflict: "user_id" });
+
+      if (upsertError) {
+        console.error("Failed to store Gmail tokens:", upsertError);
+        return new Response(JSON.stringify({ error: "Failed to store tokens" }), {
+          status: 500,
+          headers: { ...cors, "Content-Type": "application/json" },
+        });
+      }
+
+      console.log("Gmail tokens stored successfully from Google Sign-In for user:", user.id);
+
+      return new Response(
+        JSON.stringify({ success: true, email: userEmail }),
+        { headers: { ...cors, "Content-Type": "application/json" } }
+      );
+    }
+
     return new Response(JSON.stringify({ error: "Invalid action" }), {
       status: 400,
       headers: { ...cors, "Content-Type": "application/json" },
