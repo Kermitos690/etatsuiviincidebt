@@ -171,27 +171,28 @@ export default function GmailConfig() {
     loadConfig();
   }, []);
 
-  const loadConfig = async () => {
+  const loadConfig = async (): Promise<boolean | null> => {
     try {
       // Ensure we have a fresh session before making the call
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      
+
       if (sessionError || !sessionData.session) {
         console.log('No valid session, skipping config load');
-        return;
+        return null;
       }
-      
+
       // Refresh session if needed
       const { error: refreshError } = await supabase.auth.refreshSession();
       if (refreshError) {
         console.log('Session refresh failed, user may need to re-login');
-        return;
+        return null;
       }
-      
+
       const { data, error } = await supabase.functions.invoke('gmail-oauth', {
-        body: { action: 'get-config' }
+        body: { action: 'get-config' },
       });
       if (error) throw error;
+
       if (data?.config) {
         setConfigId(data.config.id);
         setConfig({
@@ -200,53 +201,112 @@ export default function GmailConfig() {
           lastSync: data.config.last_sync,
           syncEnabled: data.config.sync_enabled || false,
           domains: data.config.domains?.length ? data.config.domains : INSTITUTIONAL_DOMAINS,
-          keywords: data.config.keywords?.length ? data.config.keywords : SYNC_KEYWORDS
+          keywords: data.config.keywords?.length ? data.config.keywords : SYNC_KEYWORDS,
         });
       }
+
+      return typeof data?.connected === 'boolean' ? data.connected : null;
     } catch (error) {
       console.error('Failed to load config:', error);
+      return null;
     }
   };
 
   const handleGoogleAuth = async () => {
     setLoading(true);
+
     try {
       // Refresh session before OAuth flow
       await supabase.auth.refreshSession();
-      
+
       const { data, error } = await supabase.functions.invoke('gmail-oauth', {
-        body: { action: 'get-auth-url' }
+        body: { action: 'get-auth-url' },
       });
       if (error) throw error;
-      
-      if (data?.url) {
-        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-        
-        if (isMobile) {
-          window.location.href = data.url;
-        } else {
-          const width = 600, height = 700;
-          const left = window.screenX + (window.outerWidth - width) / 2;
-          const top = window.screenY + (window.outerHeight - height) / 2;
-          
-          const popup = window.open(data.url, 'Gmail Authorization', 
-            `width=${width},height=${height},left=${left},top=${top}`);
 
-          const handleMessage = async (event: MessageEvent) => {
-            if (event.data.type === 'gmail-oauth-callback') {
-              popup?.close();
-              window.removeEventListener('message', handleMessage);
-              if (event.data.success) {
-                setConfig(prev => ({ ...prev, connected: true, email: event.data.email }));
-                toast.success('Connexion Gmail réussie');
-              } else {
-                toast.error('Échec de la connexion Gmail');
-              }
-            }
-          };
-          window.addEventListener('message', handleMessage);
-        }
+      if (!data?.url) {
+        throw new Error("URL d'autorisation manquante");
       }
+
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      if (isMobile) {
+        window.location.href = data.url;
+        return;
+      }
+
+      const width = 600,
+        height = 700;
+      const left = window.screenX + (window.outerWidth - width) / 2;
+      const top = window.screenY + (window.outerHeight - height) / 2;
+
+      const popup = window.open(
+        data.url,
+        'Gmail Authorization',
+        `width=${width},height=${height},left=${left},top=${top}`
+      );
+
+      if (!popup) {
+        toast.error('Popup bloquée : ouverture dans un nouvel onglet');
+        window.location.href = data.url;
+        return;
+      }
+
+      let done = false;
+      let intervalId: number | null = null;
+
+      const cleanup = () => {
+        if (intervalId) window.clearInterval(intervalId);
+        intervalId = null;
+        window.removeEventListener('message', handleMessage);
+      };
+
+      const finalizeSuccess = async () => {
+        const connected = await loadConfig();
+        if (connected) {
+          done = true;
+          try {
+            popup.close();
+          } catch {
+            // ignore
+          }
+          cleanup();
+          toast.success('Connexion Gmail réussie');
+        }
+      };
+
+      const handleMessage = async (event: MessageEvent) => {
+        if (event.data?.type !== 'gmail-oauth-callback') return;
+
+        if (event.data.success) {
+          await finalizeSuccess();
+        } else {
+          done = true;
+          cleanup();
+          toast.error('Échec de la connexion Gmail');
+        }
+      };
+
+      window.addEventListener('message', handleMessage);
+
+      const startedAt = Date.now();
+      intervalId = window.setInterval(async () => {
+        if (done) return;
+
+        // User closed the window
+        if (popup.closed) {
+          cleanup();
+          return;
+        }
+
+        // Safety timeout (avoids infinite wait if postMessage is blocked)
+        if (Date.now() - startedAt > 60_000) {
+          cleanup();
+          toast.error('Connexion Gmail trop longue : réessayez');
+          return;
+        }
+
+        await finalizeSuccess();
+      }, 1500);
     } catch (error) {
       console.error('Gmail auth error:', error);
       toast.error('Erreur lors de la connexion Gmail');
