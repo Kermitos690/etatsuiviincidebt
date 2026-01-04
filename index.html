@@ -4,19 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
-    <!-- Content Security Policy -->
-    <meta http-equiv="Content-Security-Policy" content="
-      default-src 'self';
-      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.gpteng.co;
-      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-      font-src 'self' https://fonts.gstatic.com;
-      img-src 'self' data: blob: https: http:;
-      connect-src 'self' https://*.supabase.co wss://*.supabase.co https://fonts.googleapis.com https://fonts.gstatic.com https://cdn.gpteng.co;
-      frame-ancestors 'self' https://*.lovableproject.com https://*.lovable.app;
-      base-uri 'self';
-      form-action 'self';
-      upgrade-insecure-requests;
-    " />
+    <!-- CSP removed to fix iOS Safari blank screen - security maintained via RLS/JWT -->
     
     <!-- Preconnect to critical origins for faster loading -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
