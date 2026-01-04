@@ -73,52 +73,54 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-            <TutorialProvider>
-              <WelcomeTutorialModal />
-              <Suspense fallback={<PageLoader />}>
-                <Routes>
-                  {/* Public routes */}
-                  <Route path="/auth" element={<Auth />} />
-                  <Route path="/auth/callback" element={<AuthCallback />} />
-                  
-                  {/* Protected routes - Simplified */}
-                  <Route path="/" element={<AuthGuard><Dashboard /></AuthGuard>} />
-                  
-                  {/* Emails - Unified */}
-                  <Route path="/emails" element={<AuthGuard><Emails /></AuthGuard>} />
-                  <Route path="/email-cleanup" element={<AuthGuard><EmailCleanup /></AuthGuard>} />
-                  <Route path="/attachments" element={<AuthGuard><Attachments /></AuthGuard>} />
-                  <Route path="/analysis-pipeline" element={<AuthGuard><AnalysisPipeline /></AuthGuard>} />
-                  
-                  {/* Incidents */}
-                  <Route path="/suggestions" element={<AuthGuard><Suggestions /></AuthGuard>} />
-                  <Route path="/incidents" element={<AuthGuard><Incidents /></AuthGuard>} />
-                  <Route path="/incidents/:id" element={<AuthGuard><IncidentDetail /></AuthGuard>} />
-                  <Route path="/incidents/:id/edit" element={<AuthGuard><EditIncident /></AuthGuard>} />
-                  <Route path="/incidents-timeline" element={<AuthGuard><IncidentsTimeline /></AuthGuard>} />
-                  <Route path="/nouveau" element={<AuthGuard><NewIncident /></AuthGuard>} />
-                  
-                  {/* Dossier Factuel */}
-                  <Route path="/factual-dossier" element={<AuthGuard><FactualDossier /></AuthGuard>} />
-                  <Route path="/events" element={<AuthGuard><Events /></AuthGuard>} />
-                  <Route path="/journal" element={<AuthGuard><Journal /></AuthGuard>} />
-                  <Route path="/ia-auditeur" element={<AuthGuard><IAAuditeur /></AuthGuard>} />
-                  
-                  {/* Settings */}
-                  <Route path="/gmail-config" element={<AuthGuard><GmailConfig /></AuthGuard>} />
-                  <Route path="/admin" element={<AuthGuard><Admin /></AuthGuard>} />
-                  <Route path="/profile" element={<AuthGuard><Profile /></AuthGuard>} />
-                  <Route path="/tutorial" element={<AuthGuard><Tutorial /></AuthGuard>} />
-                  <Route path="/import-incident" element={<AuthGuard><ImportIncident /></AuthGuard>} />
-                  <Route path="/ia-training" element={<AuthGuard><IATraining /></AuthGuard>} />
-                  <Route path="/swipe-training" element={<AuthGuard><SwipeTraining /></AuthGuard>} />
-                  <Route path="/legal-config" element={<AdminGuard><LegalConfig /></AdminGuard>} />
-                  <Route path="/legal-admin" element={<AdminGuard><LegalAdmin /></AdminGuard>} />
-                  
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </Suspense>
-            </TutorialProvider>
+            <AuthProvider>
+              <TutorialProvider>
+                <WelcomeTutorialModal />
+                <Suspense fallback={<PageLoader />}>
+                  <Routes>
+                    {/* Public routes */}
+                    <Route path="/auth" element={<Auth />} />
+                    <Route path="/auth/callback" element={<AuthCallback />} />
+                    
+                    {/* Protected routes - Simplified */}
+                    <Route path="/" element={<AuthGuard><Dashboard /></AuthGuard>} />
+                    
+                    {/* Emails - Unified */}
+                    <Route path="/emails" element={<AuthGuard><Emails /></AuthGuard>} />
+                    <Route path="/email-cleanup" element={<AuthGuard><EmailCleanup /></AuthGuard>} />
+                    <Route path="/attachments" element={<AuthGuard><Attachments /></AuthGuard>} />
+                    <Route path="/analysis-pipeline" element={<AuthGuard><AnalysisPipeline /></AuthGuard>} />
+                    
+                    {/* Incidents */}
+                    <Route path="/suggestions" element={<AuthGuard><Suggestions /></AuthGuard>} />
+                    <Route path="/incidents" element={<AuthGuard><Incidents /></AuthGuard>} />
+                    <Route path="/incidents/:id" element={<AuthGuard><IncidentDetail /></AuthGuard>} />
+                    <Route path="/incidents/:id/edit" element={<AuthGuard><EditIncident /></AuthGuard>} />
+                    <Route path="/incidents-timeline" element={<AuthGuard><IncidentsTimeline /></AuthGuard>} />
+                    <Route path="/nouveau" element={<AuthGuard><NewIncident /></AuthGuard>} />
+                    
+                    {/* Dossier Factuel */}
+                    <Route path="/factual-dossier" element={<AuthGuard><FactualDossier /></AuthGuard>} />
+                    <Route path="/events" element={<AuthGuard><Events /></AuthGuard>} />
+                    <Route path="/journal" element={<AuthGuard><Journal /></AuthGuard>} />
+                    <Route path="/ia-auditeur" element={<AuthGuard><IAAuditeur /></AuthGuard>} />
+                    
+                    {/* Settings */}
+                    <Route path="/gmail-config" element={<AuthGuard><GmailConfig /></AuthGuard>} />
+                    <Route path="/admin" element={<AuthGuard><Admin /></AuthGuard>} />
+                    <Route path="/profile" element={<AuthGuard><Profile /></AuthGuard>} />
+                    <Route path="/tutorial" element={<AuthGuard><Tutorial /></AuthGuard>} />
+                    <Route path="/import-incident" element={<AuthGuard><ImportIncident /></AuthGuard>} />
+                    <Route path="/ia-training" element={<AuthGuard><IATraining /></AuthGuard>} />
+                    <Route path="/swipe-training" element={<AuthGuard><SwipeTraining /></AuthGuard>} />
+                    <Route path="/legal-config" element={<AdminGuard><LegalConfig /></AdminGuard>} />
+                    <Route path="/legal-admin" element={<AdminGuard><LegalAdmin /></AdminGuard>} />
+                    
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </Suspense>
+              </TutorialProvider>
+            </AuthProvider>
           </BrowserRouter>
         </TooltipProvider>
       </ThemeProvider>
