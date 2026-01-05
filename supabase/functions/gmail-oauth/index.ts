@@ -396,7 +396,14 @@ serve(async (req) => {
         `&prompt=consent` +
         `&state=${encodeURIComponent(state)}`;
 
-      console.log("Generated auth URL for user:", user.id);
+      console.log(
+        "Generated auth URL for user:",
+        user.id,
+        "email:",
+        user.email ?? "(unknown)",
+        "app_origin:",
+        appUrlForState || "(missing)"
+      );
       return new Response(JSON.stringify({ url: authUrl }), {
         headers: { ...cors, "Content-Type": "application/json" },
       });

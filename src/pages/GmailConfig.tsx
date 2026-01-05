@@ -401,11 +401,39 @@ export default function GmailConfig() {
   // Plan B: Use Google Sign-In with Gmail scopes (already implemented in useAuth)
   const handlePlanBGoogleSignIn = async () => {
     setPlanBLoading(true);
+    let scheduled = false;
+
     try {
       toast.info('Connexion via Google Sign-In...');
-      await signInWithGoogle();
+      const { error } = await signInWithGoogle();
+
+      if (error) {
+        const msg = error.message || 'Erreur Google Sign-In';
+
+        // Most common failure: provider not enabled in backend
+        if (msg.toLowerCase().includes('provider') && msg.toLowerCase().includes('not enabled')) {
+          setOauthError({
+            error: 'provider_not_enabled',
+            message: 'Google Sign-In n’est pas activé côté backend',
+            suggestion: 'Active Google dans le backend (Authentification → Google) puis réessaie.',
+            description: msg,
+          });
+          toast.error('Google Sign-In n’est pas activé côté backend');
+          return;
+        }
+
+        setOauthError({
+          error: 'google_signin_error',
+          message: 'Erreur Google Sign-In',
+          suggestion: 'Vérifie les paramètres Google puis réessaie.',
+          description: msg,
+        });
+        toast.error('Erreur Google Sign-In');
+        return;
+      }
+
       // After sign-in, the AuthCallback will store tokens via store-oauth-tokens
-      // We need to wait and then reload config
+      scheduled = true;
       setTimeout(async () => {
         const connected = await loadConfig();
         if (connected) {
@@ -418,7 +446,8 @@ export default function GmailConfig() {
     } catch (error) {
       console.error('Plan B Google Sign-In error:', error);
       toast.error('Erreur lors de la connexion Google');
-      setPlanBLoading(false);
+    } finally {
+      if (!scheduled) setPlanBLoading(false);
     }
   };
 
