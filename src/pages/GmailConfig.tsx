@@ -263,6 +263,19 @@ export default function GmailConfig() {
         throw error;
       }
 
+      // Handle CONFIG_ERROR from backend (invalid credentials)
+      if (data?.success === false && data?.code === 'CONFIG_ERROR') {
+        console.error('Gmail OAuth CONFIG_ERROR:', data);
+        setOauthError({
+          error: 'config_error',
+          message: data.message || 'Erreur de configuration Google',
+          suggestion: data.suggestion || 'Vérifie les secrets GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET.',
+          description: data.details,
+        });
+        toast.error(data.message || 'Erreur de configuration Google OAuth');
+        return;
+      }
+
       if (!data?.url) {
         throw new Error("URL d'autorisation manquante");
       }
