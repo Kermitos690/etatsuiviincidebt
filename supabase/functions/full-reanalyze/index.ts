@@ -4,6 +4,7 @@ import { checkRateLimit, getClientIdentifier, rateLimitResponse, RATE_LIMITS } f
 import { getCorsHeaders, corsHeaders, log } from "../_shared/core.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
@@ -82,24 +83,28 @@ function isEmailRelevant(
   return domainMatch && keywordMatch;
 }
 
-// Verify JWT and get user
-async function verifyAuth(req: Request): Promise<{ user: any; token: string } | null> {
+// Verify JWT and get user using getClaims
+async function verifyAuth(req: Request): Promise<{ userId: string; token: string } | null> {
   const authHeader = req.headers.get("authorization");
-  if (!authHeader) {
-    console.error("No authorization header");
+  if (!authHeader?.startsWith("Bearer ")) {
+    console.error("No authorization header or invalid format");
     return null;
   }
 
   const token = authHeader.replace("Bearer ", "");
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  
+  // Create client with anon key + user's auth header for getClaims
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: authHeader } }
+  });
 
-  const { data: { user }, error } = await supabase.auth.getUser(token);
-  if (error || !user) {
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data?.user) {
     console.error("Auth error:", error?.message);
     return null;
   }
 
-  return { user, token };
+  return { userId: data.user.id, token };
 }
 
 const ANALYSIS_PROMPT = `Tu es un EXPERT JURIDIQUE SUISSE spécialisé dans la protection de l'adulte et les curatelles.
@@ -572,8 +577,7 @@ serve(async (req) => {
     });
   }
 
-  const { user, token } = auth;
-  const userId = user.id;
+  const { userId, token } = auth;
 
   console.log(`[full-reanalyze] Starting for user ${userId}`);
 
