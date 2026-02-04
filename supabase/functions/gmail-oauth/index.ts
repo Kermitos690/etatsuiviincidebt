@@ -2,9 +2,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { verifyAuth, corsHeaders } from "../_shared/auth.ts";
 import { encryptGmailTokens, isEncryptionConfigured, getGmailTokens } from "../_shared/encryption.ts";
+import { getGoogleCredentials } from "../_shared/googleCredentials.ts";
 
-const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID");
-const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -177,13 +176,20 @@ serve(async (req) => {
         });
       }
 
+      // Get validated credentials
+      const { credentials: creds, error: credsError } = getGoogleCredentials();
+      if (!creds) {
+        console.error("Invalid Google credentials during token exchange:", credsError);
+        throw new Error("Configuration serveur incomplète (identifiants Google invalides)");
+      }
+
       // Exchange code for tokens
       const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
-          client_id: GOOGLE_CLIENT_ID!,
-          client_secret: GOOGLE_CLIENT_SECRET!,
+          client_id: creds.clientId,
+          client_secret: creds.clientSecret,
           code,
           grant_type: "authorization_code",
           redirect_uri: REDIRECT_URI,
@@ -312,18 +318,27 @@ serve(async (req) => {
 
     // PUBLIC ACTION: diagnose - check configuration without authentication
     if (action === "diagnose") {
-      const clientIdConfigured = !!GOOGLE_CLIENT_ID && GOOGLE_CLIENT_ID.length > 10;
-      const clientSecretConfigured = !!GOOGLE_CLIENT_SECRET && GOOGLE_CLIENT_SECRET.length > 10;
+      const { credentials, clientIdValidation, clientSecretValidation } = getGoogleCredentials();
       const encryptionKeyConfigured = isEncryptionConfigured();
+      
+      const clientIdConfigured = clientIdValidation.isValid;
+      const clientSecretConfigured = clientSecretValidation.isValid;
       
       const diagnosticResult = {
         success: true,
         redirectUri: REDIRECT_URI,
         supabaseUrl: SUPABASE_URL,
         secrets: {
-          GOOGLE_CLIENT_ID: clientIdConfigured ? "✅ Configuré" : "❌ Manquant",
-          GOOGLE_CLIENT_SECRET: clientSecretConfigured ? "✅ Configuré" : "❌ Manquant",
+          GOOGLE_CLIENT_ID: clientIdConfigured ? "✅ Configuré" : `❌ ${clientIdValidation.message || "Manquant"}`,
+          GOOGLE_CLIENT_SECRET: clientSecretConfigured ? "✅ Configuré" : `❌ ${clientSecretValidation.message || "Manquant"}`,
           GMAIL_TOKEN_ENCRYPTION_KEY: encryptionKeyConfigured ? "✅ Configuré" : "❌ Manquant",
+        },
+        // NEW: Detailed validation hints for debugging
+        validation: {
+          clientIdLooksValid: clientIdConfigured,
+          clientIdHint: clientIdValidation.hint,
+          clientSecretLooksValid: clientSecretConfigured,
+          clientSecretHint: clientSecretValidation.hint,
         },
         allSecretsOk: clientIdConfigured && clientSecretConfigured && encryptionKeyConfigured,
         instructions: {
@@ -332,6 +347,9 @@ serve(async (req) => {
           step3_origins: "Ajouter l'origine JavaScript autorisée (voir 'requiredOrigin' ci-dessous)",
           step4_redirect: `Ajouter l'URI de redirection: ${REDIRECT_URI}`,
           step5_test_users: "Si l'app est 'En test', ajouter ton email dans 'Utilisateurs de test' (Écran de consentement OAuth)",
+          fix_json_secret: clientIdValidation.hint === "looks_like_json" || clientSecretValidation.hint === "looks_like_json" 
+            ? "⚠️ Il semble que tu as copié tout le fichier JSON. Copie uniquement la valeur client_id ou client_secret, pas tout le fichier." 
+            : undefined,
         },
         googleCloudLinks: {
           credentials: "https://console.cloud.google.com/apis/credentials",
@@ -339,7 +357,7 @@ serve(async (req) => {
         },
       };
 
-      console.log("Diagnostic check performed - secrets status:", diagnosticResult.secrets);
+      console.log("Diagnostic check performed - validation:", diagnosticResult.validation);
       
       return new Response(JSON.stringify(diagnosticResult), {
         headers: { ...cors, "Content-Type": "application/json" },
@@ -357,6 +375,30 @@ serve(async (req) => {
     }
 
     if (action === "get-auth-url") {
+      // Validate credentials BEFORE generating URL
+      const { credentials: creds, error: credsError, clientIdValidation, clientSecretValidation } = getGoogleCredentials();
+      
+      if (!creds) {
+        console.error("Invalid Google credentials for get-auth-url:", credsError);
+        // Return structured error so frontend can display helpful message
+        return new Response(JSON.stringify({ 
+          success: false, 
+          code: "CONFIG_ERROR",
+          message: "Identifiants Google invalides",
+          details: credsError,
+          suggestion: clientIdValidation.hint === "looks_like_json" || clientSecretValidation.hint === "looks_like_json"
+            ? "Il semble que tu as collé tout le fichier JSON. Copie uniquement la valeur client_id (ex: 1234567890-xxxx.apps.googleusercontent.com), pas tout le contenu du fichier."
+            : "Vérifie que GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET sont correctement configurés dans les secrets.",
+          validation: {
+            clientIdHint: clientIdValidation.hint,
+            clientSecretHint: clientSecretValidation.hint,
+          }
+        }), {
+          status: 200, // Return 200 to avoid network errors, let frontend handle the error
+          headers: { ...cors, "Content-Type": "application/json" },
+        });
+      }
+
       const scopes = [
         "https://www.googleapis.com/auth/gmail.readonly",
         "https://www.googleapis.com/auth/userinfo.email",
@@ -386,9 +428,10 @@ serve(async (req) => {
         })
       );
 
+      // CRITICAL: Use encodeURIComponent for ALL parameters to prevent URL injection
       const authUrl =
         `https://accounts.google.com/o/oauth2/v2/auth?` +
-        `client_id=${GOOGLE_CLIENT_ID}` +
+        `client_id=${encodeURIComponent(creds.clientId)}` +
         `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
         `&response_type=code` +
         `&scope=${encodeURIComponent(scopes)}` +
@@ -404,7 +447,7 @@ serve(async (req) => {
         "app_origin:",
         appUrlForState || "(missing)"
       );
-      return new Response(JSON.stringify({ url: authUrl }), {
+      return new Response(JSON.stringify({ success: true, url: authUrl }), {
         headers: { ...cors, "Content-Type": "application/json" },
       });
     }
@@ -517,13 +560,20 @@ serve(async (req) => {
         throw new Error("No refresh token available");
       }
 
+      // Get validated credentials
+      const { credentials: creds, error: credsError } = getGoogleCredentials();
+      if (!creds) {
+        console.error("Invalid Google credentials during token refresh:", credsError);
+        throw new Error("Configuration serveur incomplète (identifiants Google invalides)");
+      }
+
       // Refresh the token
       const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
-          client_id: GOOGLE_CLIENT_ID!,
-          client_secret: GOOGLE_CLIENT_SECRET!,
+          client_id: creds.clientId,
+          client_secret: creds.clientSecret,
           refresh_token: tokens.refreshToken,
           grant_type: "refresh_token",
         }),

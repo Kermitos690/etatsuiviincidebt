@@ -4,13 +4,12 @@ import { verifyAuth } from "../_shared/auth.ts";
 import { checkRateLimit, getClientIdentifier, rateLimitResponse, RATE_LIMITS } from "../_shared/rateLimit.ts";
 import { getGmailTokens, encryptGmailTokens, isEncryptionConfigured } from "../_shared/encryption.ts";
 import { getCorsHeaders, log } from "../_shared/core.ts";
+import { getGoogleCredentials } from "../_shared/googleCredentials.ts";
 
 declare const EdgeRuntime: {
   waitUntil: (promise: Promise<any>) => void;
 };
 
-const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID");
-const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -36,13 +35,20 @@ async function refreshAccessToken(supabase: any, config: any, refreshToken: stri
     return null;
   }
 
+  // Get validated credentials
+  const { credentials: creds, error: credsError } = getGoogleCredentials();
+  if (!creds) {
+    console.error("Invalid Google credentials during token refresh:", credsError);
+    return null;
+  }
+
   console.log("Refreshing access token...");
   const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID!,
-      client_secret: GOOGLE_CLIENT_SECRET!,
+      client_id: creds.clientId,
+      client_secret: creds.clientSecret,
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     }),
@@ -82,6 +88,7 @@ async function refreshAccessToken(supabase: any, config: any, refreshToken: stri
 
   return tokenData.access_token;
 }
+
 
 // Fetch all custom labels from Gmail
 async function fetchCustomLabels(accessToken: string): Promise<string[]> {
