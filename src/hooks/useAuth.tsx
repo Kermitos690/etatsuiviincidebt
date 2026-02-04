@@ -16,6 +16,7 @@ import type {
   User,
 } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { lovable } from "@/integrations/lovable";
 
 // ============= Types =============
 export interface UserProfile {
@@ -244,18 +245,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * The callback will store Gmail tokens automatically.
    */
   const signInWithGoogle = useCallback(async (): Promise<{ error: AuthError | null }> => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-        scopes: "email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify",
-        queryParams: {
-          access_type: "offline",
-          prompt: "consent",
-        },
-      },
+    const result = await lovable.auth.signInWithOAuth("google", {
+      redirect_uri: window.location.origin,
     });
-    return { error };
+
+    if (result.redirected) {
+      return { error: null };
+    }
+
+    if (result.error) {
+      return { error: result.error as unknown as AuthError };
+    }
+
+    return { error: null };
   }, []);
 
   const signOut = useCallback(async (): Promise<{ error: AuthError | null }> => {
