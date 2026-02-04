@@ -14,7 +14,7 @@ verify_jwt = false
 
 # Sync functions - Called via SDK with auth token
 [functions.gmail-sync]
-verify_jwt = true
+verify_jwt = false
 
 [functions.sync-status]
 verify_jwt = true
@@ -62,7 +62,7 @@ verify_jwt = true
 
 # Batch operations
 [functions.full-reanalyze]
-verify_jwt = true
+verify_jwt = false
 
 [functions.batch-analyze-emails]
 verify_jwt = true
