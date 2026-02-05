@@ -1,101 +1,264 @@
 
-Objectif: réparer la connexion Gmail (écran /gmail-config) qui aboutit à une page Google “403. That’s an error. You do not have access to this page”.
+# Refactorisation Complete du Projet - Plan Structuré
 
-## Ce que j’ai constaté (preuves)
-1) L’app appelle bien la fonction backend `gmail-oauth` pour obtenir l’URL Google:
-- Réseau: `POST /functions/v1/gmail-oauth` avec `{ action: "get-auth-url" }` → 200.
+## Vue d'ensemble du projet
 
-2) L’URL retournée est anormale: le paramètre `client_id` contient visiblement du JSON injecté (on voit `","project_id":"new-incident-2026` dans la valeur), ce qui casse la requête vers Google.
-- Extrait réseau (réponse):  
-  `...client_id=5199...apps.googleusercontent.com\",\"project_id\":\"new-incident-2026&redirect_uri=...`
+Application juridique suisse de suivi d'incidents de curatelle avec:
+- Synchronisation Gmail et analyse automatique des emails
+- Détection IA d'incidents avec validation utilisateur
+- Système d'entraînement IA bidirectionnel (SwipeTraining, IATraining, Suggestions)
+- Pipeline d'analyse en 5 étapes
+- Export PDF pour le Juge de Paix
 
-3) Côté backend, `gmail-oauth` construit l’URL avec `client_id=${GOOGLE_CLIENT_ID}` sans `encodeURIComponent()`.  
-Donc si le secret contient des guillemets/virgules/JSON, ça “pollue” l’URL finale.
+---
 
-4) Les logs backend ne montrent aucun “callback” (pas d’échange de code contre tokens), ce qui confirme que ça bloque avant de revenir sur notre callback.
+## Phase 1: Consolidation de l'Architecture
 
-## Cause racine la plus probable
-- Le secret backend `GOOGLE_CLIENT_ID` (et possiblement `GOOGLE_CLIENT_SECRET`) a été rempli avec un JSON complet (ou une chaîne contenant plusieurs champs), au lieu d’une valeur simple.
-- Et même si le secret était correct, le fait de ne pas encoder `client_id` est un bug de robustesse/sécurité (risque d’URL invalide dès qu’il y a un caractère inattendu).
+### 1.1 Organisation des fichiers
 
-## Stratégie de correction (robuste, “anti-erreur de copie”)
-### A) Corriger la génération de l’URL dans `gmail-oauth`
-1) Sanitation + parsing du secret:
-   - Ajouter une fonction utilitaire (idéalement dans `_shared/`) qui:
-     - `trim()`
-     - enlève d’éventuels guillemets autour (`"..."`)
-     - si la valeur “ressemble” à du JSON, tente `JSON.parse` et extrait:
-       - `client_id` / `client_secret` au top-level
-       - ou `web.client_id` / `web.client_secret` (format Google fréquent)
-       - ou `installed.*` (autre format fréquent)
-     - sinon retourne la valeur brute nettoyée.
-2) Encoder systématiquement les paramètres URL:
-   - `client_id`, `redirect_uri`, `scope`, `state` doivent tous être `encodeURIComponent(...)`.
-   - Aujourd’hui `redirect_uri/scope/state` le sont, mais pas `client_id`.
-3) Validation explicite avant de répondre:
-   - Si `client_id` ne matche pas un format attendu (ex: se termine par `.apps.googleusercontent.com`), répondre:
-     - HTTP 200 avec `{ success:false, code:"CONFIG_ERROR", message:"Client ID invalide", suggestion:"..." }`
-     - (évite un “Load failed” opaque côté navigateur)
-4) Étendre l’action `diagnose`:
-   - Ajouter des champs non-sensibles, par ex:
-     - `clientIdLooksValid: boolean`
-     - `clientIdHint: "ok" | "looks_like_json" | "has_quotes" | "wrong_format"`
-   - Sans jamais renvoyer la valeur du secret.
+**Barrel exports manquants a creer:**
+```
+src/types/index.ts        - Export centralise des types
+src/services/index.ts     - Export des services
+src/utils/index.ts        - Export des utilitaires
+src/stores/index.ts       - Export du store
+```
 
-### B) Appliquer la même sanitation dans `gmail-sync`
-Pourquoi: `gmail-sync` utilise aussi `GOOGLE_CLIENT_ID/SECRET` pour le refresh token. Si le secret est “pollué”, la synchro cassera plus tard même si l’OAuth passait.
-- Réutiliser le même helper de parsing/validation.
-- Si invalide → renvoyer `{ success:false, code:"CONFIG_ERROR", ... }` avec message clair.
+**Composants a reorganiser:**
+```
+src/components/training/              - Nouveau dossier
+  ├── index.ts                        - Barrel export
+  ├── TrainingCard.tsx                - Composant reutilisable
+  ├── ValidationButtons.tsx           - Boutons validation/rejet
+  └── ConfidenceBadge.tsx             - Badge de confiance
+```
 
-### C) Améliorer le feedback UI dans `GmailConfig.tsx`
-1) Dans `handleGoogleAuth()`:
-   - Si la fonction retourne `{ success:false }`, afficher un panneau d’erreur (en utilisant l’état `oauthError` déjà présent) au lieu d’un toast générique.
-   - Proposer directement:
-     - “Ouvre ‘Diagnostiquer la connexion Gmail’”
-     - “Copier les valeurs (origines/redirect URIs)”
-2) Optionnel mais utile:
-   - Ajouter un texte d’aide si l’utilisateur est en prévisualisation:
-     - il faut autoriser aussi l’origine de prévisualisation dans Google Cloud, pas seulement l’URL publique.
+### 1.2 Configuration centralisee
 
-## Correction de configuration (côté Google / secrets)
-Même avec le code robuste, il faut que les secrets soient cohérents:
-1) Remettre `GOOGLE_CLIENT_ID` à une valeur simple:
-   - uniquement la chaîne du type `xxxxx-xxxx.apps.googleusercontent.com`
-   - pas de JSON, pas de guillemets additionnels.
-2) Remettre `GOOGLE_CLIENT_SECRET`:
-   - uniquement le secret, valeur simple.
-3) Vérifier Google Cloud:
-   - “Authorized JavaScript origins”: ajouter l’origine affichée par le panneau diagnostic (si tu utilises l’URL publique ET la preview, ajouter les deux).
-   - “Authorized redirect URIs”: doit contenir exactement l’URI Gmail affichée (celle qui finit par `/functions/v1/gmail-oauth`).
-   - Si l’app OAuth est en mode “Testing”: ajouter ton email dans “Test users”.
+**Fichier a creer: `src/config/trainingConfig.ts`**
+```
+- VIOLATION_TYPES
+- CONFIDENCE_THRESHOLDS
+- TRAINING_PRIORITIES
+- ACTION_TYPES
+```
 
-## Étapes d’implémentation (séquencement)
-1) Lire/ajuster `supabase/functions/gmail-oauth/index.ts`:
-   - ajouter parsing/validation
-   - encoder `client_id`
-   - enrichir `diagnose`
-2) Lire/ajuster `supabase/functions/gmail-sync/index.ts`:
-   - réutiliser parsing/validation
-3) Ajuster `src/pages/GmailConfig.tsx`:
-   - gérer proprement `{ success:false, code:"CONFIG_ERROR" }`
-4) Mettre à jour les secrets `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` (nouvelles valeurs propres).
-5) Tests end-to-end (voir ci-dessous).
+---
 
-## Checklist de tests (end-to-end)
-1) Sur /gmail-config:
-   - Cliquer “Diagnostiquer la connexion Gmail” → tout au vert + indications “clientIdLooksValid”.
-2) Cliquer “Connecter Gmail”:
-   - Vérifier que l’URL Google ouverte contient un `client_id=` propre (pas de `project_id`, pas de guillemets).
-   - Consentement → retour app avec `connected=true&email=...`.
-3) Lancer une synchro:
-   - `gmail-sync` démarre, `sync-status` progresse, pas d’erreur refresh token.
-4) Refaire le test sur mobile (Safari/Chrome):
-   - mode popup bloqué → fallback onglet fonctionne.
-5) Optionnel: tester depuis l’URL publique et depuis la preview (si tu utilises les deux).
+## Phase 2: Correction des Fonctionnalites Entraînement IA
 
-## Risques / points d’attention
-- Ne jamais afficher les secrets dans la UI ou dans les logs (on se limite à des indices “valide / invalide”).
-- Garder `verify_jwt=false` sur `gmail-oauth` (déjà le cas) pour permettre le callback Google public.
-- La correction `encodeURIComponent(client_id)` est un “must” même si le secret est correct.
+### 2.1 Page IATraining (`src/pages/IATraining.tsx`)
 
-Résultat attendu: plus de page Google 403, et un message clair dans l’app si les identifiants sont mal copiés/collés.
+**Problemes identifies:**
+1. Pas de gestion de chargement pour les actions
+2. Pas de rafraichissement automatique apres validation
+3. Pas de lien vers l'email source pour contexte
+
+**Corrections:**
+- Ajouter bouton "Voir l'email source" si `email_id` present
+- Implementer `useMutation` pour les actions (cohérence avec Suggestions)
+- Ajouter stats de progression (cas traites aujourd'hui, total valide)
+- Synchroniser avec `ai_training_feedback` apres chaque action
+
+### 2.2 Page SwipeTraining (`src/pages/SwipeTraining.tsx`)
+
+**Problemes identifies:**
+1. Fonction `generatePairs` n'invalide pas le cache TanStack Query
+2. Stats utilisateur pas toujours creees automatiquement
+3. Pas de fallback si aucun email analyse
+
+**Corrections:**
+- Utiliser `queryClient.invalidateQueries` apres generation
+- Creer stats automatiquement si absentes (via Edge Function)
+- Ajouter empty state avec lien vers "/analysis-pipeline"
+- Ameliorer l'UX mobile (swipe gesture natif)
+
+### 2.3 Page Suggestions (`src/pages/Suggestions.tsx`)
+
+**Etat actuel:** Fonctionnel mais peut etre ameliore
+
+**Ameliorations:**
+- Ajouter possibilite de modifier la suggestion avant approbation
+- Afficher l'email source inline (apercu du corps)
+- Ajouter compteur de confiance visuel (Progress bar)
+
+### 2.4 Backend: Boucle d'entrainement
+
+**Fichiers concernes:**
+```
+supabase/functions/_shared/training.ts
+supabase/functions/auto-process-email/index.ts
+supabase/functions/analyze-email-advanced/index.ts
+supabase/functions/approve-suggestion/index.ts
+supabase/functions/generate-training-pairs/index.ts
+```
+
+**Corrections:**
+1. `generate-training-pairs`: Ajouter verification que l'utilisateur a des emails analyses
+2. `auto-process-email`: Enregistrer aussi les cas a faible confiance pour validation
+3. `training.ts`: Ajouter cache pour eviter re-fetch a chaque requete
+4. Creer `swipe_training_stats` si absent lors du premier swipe
+
+---
+
+## Phase 3: Correction des Pages Incompletes
+
+### 3.1 ControlCenter (`src/pages/ControlCenter.tsx`)
+
+**Problemes:**
+- Onglet "Actions" pointe vers `QuickActions` mais pas de contenu visible
+- Onglet "Analyse IA" incomplet
+
+**Corrections:**
+- Implementer contenu de l'onglet "Actions" avec liens vers pipelines
+- Ajouter resume des stats IA dans l'onglet "Analyse IA"
+- Integrer `ActorTrustPanel` et `CorroborationPanel` dans vues dediees
+
+### 3.2 Journal (`src/pages/Journal.tsx`)
+
+**Verification necessaire:** S'assurer que la page affiche bien l'historique audit
+
+### 3.3 Events (`src/pages/Events.tsx`)
+
+**Verification necessaire:** Confirmer que les evenements d'incidents s'affichent
+
+### 3.4 Profile (`src/pages/Profile.tsx`)
+
+**Ameliorations:**
+- Ajouter section preferences utilisateur
+- Ajouter stats personnelles (incidents crees, emails analyses)
+
+---
+
+## Phase 4: Securite RLS
+
+**13 warnings detectes:** Politiques RLS avec `USING (true)` pour INSERT/UPDATE/DELETE
+
+**Tables a corriger (priorite haute):**
+- `incident_suggestions`
+- `ai_training_feedback`
+- `ai_situation_training`
+- `swipe_training_pairs`
+- `swipe_training_results`
+- `swipe_training_stats`
+
+**Migration SQL a executer:**
+```sql
+-- Renforcer RLS pour tables d'entrainement IA
+ALTER POLICY "..." ON ai_situation_training 
+  USING (user_id = auth.uid());
+
+ALTER POLICY "..." ON ai_training_feedback
+  USING (user_id = auth.uid());
+
+-- etc. pour chaque table avec warning
+```
+
+---
+
+## Phase 5: Coherence UI/UX
+
+### 5.1 Composants communs
+
+**Creer/standardiser:**
+```
+src/components/common/ConfidenceIndicator.tsx  - Indicateur confiance IA
+src/components/common/TrainingProgress.tsx     - Progression entrainement
+src/components/common/LegalReference.tsx       - Affichage references legales
+```
+
+### 5.2 Navigation
+
+**AppSidebar a mettre a jour:**
+- Grouper "IA Training", "Swipe Training", "Suggestions" sous categorie "Entrainement IA"
+- Ajouter badges de notification pour suggestions en attente
+
+### 5.3 Layout mobile
+
+**Verifier:**
+- `MobileBottomNav` inclut acces aux fonctions entrainement
+- Responsive sur toutes les pages entrainement
+
+---
+
+## Phase 6: Tests et Validation
+
+### 6.1 Tests unitaires a ajouter
+
+```
+tests/training.test.ts           - Tests buildTrainingPromptContext
+tests/suggestions.test.ts        - Tests approbation/rejet
+tests/swipe-training.test.ts     - Tests generation paires
+```
+
+### 6.2 Checklist non-regression
+
+Mettre a jour `docs/non-regression-checklist.md`:
+- [ ] IATraining: Valider/Corriger/Rejeter fonctionne
+- [ ] SwipeTraining: Generation paires + stats
+- [ ] Suggestions: Approbation cree incident
+- [ ] Pipeline: 5 etapes completent sans erreur
+- [ ] Gmail: Connexion OAuth fonctionne (apres fix)
+
+---
+
+## Sequence d'Implementation
+
+```text
+Etape 1: Securite RLS (migration SQL)
+    ↓
+Etape 2: Backend Edge Functions (training.ts, generate-training-pairs)
+    ↓
+Etape 3: IATraining.tsx (corrections + liens email)
+    ↓
+Etape 4: SwipeTraining.tsx (cache invalidation + stats auto)
+    ↓
+Etape 5: Suggestions.tsx (edition avant approbation)
+    ↓
+Etape 6: ControlCenter.tsx (onglets complets)
+    ↓
+Etape 7: Composants communs (ConfidenceIndicator, etc.)
+    ↓
+Etape 8: Navigation (badges + groupement)
+    ↓
+Etape 9: Tests + Documentation
+```
+
+---
+
+## Fichiers a Modifier (Liste Complete)
+
+**Frontend:**
+- `src/pages/IATraining.tsx`
+- `src/pages/SwipeTraining.tsx`
+- `src/pages/Suggestions.tsx`
+- `src/pages/ControlCenter.tsx`
+- `src/components/layout/AppSidebar.tsx`
+- `src/components/suggestions/SuggestionCard.tsx`
+
+**Backend:**
+- `supabase/functions/_shared/training.ts`
+- `supabase/functions/generate-training-pairs/index.ts`
+- `supabase/functions/auto-process-email/index.ts`
+
+**Nouveaux fichiers:**
+- `src/config/trainingConfig.ts`
+- `src/components/training/index.ts`
+- `src/components/common/ConfidenceIndicator.tsx`
+- `src/types/index.ts`
+
+**Migration SQL:**
+- Correction des 13 politiques RLS trop permissives
+
+---
+
+## Resume Executif
+
+Ce plan couvre:
+1. **Securite** - Correction des 13 warnings RLS
+2. **Entrainement IA complet** - 3 pages fonctionnelles et interconnectees
+3. **Coherence code** - Organisation fichiers + composants reutilisables
+4. **UX** - Navigation amelioree + badges notifications
+5. **Stabilite** - Tests + documentation
+
+Estimation: Implementation en 2-3 sessions de travail structurees.
