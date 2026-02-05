@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+ import { useState, useEffect } from 'react';
+ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   ArrowLeft, 
   ArrowRight, 
@@ -8,8 +9,11 @@ import {
   Flame,
   Star,
   HelpCircle,
-  RefreshCw
+   RefreshCw,
+   Brain
 } from 'lucide-react';
+ import { Link } from 'react-router-dom';
+ import { LoadingState, EmptyState } from '@/components/common';
 import { AppLayout, PageHeader } from '@/components/layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -58,85 +62,151 @@ interface UserStats {
 }
 
 export default function SwipeTraining() {
-  const [pairs, setPairs] = useState<TrainingPair[]>([]);
-  const [currentPair, setCurrentPair] = useState<TrainingPair | null>(null);
-  const [email1, setEmail1] = useState<Email | null>(null);
-  const [email2, setEmail2] = useState<Email | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [generatingPairs, setGeneratingPairs] = useState(false);
-  const [stats, setStats] = useState<UserStats | null>(null);
+   const queryClient = useQueryClient();
+   const [currentPair, setCurrentPair] = useState<TrainingPair | null>(null);
+   const [email1, setEmail1] = useState<Email | null>(null);
+   const [email2, setEmail2] = useState<Email | null>(null);
   const [notes, setNotes] = useState('');
   const [showTutorial, setShowTutorial] = useState(false);
   const [startTime, setStartTime] = useState<number>(0);
 
-  const generatePairs = async () => {
-    setGeneratingPairs(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-training-pairs', {
+   // Fetch unprocessed pairs
+   const { data: pairs = [], isLoading: loadingPairs, refetch: refetchPairs } = useQuery({
+     queryKey: ['swipe-training-pairs'],
+     queryFn: async () => {
+       const { data, error } = await supabase
+         .from('swipe_training_pairs')
+         .select('*')
+         .eq('is_processed', false)
+         .order('priority_score', { ascending: false })
+         .limit(20);
+       if (error) throw error;
+       return (data || []) as TrainingPair[];
+     },
+   });
+ 
+   // Fetch user stats
+   const { data: stats, refetch: refetchStats } = useQuery({
+     queryKey: ['swipe-training-stats'],
+     queryFn: async () => {
+       const { data, error } = await supabase
+         .from('swipe_training_stats')
+         .select('*')
+         .maybeSingle();
+       
+       if (error && error.code !== 'PGRST116') throw error;
+       return data as UserStats | null;
+     },
+   });
+ 
+   // Generate pairs mutation
+   const generatePairsMutation = useMutation({
+     mutationFn: async () => {
+       const { data, error } = await supabase.functions.invoke('generate-training-pairs', {
         body: { limit: 20 }
       });
-
       if (error) throw error;
+       return data;
+     },
+     onSuccess: (data) => {
+       toast.success(`${data?.generated || 0} nouvelles paires générées`);
+       queryClient.invalidateQueries({ queryKey: ['swipe-training-pairs'] });
+     },
+     onError: (error: Error) => {
+       toast.error('Erreur lors de la génération des paires', {
+         description: error.message,
+       });
+     },
+   });
 
-      toast.success(`${data?.generated || 0} nouvelles paires générées`);
-      await fetchPairsAndStats();
-    } catch (err) {
-      console.error('Error generating pairs:', err);
-      toast.error('Erreur lors de la génération des paires');
-    } finally {
-      setGeneratingPairs(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchPairsAndStats();
-    checkFirstVisit();
-  }, []);
-
-  const checkFirstVisit = async () => {
-    const visited = localStorage.getItem('swipe-training-visited');
-    if (!visited) {
-      setShowTutorial(true);
-      localStorage.setItem('swipe-training-visited', 'true');
-    }
-  };
-
-  const fetchPairsAndStats = async () => {
-    setLoading(true);
-    try {
-      // Fetch unprocessed pairs
-      const { data: pairsData, error: pairsError } = await supabase
-        .from('swipe_training_pairs')
-        .select('*')
-        .eq('is_processed', false)
-        .order('priority_score', { ascending: false })
-        .limit(20);
-
-      if (pairsError) throw pairsError;
-      setPairs((pairsData || []) as TrainingPair[]);
-
-      // Fetch user stats
-      const { data: statsData } = await supabase
-        .from('swipe_training_stats')
-        .select('*')
-        .single();
-
-      if (statsData) {
-        setStats(statsData as UserStats);
+   // Record swipe mutation
+   const recordSwipeMutation = useMutation({
+     mutationFn: async ({ 
+       pairId, 
+       decision, 
+       timeSpent 
+     }: { 
+       pairId: string; 
+       decision: 'left' | 'right' | 'related';
+       timeSpent: number;
+     }) => {
+       // Record result
+       const { error: resultError } = await supabase
+         .from('swipe_training_results')
+         .insert({
+           pair_id: pairId,
+           user_decision: decision === 'left' ? 'email_1_priority' : decision === 'right' ? 'email_2_priority' : 'equal',
+           swipe_direction: decision,
+           relationship_type: decision === 'related' ? 'linked' : 'compared',
+           manual_notes: notes || null,
+           time_spent_ms: timeSpent,
+         });
+ 
+       if (resultError) throw resultError;
+ 
+       // Mark pair as processed
+       await supabase
+         .from('swipe_training_pairs')
+         .update({ is_processed: true })
+         .eq('id', pairId);
+ 
+       // Update or create stats
+       const { data: currentStats } = await supabase
+         .from('swipe_training_stats')
+         .select('*')
+         .maybeSingle();
+ 
+       if (currentStats) {
+         const newStreak = (currentStats.current_streak || 0) + 1;
+         await supabase
+           .from('swipe_training_stats')
+           .update({
+             total_swipes: (currentStats.total_swipes || 0) + 1,
+             current_streak: newStreak,
+             max_streak: Math.max(newStreak, currentStats.max_streak || 0),
+             last_active_at: new Date().toISOString(),
+           })
+           .eq('id', currentStats.id);
+       } else {
+         // Auto-create stats if missing
+         const { data: { user } } = await supabase.auth.getUser();
+         if (user) {
+           await supabase.from('swipe_training_stats').insert({
+             user_id: user.id,
+             total_swipes: 1,
+             current_streak: 1,
+             max_streak: 1,
+           });
+         }
       }
 
-      // Load first pair
-      if (pairsData && pairsData.length > 0) {
-        await loadPairEmails(pairsData[0] as TrainingPair);
-      }
-    } catch (err) {
-      console.error('Error fetching data:', err);
-      toast.error('Erreur lors du chargement');
-    } finally {
-      setLoading(false);
-    }
-  };
+       return { decision };
+     },
+     onSuccess: (data) => {
+       toast.success(
+         data.decision === 'left' ? 'Email 1 plus prioritaire' :
+         data.decision === 'right' ? 'Email 2 plus prioritaire' :
+         'Emails liés'
+       );
+       queryClient.invalidateQueries({ queryKey: ['swipe-training-pairs'] });
+       queryClient.invalidateQueries({ queryKey: ['swipe-training-stats'] });
+       setNotes('');
+     },
+     onError: (error: Error) => {
+       toast.error('Erreur lors de la sauvegarde', {
+         description: error.message,
+       });
+     },
+   });
+ 
+   // Check first visit for tutorial
+   useEffect(() => {
+     const visited = localStorage.getItem('swipe-training-visited');
+     if (!visited) {
+       setShowTutorial(true);
+       localStorage.setItem('swipe-training-visited', 'true');
+     }
+   }, []);
 
   const loadPairEmails = async (pair: TrainingPair) => {
     setCurrentPair(pair);
@@ -156,102 +226,35 @@ export default function SwipeTraining() {
     }
   };
 
-  const handleSwipe = async (decision: 'left' | 'right' | 'related') => {
+   // Load first pair when pairs change
+   useEffect(() => {
+     if (pairs.length > 0 && !currentPair) {
+       loadPairEmails(pairs[0]);
+     }
+   }, [pairs, currentPair]);
+ 
+   const handleSwipe = (decision: 'left' | 'right' | 'related') => {
     if (!currentPair) return;
-    setSaving(true);
 
     const timeSpent = Date.now() - startTime;
 
-    try {
-      // Record result
-      const { error: resultError } = await supabase
-        .from('swipe_training_results')
-        .insert({
-          pair_id: currentPair.id,
-          user_decision: decision === 'left' ? 'email_1_priority' : decision === 'right' ? 'email_2_priority' : 'equal',
-          swipe_direction: decision,
-          relationship_type: decision === 'related' ? 'linked' : 'compared',
-          manual_notes: notes || null,
-          time_spent_ms: timeSpent,
-        });
-
-      if (resultError) throw resultError;
-
-      // Mark pair as processed
-      await supabase
-        .from('swipe_training_pairs')
-        .update({ is_processed: true })
-        .eq('id', currentPair.id);
-
-      // Update stats
-      await updateStats();
-
-      // Load next pair
-      const remainingPairs = pairs.filter(p => p.id !== currentPair.id);
-      setPairs(remainingPairs);
-
-      if (remainingPairs.length > 0) {
-        await loadPairEmails(remainingPairs[0]);
-      } else {
-        setCurrentPair(null);
-        setEmail1(null);
-        setEmail2(null);
-      }
-
-      toast.success(
-        decision === 'left' ? 'Email 1 plus prioritaire' :
-        decision === 'right' ? 'Email 2 plus prioritaire' :
-        'Emails liés'
-      );
-    } catch (err) {
-      console.error('Error saving:', err);
-      toast.error('Erreur lors de la sauvegarde');
-    } finally {
-      setSaving(false);
-    }
+     recordSwipeMutation.mutate({
+       pairId: currentPair.id,
+       decision,
+       timeSpent,
+     });
+     
+     // Load next pair immediately for smoother UX
+     const remainingPairs = pairs.filter(p => p.id !== currentPair.id);
+     if (remainingPairs.length > 0) {
+       loadPairEmails(remainingPairs[0]);
+     } else {
+       setCurrentPair(null);
+       setEmail1(null);
+       setEmail2(null);
+     }
   };
 
-  const updateStats = async () => {
-    try {
-      const { data: currentStats } = await supabase
-        .from('swipe_training_stats')
-        .select('*')
-        .single();
-
-      if (currentStats) {
-        const newStreak = (currentStats.current_streak || 0) + 1;
-        await supabase
-          .from('swipe_training_stats')
-          .update({
-            total_swipes: (currentStats.total_swipes || 0) + 1,
-            current_streak: newStreak,
-            max_streak: Math.max(newStreak, currentStats.max_streak || 0),
-            last_active_at: new Date().toISOString(),
-          })
-          .eq('id', currentStats.id);
-
-        setStats({
-          ...currentStats,
-          total_swipes: (currentStats.total_swipes || 0) + 1,
-          current_streak: newStreak,
-          max_streak: Math.max(newStreak, currentStats.max_streak || 0),
-        } as UserStats);
-      } else {
-        // Create new stats record
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          await supabase.from('swipe_training_stats').insert({
-            user_id: user.id,
-            total_swipes: 1,
-            current_streak: 1,
-            max_streak: 1,
-          });
-        }
-      }
-    } catch (err) {
-      console.error('Error updating stats:', err);
-    }
-  };
 
   const truncateText = (text: string, maxLength: number) => {
     if (!text) return '';
@@ -259,7 +262,7 @@ export default function SwipeTraining() {
     return text.substring(0, maxLength) + '...';
   };
 
-  if (loading) {
+   if (loadingPairs) {
     return (
       <AppLayout>
         <div className="p-4 md:p-6">
@@ -267,9 +270,7 @@ export default function SwipeTraining() {
             title="Swipe Training" 
             description="Entraînez l'IA par comparaison"
           />
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
+           <LoadingState message="Chargement des paires..." />
         </div>
       </AppLayout>
     );
@@ -327,18 +328,24 @@ export default function SwipeTraining() {
                 }
               </p>
               <div className="flex gap-2 justify-center">
-                <Button onClick={generatePairs} disabled={generatingPairs}>
-                  {generatingPairs ? (
+                 <Button onClick={() => generatePairsMutation.mutate()} disabled={generatePairsMutation.isPending}>
+                   {generatePairsMutation.isPending ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : (
                     <Star className="h-4 w-4 mr-2" />
                   )}
                   Générer des paires
                 </Button>
-                <Button variant="outline" onClick={fetchPairsAndStats}>
+                 <Button variant="outline" onClick={() => refetchPairs()}>
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Rafraîchir
                 </Button>
+                 <Button variant="outline" asChild>
+                   <Link to="/analysis-pipeline">
+                     <Brain className="h-4 w-4 mr-2" />
+                     Pipeline IA
+                   </Link>
+                 </Button>
               </div>
             </CardContent>
           </Card>
@@ -423,7 +430,7 @@ export default function SwipeTraining() {
                 size="lg"
                 variant="outline"
                 onClick={() => handleSwipe('left')}
-                disabled={saving}
+                 disabled={recordSwipeMutation.isPending}
                 className="flex-1 md:flex-none border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20"
               >
                 <ArrowLeft className="h-5 w-5 mr-2" />
@@ -434,7 +441,7 @@ export default function SwipeTraining() {
                 size="lg"
                 variant="secondary"
                 onClick={() => handleSwipe('related')}
-                disabled={saving}
+                 disabled={recordSwipeMutation.isPending}
               >
                 <Link2 className="h-5 w-5 mr-2" />
                 Liés
@@ -444,7 +451,7 @@ export default function SwipeTraining() {
                 size="lg"
                 variant="outline"
                 onClick={() => handleSwipe('right')}
-                disabled={saving}
+                 disabled={recordSwipeMutation.isPending}
                 className="flex-1 md:flex-none border-green-300 hover:bg-green-50 dark:hover:bg-green-900/20"
               >
                 Email 2 prioritaire
