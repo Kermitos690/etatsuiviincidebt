@@ -128,21 +128,29 @@ export default function EmailCleanup() {
     const domains = gmailConfig.domains || [];
     const keywords = gmailConfig.keywords || [];
     const matchedKeywords: string[] = [];
+
+    const hasDomains = domains.length > 0;
+    const hasKeywords = keywords.length > 0;
+
+    if (!hasDomains && !hasKeywords) {
+      return { relevant: true, matchedKeywords: [] };
+    }
     
     const senderDomain = extractDomain(email.sender);
-    const domainMatch = domains.length === 0 || domains.some(d => 
+    const domainMatch = hasDomains && domains.some(d => 
       senderDomain.includes(d.toLowerCase().trim())
     );
 
     const subjectLower = (email.subject || '').toLowerCase();
-    const keywordMatch = keywords.length === 0 || keywords.some(k => {
+    const keywordMatch = hasKeywords && keywords.some(k => {
       const matches = subjectLower.includes(k.toLowerCase().trim());
       if (matches) matchedKeywords.push(k);
       return matches;
     });
 
+    // OR logic: relevant if domain OR keyword matches
     return { 
-      relevant: domainMatch && keywordMatch,
+      relevant: domainMatch || keywordMatch,
       matchedKeywords 
     };
   };
