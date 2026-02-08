@@ -36,8 +36,10 @@ export async function verifyAuth(req: Request): Promise<AuthResult> {
     global: { headers: { Authorization: authHeader } },
   });
 
+  const token = authHeader.replace("Bearer ", "");
+
   try {
-    const { data: { user }, error } = await supabase.auth.getUser();
+    const { data: { user }, error } = await supabase.auth.getUser(token);
 
     if (error) {
       console.error("[Auth] Error verifying user:", error.message);
