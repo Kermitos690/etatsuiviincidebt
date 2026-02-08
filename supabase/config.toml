@@ -3,132 +3,132 @@ project_id = "csysnvkvnoghhyqaxdkz"
 # ============================================================================
 # JWT VERIFICATION POLICY
 # ============================================================================
-# verify_jwt = false: Only for OAuth callbacks and public endpoints
-# verify_jwt = true (default): Functions with internal verifyAuth() still need
-#                              the Supabase JWT header for the auth library to work
+# All functions use verify_jwt = false because Lovable Cloud uses ES256 tokens
+# which are incompatible with Supabase's built-in JWT verification.
+# Authentication is handled in-code via verifyAuth() / supabase.auth.getUser().
 # ============================================================================
 
-# OAuth callback - must be public for Google redirect
+# OAuth callback - public for Google redirect
 [functions.gmail-oauth]
 verify_jwt = false
 
-# Sync functions - Called via SDK with auth token
+# Sync functions
 [functions.gmail-sync]
 verify_jwt = false
 
 [functions.sync-status]
-verify_jwt = true
+verify_jwt = false
 
 # Email cleanup and processing
 [functions.cleanup-emails]
-verify_jwt = true
+verify_jwt = false
 
 [functions.extract-email-facts]
-verify_jwt = true
+verify_jwt = false
 
 [functions.auto-process-email]
-verify_jwt = true
+verify_jwt = false
 
 # Thread analysis
 [functions.analyze-thread]
-verify_jwt = true
+verify_jwt = false
 
 [functions.analyze-thread-complete]
-verify_jwt = true
+verify_jwt = false
 
 # Incident analysis
 [functions.analyze-incident]
-verify_jwt = true
+verify_jwt = false
 
 [functions.analyze-import-incident]
-verify_jwt = true
+verify_jwt = false
 
 [functions.deep-incident-analysis]
-verify_jwt = true
+verify_jwt = false
 
 # Anomaly detection
 [functions.detect-anomalies]
-verify_jwt = true
+verify_jwt = false
 
 # Attachments
 [functions.download-attachments]
-verify_jwt = true
+verify_jwt = false
 
 [functions.download-all-attachments]
-verify_jwt = true
+verify_jwt = false
 
 [functions.analyze-attachment]
-verify_jwt = true
+verify_jwt = false
 
 # Batch operations
 [functions.full-reanalyze]
 verify_jwt = false
 
 [functions.batch-analyze-emails]
-verify_jwt = true
+verify_jwt = false
 
 # Backup
 [functions.backup-data]
-verify_jwt = true
+verify_jwt = false
 
 # Notifications
 [functions.notify-critical]
-verify_jwt = true
+verify_jwt = false
 
 # Events
 [functions.analyze-event]
-verify_jwt = true
+verify_jwt = false
 
-# Email sending (requires auth for security)
+# Email sending
 [functions.send-incident-pdf]
-verify_jwt = true
+verify_jwt = false
 
 [functions.send-email]
-verify_jwt = true
+verify_jwt = false
 
 # Legal functions
 [functions.legal-verify]
-verify_jwt = true
+verify_jwt = false
 
 [functions.search-incident-legal-context]
-verify_jwt = true
+verify_jwt = false
 
 [functions.seed-complete-laws]
-verify_jwt = true
+verify_jwt = false
 
 [functions.legal-text-ingestion]
-verify_jwt = true
+verify_jwt = false
 
 [functions.legal-query-api]
-verify_jwt = true
+verify_jwt = false
 
 [functions.email-legal-detection]
-verify_jwt = true
+verify_jwt = false
 
 # Cross-reference
 [functions.cross-reference-analysis]
-verify_jwt = true
+verify_jwt = false
 
 # Email advanced analysis
 [functions.analyze-email-advanced]
-verify_jwt = true
+verify_jwt = false
 
 # Training
 [functions.generate-training-pairs]
-verify_jwt = true
+verify_jwt = false
 
 # Perplexity verifier
 [functions.perplexity-verifier]
-verify_jwt = true
+verify_jwt = false
 
 # Claim builder
 [functions.claim-builder]
-verify_jwt = true
+verify_jwt = false
 
-# DANGEROUS - Admin only (has internal role check)
+# DANGEROUS - Admin only (has internal role check via verifyAuth)
 [functions.hard-data-reset]
-verify_jwt = true
+verify_jwt = false
 
 # Approve suggestion to create incident
 [functions.approve-suggestion]
-verify_jwt = true
+verify_jwt = false
