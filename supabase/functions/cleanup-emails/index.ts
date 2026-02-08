@@ -219,8 +219,6 @@ function isEmailRelevant(
         break;
       }
     }
-  } else {
-    domainMatch = true;
   }
 
   // Check keyword match
@@ -234,23 +232,19 @@ function isEmailRelevant(
         break;
       }
     }
-  } else {
-    keywordMatch = true;
   }
 
-  if (!domainMatch && !keywordMatch) {
-    const senderDomain = normalizeDomain(email.sender || "");
-    return { relevant: false, reason: `no_match (sender: ${senderDomain})` };
-  }
-  if (!domainMatch) {
-    const senderDomain = normalizeDomain(email.sender || "");
-    return { relevant: false, reason: `domain_mismatch (sender: ${senderDomain})` };
-  }
-  if (!keywordMatch) {
-    return { relevant: false, reason: "keyword_mismatch" };
+  // OR logic: relevant if domain OR keyword matches
+  if (!hasDomains && !hasKeywords) {
+    return { relevant: true, reason: "no_filters_configured" };
   }
 
-  return { relevant: true, reason: "matched", matchedDomain, matchedKeyword };
+  if (domainMatch || keywordMatch) {
+    return { relevant: true, reason: "matched", matchedDomain, matchedKeyword };
+  }
+
+  const senderDomain = normalizeDomain(email.sender || "");
+  return { relevant: false, reason: `no_match (sender: ${senderDomain})` };
 }
 
 serve(async (req) => {

@@ -89,21 +89,29 @@ export function isEmailRelevant(
   const keywords = gmailConfig.keywords || [];
   const matchedKeywords: string[] = [];
 
+  const hasDomains = domains.length > 0;
+  const hasKeywords = keywords.length > 0;
+
+  if (!hasDomains && !hasKeywords) {
+    return { relevant: true, matchedKeywords: [] };
+  }
+
   const senderDomain = extractDomain(email.sender);
   const domainMatch =
-    domains.length === 0 ||
+    hasDomains &&
     domains.some((d) => senderDomain.includes(d.toLowerCase().trim()));
 
   const subjectLower = (email.subject || "").toLowerCase();
   const keywordMatch =
-    keywords.length === 0 ||
+    hasKeywords &&
     keywords.some((k) => {
       const matches = subjectLower.includes(k.toLowerCase().trim());
       if (matches) matchedKeywords.push(k);
       return matches;
     });
 
-  return { relevant: domainMatch && keywordMatch, matchedKeywords };
+  // OR logic: relevant if domain OR keyword matches
+  return { relevant: domainMatch || keywordMatch, matchedKeywords };
 }
 
 /**

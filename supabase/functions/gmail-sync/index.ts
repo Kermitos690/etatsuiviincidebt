@@ -307,8 +307,6 @@ function isEmailRelevant(
         break;
       }
     }
-  } else {
-    domainMatch = true; // No domain filter = auto-pass
   }
 
   // Check keyword match
@@ -322,38 +320,29 @@ function isEmailRelevant(
         break;
       }
     }
-  } else {
-    keywordMatch = true; // No keyword filter = auto-pass
   }
 
-  // Build reason for rejection
-  if (!domainMatch && !keywordMatch) {
-    const senderDomain = normalizeDomain(email.sender || "");
-    return { 
-      relevant: false, 
-      reason: `no_domain_or_keyword_match (sender domain: ${senderDomain}, expected: ${domains.join(', ')})` 
-    };
+  // OR logic: email is relevant if it matches ANY configured filter
+  // If only domains configured: must match a domain
+  // If only keywords configured: must match a keyword
+  // If both configured: must match domain OR keyword
+  if (!hasDomains && !hasKeywords) {
+    return { relevant: true, reason: "no_filters_configured" };
   }
-  if (!domainMatch) {
-    const senderDomain = normalizeDomain(email.sender || "");
+
+  if (domainMatch || keywordMatch) {
     return { 
-      relevant: false, 
-      reason: `domain_mismatch (sender: ${senderDomain}, expected: ${domains.join(', ')})` 
-    };
-  }
-  if (!keywordMatch) {
-    return { 
-      relevant: false, 
-      reason: `keyword_mismatch (expected: ${keywords.join(', ')})` 
+      relevant: true, 
+      reason: "matched", 
+      matchedDomain, 
+      matchedKeyword 
     };
   }
 
-  // BOTH match
+  const senderDomain = normalizeDomain(email.sender || "");
   return { 
-    relevant: true, 
-    reason: "matched", 
-    matchedDomain, 
-    matchedKeyword 
+    relevant: false, 
+    reason: `no_domain_or_keyword_match (sender: ${senderDomain})` 
   };
 }
 
@@ -909,21 +898,48 @@ serve(async (req) => {
       }
       console.log(`📁 Label sync mode - ${specificLabel} with filters`);
     } else {
-      // FILTERED mode - apply domain and keyword filters AT THE API LEVEL
-      console.log(`🔍 Filtered mode - applying ${domains.length} domains and ${keywords.length} keywords AT API LEVEL`);
+    // FILTERED mode - apply domain and keyword filters AT THE API LEVEL
+      console.log(`🔍 Filtered mode - applying ${domains.length} domains and ${keywords.length} keywords`);
       
       const domainQuery = buildDomainQuery(domains);
       const keywordQuery = buildKeywordQuery(keywords);
       
       if (!domainQuery && !keywordQuery) {
         console.log('⚠️ No filters configured - this will fetch ALL emails! Consider adding domains/keywords.');
+        query = '';
+      } else if (domainQuery && keywordQuery) {
+        // OR logic: match domain OR keyword (not AND)
+        const combinedQuery = `(${domainQuery} OR ${keywordQuery})`;
+        if (combinedQuery.length > 1000) {
+          // Query too long for Gmail API - fetch all and filter locally
+          query = '';
+          console.log(`⚠️ Query too long (${combinedQuery.length} chars), switching to local filtering`);
+        } else {
+          query = combinedQuery;
+        }
+      } else {
+        query = domainQuery || keywordQuery || '';
       }
       
-      // Combine domain and keyword queries
-      // If both exist, emails must match BOTH (domain AND keyword)
-      query = [domainQuery, keywordQuery].filter(Boolean).join(' ');
-      
-      console.log(`📤 Gmail API query: ${query || '(empty - will fetch all)'}`);
+      console.log(`📤 Gmail API query (${query.length} chars): ${query.substring(0, 200) || '(empty - local filtering)'}...`);
+    }
+
+    // Auto after-date: find the latest email in DB to avoid re-downloading old emails
+    if (!afterDate) {
+      const { data: latestEmail } = await supabase
+        .from('emails')
+        .select('received_at')
+        .eq('user_id', user.id)
+        .order('received_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (latestEmail?.received_at) {
+        const lastDate = new Date(latestEmail.received_at);
+        lastDate.setDate(lastDate.getDate() - 1); // 1 day overlap for safety
+        afterDate = `${lastDate.getFullYear()}/${String(lastDate.getMonth() + 1).padStart(2, '0')}/${String(lastDate.getDate()).padStart(2, '0')}`;
+        console.log(`📅 Auto after-date from DB: ${afterDate}`);
+      }
     }
 
     if (afterDate) {
