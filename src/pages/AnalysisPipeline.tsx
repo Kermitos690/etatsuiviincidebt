@@ -52,6 +52,8 @@ import {
 } from '@/components/ui/accordion';
 import { EmailLink } from '@/components/email';
 import { EmailPreview } from '@/components/analysis/EmailPreview';
+import { Link } from 'react-router-dom';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 interface AnalysisStep {
   name: string;
@@ -126,18 +128,20 @@ export default function AnalysisPipeline() {
     setPreviewCount(count);
   }, []);
 
-  // Fetch Gmail config for filters
+  // Fetch Gmail config for filters and connection status
   const { data: gmailConfig } = useQuery({
-    queryKey: ['gmail-config'],
+    queryKey: ['gmail-config-status'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('gmail_config')
-        .select('domains, keywords')
-        .limit(1)
-        .maybeSingle();
-      
+      const { data, error } = await supabase.functions.invoke('gmail-oauth', {
+        body: { action: 'get-config' }
+      });
       if (error) throw error;
-      return data;
+      return {
+        connected: data?.connected || false,
+        email: data?.config?.user_email,
+        domains: data?.config?.domains || [],
+        keywords: data?.config?.keywords || [],
+      };
     }
   });
 
@@ -709,6 +713,27 @@ export default function AnalysisPipeline() {
             </Button>
           </div>
         </div>
+
+        {/* Gmail Not Connected Banner */}
+        {gmailConfig && !gmailConfig.connected && (
+          <Alert variant="destructive" className="border-destructive/50 bg-destructive/10">
+            <AlertTriangle className="h-5 w-5" />
+            <AlertTitle className="font-semibold">Gmail non connecté</AlertTitle>
+            <AlertDescription className="flex items-center gap-3">
+              <span className="text-sm">
+                {gmailConfig.email 
+                  ? `Le compte ${gmailConfig.email} nécessite une reconnexion pour synchroniser vos emails.`
+                  : 'Aucun compte Gmail connecté. La synchronisation est impossible.'}
+              </span>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/gmail-config">
+                  <Mail className="h-4 w-4 mr-2" />
+                  Configurer Gmail
+                </Link>
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Reset Confirmation Dialog */}
         <Dialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
