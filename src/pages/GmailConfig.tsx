@@ -225,6 +225,10 @@ export default function GmailConfig() {
           domains: data.config.domains?.length ? data.config.domains : INSTITUTIONAL_DOMAINS,
           keywords: data.config.keywords?.length ? data.config.keywords : SYNC_KEYWORDS,
         });
+        // Warn if config exists but tokens are missing
+        if (data.config.user_email && !data.connected) {
+          toast.warning('Les tokens Gmail sont absents. Veuillez reconnecter votre compte.');
+        }
       }
 
       return typeof data?.connected === 'boolean' ? data.connected : null;
@@ -643,6 +647,30 @@ export default function GmailConfig() {
               Connectez votre compte Gmail pour analyser automatiquement les emails
             </p>
           </div>
+
+          {/* Reconnection Required Banner */}
+          {config.email && !config.connected && !oauthError && (
+            <Alert variant="destructive" className="border-destructive/50 bg-destructive/10">
+              <AlertTriangle className="h-5 w-5" />
+              <AlertTitle className="font-semibold">Reconnexion Gmail nécessaire</AlertTitle>
+              <AlertDescription className="space-y-3">
+                <p className="text-sm">
+                  Le compte Gmail ({config.email}) est configuré mais les tokens d'accès sont absents ou expirés. 
+                  Aucune synchronisation ne peut s'effectuer tant que la reconnexion n'est pas faite.
+                </p>
+                <div className="flex gap-2">
+                  <Button onClick={handleGoogleAuth} disabled={loading}>
+                    {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Mail className="h-4 w-4 mr-2" />}
+                    Reconnecter Gmail
+                  </Button>
+                  <Button variant="outline" onClick={handlePlanBGoogleSignIn} disabled={planBLoading}>
+                    {planBLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ExternalLink className="h-4 w-4 mr-2" />}
+                    Plan B : Google Sign-In
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
 
           {/* OAuth Error Alert */}
           {oauthError && (
