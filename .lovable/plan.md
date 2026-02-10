@@ -1,126 +1,109 @@
 
-# Plan: Corriger la synchronisation Gmail incomplete
+# Plan: Faire fonctionner la recuperation des emails Gmail
 
-## Diagnostic
+## Probleme identifie
 
-**Probleme 1 -- Aucune synchro depuis le 1er janvier 2026:**
-Les identifiants Google etaient corrompus (JSON dans le secret). C'est repare maintenant, mais aucune synchro n'a tourne depuis.
+La base de donnees montre que les **tokens Gmail sont vides** (access_token_enc = NULL, refresh_token_enc = NULL, token_nonce = NULL). L'application affiche "Gmail connecte" car une ligne existe dans la configuration avec votre email, mais sans tokens valides, aucune synchronisation ne peut s'effectuer.
 
-**Probleme 2 -- Seulement 155 emails recuperes (au lieu de milliers):**
-Le mode "filtered" construit une requete Gmail API qui combine 52 domaines ET 81 mots-cles. Gmail exige que les DEUX correspondent (condition AND). Resultat: la plupart des emails sont exclus cote API avant meme d'etre telecharges.
-
-Exemple de la requete generee:
-```text
-(from:*@Hetsl.ch OR from:*@Eesp.ch OR ... 50 autres)
-("urgent" OR "réponse" OR ... 80 autres)
+Le log backend confirme:
 ```
-Un email de `Hetsl.ch` dont le sujet ne contient aucun des 81 mots-cles sera **ignore**.
+ERROR No access token available for user d866baf5-...
+```
 
-**Probleme 3 -- Erreur sur le bouton "Analyser les emails" (onglet Nettoyage):**
-Probablement un appel backend qui echoue (a investiguer dans les logs).
+La connexion Google actuelle utilise le systeme d'authentification integre de Lovable Cloud, qui ne demande **pas** les permissions Gmail. Il faut une connexion Google **separee** qui demande explicitement l'acces a vos emails.
 
 ---
 
-## Corrections proposees
+## Solution en 3 etapes
 
-### 1. Changer la logique de filtrage: OR au lieu de AND
+### Etape 1: Corriger la detection de connexion Gmail
 
-**Fichier:** `supabase/functions/gmail-sync/index.ts` (lignes 912-927)
+**Fichier:** `src/pages/GmailConfig.tsx`
 
-Actuellement, la requete Gmail API combine domaines ET mots-cles. Changer pour une logique OR:
-- Si le domaine correspond OU si un mot-cle correspond, l'email est recupere.
-- Cela evitera d'exclure des emails pertinents.
+Actuellement, la page Gmail affiche "Connecte" des qu'une ligne de configuration existe. Il faut verifier que les tokens sont reellement presents.
 
-```text
-Avant: (domaines) ET (mots-cles)  --> tres restrictif
-Apres: (domaines) OU (mots-cles)  --> capture tous les emails pertinents
-```
+- Modifier le chargement de la configuration pour utiliser l'action `get-config` du backend (qui retourne un champ `connected` base sur la presence reelle des tokens)
+- Si `connected = false` malgre une configuration existante, afficher un message clair: "Reconnexion Gmail necessaire"
 
-### 2. Gerer les requetes trop longues (split en pages)
+### Etape 2: Reparer le flux de connexion Gmail
 
-Gmail API a une limite sur la longueur des requetes. Avec 52 domaines + 81 mots-cles, la requete peut depasser cette limite.
+**Fichier:** `src/pages/GmailConfig.tsx`
 
-**Solution:** Si la requete depasse ~1000 caracteres:
-- Telecharger TOUS les emails (sans filtre API)
-- Appliquer les filtres localement dans `processEmailsInBackground` (deja en place aux lignes 498-515)
+Le bouton "Connecter Gmail" sur la page de configuration utilise l'action `get-auth-url` du backend pour obtenir une URL Google avec les bons scopes (gmail.readonly). Ce flux fonctionne correctement dans le backend mais:
 
-Cela garantit qu'aucun email pertinent n'est perdu.
+- S'assurer que le bouton de connexion est bien visible et fonctionnel quand les tokens sont absents
+- Ajouter un bouton "Reconnecter Gmail" visible en haut de page quand la configuration existe mais que les tokens manquent
+- Apres une connexion reussie via le callback OAuth, verifier que les tokens sont bien stockes
 
-### 3. Ajouter un filtre de date automatique
+### Etape 3: Ajouter un flux de reconnexion rapide
 
-Les 148 emails en base remontent a 2022. Pas besoin de re-telecharger les anciens.
+**Fichier:** `src/pages/GmailConfig.tsx` et `src/pages/AnalysisPipeline.tsx`
 
-**Solution:** Lire la date du dernier email en base et passer `after:YYYY/MM/DD` a la requete Gmail API. Cela accelere la synchro et evite les doublons.
-
-### 4. Corriger le bouton "Analyser les emails" (Nettoyage)
-
-**Fichier:** `src/pages/EmailCleanup.tsx`
-
-Investiguer et corriger l'erreur affichee. Probablement un appel a `batch-analyze-emails` ou `cleanup-emails` qui echoue.
+Quand le pipeline detecte "Gmail non connecte", ajouter un lien direct vers la page de configuration Gmail avec un message explicatif.
 
 ---
 
 ## Details techniques
 
-### Modification 1: gmail-sync -- logique OR + requete adaptative
+### Modification 1: GmailConfig.tsx -- detection fiable
 
 ```typescript
-// Ligne ~922 de gmail-sync/index.ts
-// AVANT:
-query = [domainQuery, keywordQuery].filter(Boolean).join(' ');
+// Au chargement, appeler l'action get-config du backend
+const { data } = await supabase.functions.invoke("gmail-oauth", {
+  body: { action: "get-config" }
+});
 
-// APRES:
-// Si les deux filtres existent, utiliser OR (pas AND)
-if (domainQuery && keywordQuery) {
-  const combinedQuery = `${domainQuery} OR ${keywordQuery}`;
-  // Si la requete est trop longue pour l'API Gmail, 
-  // ne pas filtrer cote API et filtrer localement
-  if (combinedQuery.length > 1000) {
-    query = ''; // Pas de filtre API -- filtrage local
-    console.log('Query trop longue, filtrage local active');
-  } else {
-    query = combinedQuery;
-  }
-} else {
-  query = domainQuery || keywordQuery || '';
+// Utiliser le champ `connected` retourne par le backend
+// (verifie access_token_enc ET token_nonce)
+setConfig({
+  connected: data.connected, // true seulement si tokens presents
+  email: data.config?.user_email,
+  // ...
+});
+
+// Si config existe mais connected=false, afficher un avertissement
+if (data.config && !data.connected) {
+  toast.warning("Les tokens Gmail ont expire. Veuillez reconnecter votre compte.");
 }
 ```
 
-### Modification 2: gmail-sync -- date "after" automatique
+### Modification 2: GmailConfig.tsx -- bouton reconnexion
+
+Ajouter en haut de la page un bandeau d'alerte visible quand `config.email` existe mais `config.connected` est false:
 
 ```typescript
-// Avant de construire la requete, chercher le dernier email
-const { data: latestEmail } = await supabase
-  .from('emails')
-  .select('received_at')
-  .eq('user_id', user.id)
-  .order('received_at', { ascending: false })
-  .limit(1)
-  .maybeSingle();
-
-if (latestEmail?.received_at && !afterDate) {
-  const lastDate = new Date(latestEmail.received_at);
-  // Remonter d'1 jour pour couvrir les chevauchements
-  lastDate.setDate(lastDate.getDate() - 1);
-  afterDate = `${lastDate.getFullYear()}/${String(lastDate.getMonth()+1).padStart(2,'0')}/${String(lastDate.getDate()).padStart(2,'0')}`;
-  console.log(`Auto after date: ${afterDate}`);
-}
+{config.email && !config.connected && (
+  <Alert variant="destructive">
+    <AlertTriangle />
+    <AlertTitle>Reconnexion necessaire</AlertTitle>
+    <AlertDescription>
+      Gmail ({config.email}) necessite une reconnexion pour synchroniser vos emails.
+      <Button onClick={handleConnectGmail}>Reconnecter Gmail</Button>
+    </AlertDescription>
+  </Alert>
+)}
 ```
 
-### Modification 3: EmailCleanup -- corriger l'erreur d'analyse
+### Modification 3: AnalysisPipeline.tsx -- lien vers reconnexion
 
-Verifier l'appel backend dans `EmailCleanup.tsx` et ajouter une gestion d'erreur appropriee.
+Quand le pipeline affiche "Gmail non connecte", transformer le message en lien cliquable:
+
+```typescript
+// Au lieu de juste afficher "Gmail non connecte"
+<Link to="/gmail-config">
+  Gmail non connecte - Cliquer pour configurer
+</Link>
+```
 
 ---
 
 ## Fichiers a modifier
 
-1. `supabase/functions/gmail-sync/index.ts` -- logique OR + auto-date + requete adaptative
-2. `src/pages/EmailCleanup.tsx` -- corriger l'erreur "Analyser les emails"
+1. `src/pages/GmailConfig.tsx` -- detection fiable des tokens + bouton reconnexion
+2. `src/pages/AnalysisPipeline.tsx` -- lien vers la config Gmail quand deconnecte
 
 ## Resultat attendu
 
-- La prochaine synchro recuperera tous les emails depuis le 30 decembre 2025 (dernier email en base)
-- Les filtres domaines/mots-cles seront appliques en mode OR (plus permissif)
-- Si la requete est trop longue, le filtrage sera fait localement (aucun email pertinent perdu)
-- Le bouton "Analyser les emails" fonctionnera sans erreur
+- La page Gmail affichera clairement si les tokens sont valides ou non
+- Un bouton "Reconnecter Gmail" sera visible quand les tokens manquent
+- Apres reconnexion, le pipeline pourra synchroniser et analyser tous vos emails
