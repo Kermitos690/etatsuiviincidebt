@@ -92,7 +92,7 @@ export default function GmailConfig() {
   const [syncFromDate, setSyncFromDate] = useState<Date | undefined>(new Date('2024-01-01'));
   const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
   const [configId, setConfigId] = useState<string | null>(null);
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // State for OAuth flow tracking and Plan B
   const [googleAuthUrl, setGoogleAuthUrl] = useState<string | null>(null);

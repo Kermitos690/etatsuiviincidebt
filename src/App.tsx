@@ -92,6 +92,7 @@ const App = () => (
                     
                     {/* Protected routes - Simplified */}
                     <Route path="/" element={<AuthGuard><Dashboard /></AuthGuard>} />
+                    <Route path="/control-center" element={<AuthGuard><ControlCenter /></AuthGuard>} />
                     
                     {/* Emails - Unified */}
                     <Route path="/emails" element={<AuthGuard><Emails /></AuthGuard>} />
