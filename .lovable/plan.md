@@ -1,109 +1,59 @@
 
-# Plan: Faire fonctionner la recuperation des emails Gmail
 
-## Probleme identifie
+# Plan: Corriger les pages 404 et la connexion Gmail
 
-La base de donnees montre que les **tokens Gmail sont vides** (access_token_enc = NULL, refresh_token_enc = NULL, token_nonce = NULL). L'application affiche "Gmail connecte" car une ligne existe dans la configuration avec votre email, mais sans tokens valides, aucune synchronisation ne peut s'effectuer.
+## Problemes identifies
 
-Le log backend confirme:
-```
-ERROR No access token available for user d866baf5-...
-```
+### 1. Route `/control-center` manquante (404)
+La sidebar contient un lien vers `/control-center` (Centre de Controle), le composant `ControlCenter` est importe dans `App.tsx`, mais **la route n'est pas declaree** dans les `<Routes>`. Resultat: 404 systematique.
 
-La connexion Google actuelle utilise le systeme d'authentification integre de Lovable Cloud, qui ne demande **pas** les permissions Gmail. Il faut une connexion Google **separee** qui demande explicitement l'acces a vos emails.
+### 2. Erreur 403 Google OAuth
+L'erreur 403 lors de la connexion Gmail vient de la **configuration Google Cloud Console**, pas du code. Les tokens sont NULL dans la base. Le code backend fonctionne correctement (generation d'URL, echange de tokens, stockage chiffre).
 
----
-
-## Solution en 3 etapes
-
-### Etape 1: Corriger la detection de connexion Gmail
-
-**Fichier:** `src/pages/GmailConfig.tsx`
-
-Actuellement, la page Gmail affiche "Connecte" des qu'une ligne de configuration existe. Il faut verifier que les tokens sont reellement presents.
-
-- Modifier le chargement de la configuration pour utiliser l'action `get-config` du backend (qui retourne un champ `connected` base sur la presence reelle des tokens)
-- Si `connected = false` malgre une configuration existante, afficher un message clair: "Reconnexion Gmail necessaire"
-
-### Etape 2: Reparer le flux de connexion Gmail
-
-**Fichier:** `src/pages/GmailConfig.tsx`
-
-Le bouton "Connecter Gmail" sur la page de configuration utilise l'action `get-auth-url` du backend pour obtenir une URL Google avec les bons scopes (gmail.readonly). Ce flux fonctionne correctement dans le backend mais:
-
-- S'assurer que le bouton de connexion est bien visible et fonctionnel quand les tokens sont absents
-- Ajouter un bouton "Reconnecter Gmail" visible en haut de page quand la configuration existe mais que les tokens manquent
-- Apres une connexion reussie via le callback OAuth, verifier que les tokens sont bien stockes
-
-### Etape 3: Ajouter un flux de reconnexion rapide
-
-**Fichier:** `src/pages/GmailConfig.tsx` et `src/pages/AnalysisPipeline.tsx`
-
-Quand le pipeline detecte "Gmail non connecte", ajouter un lien direct vers la page de configuration Gmail avec un message explicatif.
+**Actions requises dans Google Cloud Console** (par vous, pas par le code):
+- Ajouter `teba.gaetan@gmail.com` comme **utilisateur test** dans l'ecran de consentement OAuth
+- Verifier que l'API Gmail est **activee**
+- Verifier que l'URI de redirection est exactement: `https://csysnvkvnoghhyqaxdkz.supabase.co/functions/v1/gmail-oauth`
 
 ---
 
-## Details techniques
+## Modifications code
 
-### Modification 1: GmailConfig.tsx -- detection fiable
+### Etape 1: Ajouter la route `/control-center` dans App.tsx
 
-```typescript
-// Au chargement, appeler l'action get-config du backend
-const { data } = await supabase.functions.invoke("gmail-oauth", {
-  body: { action: "get-config" }
-});
-
-// Utiliser le champ `connected` retourne par le backend
-// (verifie access_token_enc ET token_nonce)
-setConfig({
-  connected: data.connected, // true seulement si tokens presents
-  email: data.config?.user_email,
-  // ...
-});
-
-// Si config existe mais connected=false, afficher un avertissement
-if (data.config && !data.connected) {
-  toast.warning("Les tokens Gmail ont expire. Veuillez reconnecter votre compte.");
-}
-```
-
-### Modification 2: GmailConfig.tsx -- bouton reconnexion
-
-Ajouter en haut de la page un bandeau d'alerte visible quand `config.email` existe mais `config.connected` est false:
+Ajouter la route manquante dans la section "Protected routes":
 
 ```typescript
-{config.email && !config.connected && (
-  <Alert variant="destructive">
-    <AlertTriangle />
-    <AlertTitle>Reconnexion necessaire</AlertTitle>
-    <AlertDescription>
-      Gmail ({config.email}) necessite une reconnexion pour synchroniser vos emails.
-      <Button onClick={handleConnectGmail}>Reconnecter Gmail</Button>
-    </AlertDescription>
-  </Alert>
-)}
+<Route path="/control-center" element={<AuthGuard><ControlCenter /></AuthGuard>} />
 ```
 
-### Modification 3: AnalysisPipeline.tsx -- lien vers reconnexion
+**Fichier:** `src/App.tsx` - une seule ligne a ajouter apres la route Dashboard.
 
-Quand le pipeline affiche "Gmail non connecte", transformer le message en lien cliquable:
+### Etape 2: Verifier les autres routes sidebar vs App.tsx
 
-```typescript
-// Au lieu de juste afficher "Gmail non connecte"
-<Link to="/gmail-config">
-  Gmail non connecte - Cliquer pour configurer
-</Link>
-```
+Toutes les autres routes de la sidebar (`/emails`, `/email-cleanup`, `/attachments`, `/suggestions`, `/incidents`, `/incidents-timeline`, `/journal`, `/nouveau`, `/factual-dossier`, `/events`, `/analysis-pipeline`, `/ia-auditeur`, `/ia-training`, `/swipe-training`, `/gmail-config`, `/admin`, `/tutorial`, `/legal-config`, `/legal-admin`) sont deja declarees dans App.tsx. Seule `/control-center` manque.
+
+---
+
+## Ce qui ne peut PAS etre corrige par le code
+
+L'erreur **403 de Google** necessite votre intervention dans la Google Cloud Console:
+
+1. Allez sur https://console.cloud.google.com/apis/credentials/consent
+2. Section "Utilisateurs tests" → Ajoutez `teba.gaetan@gmail.com`
+3. Verifiez dans la Bibliotheque d'APIs que "Gmail API" est activee
+4. Dans les identifiants OAuth, verifiez que l'URI de redirection autorisee est: `https://csysnvkvnoghhyqaxdkz.supabase.co/functions/v1/gmail-oauth`
+
+Une fois ces etapes faites, le bouton "Reconnecter Gmail" stockera les tokens et la synchronisation fonctionnera.
 
 ---
 
 ## Fichiers a modifier
 
-1. `src/pages/GmailConfig.tsx` -- detection fiable des tokens + bouton reconnexion
-2. `src/pages/AnalysisPipeline.tsx` -- lien vers la config Gmail quand deconnecte
+1. `src/App.tsx` - Ajout de la route `/control-center`
 
 ## Resultat attendu
 
-- La page Gmail affichera clairement si les tokens sont valides ou non
-- Un bouton "Reconnecter Gmail" sera visible quand les tokens manquent
-- Apres reconnexion, le pipeline pourra synchroniser et analyser tous vos emails
+- Plus de 404 sur "Centre de Controle"
+- Apres configuration Google Cloud Console: connexion Gmail fonctionnelle, tokens stockes, synchronisation et analyse des emails operationnelles
+
